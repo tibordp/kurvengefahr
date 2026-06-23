@@ -1,0 +1,277 @@
+:root {
+  --bg: #f4f4f5;
+  --panel: #ffffff;
+  --border: #d4d4d8;
+  --text: #18181b;
+  --muted: #71717a;
+  --accent: #2563eb;
+  font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+  color: var(--text);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+}
+
+body {
+  background: var(--bg);
+}
+
+.app {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  grid-template-columns: 1fr 300px;
+  grid-template-areas:
+    'toolbar toolbar'
+    'canvas inspector';
+  height: 100vh;
+}
+
+.toolbar {
+  grid-area: toolbar;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+}
+
+.toolbar .brand {
+  font-weight: 700;
+  margin-right: 8px;
+}
+
+.toolbar .spacer {
+  flex: 1;
+}
+
+.canvas-area {
+  grid-area: canvas;
+  overflow: hidden;
+  min-width: 0;
+  min-height: 0;
+}
+
+.canvas-pane {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.stage-host {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  background: #e4e4e7;
+  min-height: 0;
+}
+
+.statusbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 10px;
+  border-top: 1px solid var(--border);
+  background: var(--panel);
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.statusbar .spacer {
+  flex: 1;
+}
+
+.statusbar strong {
+  color: var(--text);
+  font-weight: 600;
+  margin-right: 4px;
+}
+
+.inspector {
+  grid-area: inspector;
+  background: var(--panel);
+  border-left: 1px solid var(--border);
+  padding: 12px;
+  overflow-y: auto;
+}
+
+.inspector h3 {
+  margin: 16px 0 8px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+
+.inspector h3:first-child {
+  margin-top: 0;
+}
+
+.tabs {
+  display: flex;
+  gap: 2px;
+  margin: -12px -12px 12px;
+  padding: 0 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.tabs button {
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: none;
+  padding: 10px 12px;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.tabs button:hover {
+  color: var(--text);
+  filter: none;
+}
+
+.tabs button.active {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+
+.field {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+  font-size: 13px;
+}
+
+.field label {
+  color: var(--muted);
+}
+
+.field input,
+.field select,
+.field textarea {
+  width: 100%;
+  padding: 4px 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font: inherit;
+  font-size: 13px;
+}
+
+.field.full {
+  grid-template-columns: 1fr;
+}
+
+.field textarea.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  resize: vertical;
+}
+
+button {
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+}
+
+button:hover {
+  filter: brightness(0.97);
+}
+
+.empty {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.elist {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.elist li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  margin-bottom: 4px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.elist li.sel {
+  border-color: var(--accent);
+  background: #eff6ff;
+}
+
+.elist li .name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.elist li .x {
+  padding: 0 6px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+}
+
+.elist li .x:hover {
+  color: #dc2626;
+}
+
+.canvas-col {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.preview-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.preview-controls input[type='range'] {
+  flex: 1;
+}
+
+.preview-controls .readout {
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  color: var(--muted);
+  min-width: 96px;
+  text-align: right;
+}
+
+.preview-controls button {
+  min-width: 40px;
+}

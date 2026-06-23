@@ -1,0 +1,31 @@
+{
+  "name": "kurvengefahr",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Browser CAM for a pen-plotter (Prusa MK4 + spring-loaded pen holder)",
+  "scripts": {
+    "build:wasm": "wasm-pack build crate --target web --out-dir pkg",
+    "predev": "npm run build:wasm",
+    "dev": "vite",
+    "prebuild": "npm run build:wasm",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc -b --noEmit"
+  },
+  "dependencies": {
+    "konva": "^9.3.16",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-konva": "^18.2.10",
+    "zustand": "^4.5.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.9.0",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.11"
+  }
+}
