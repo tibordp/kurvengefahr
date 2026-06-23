@@ -1,9 +1,13 @@
-// Single place that owns WASM instantiation. `initWasm()` is idempotent and must resolve
-// before any exported function is called. The app gates first render on it (see main.tsx),
-// so the exports below can be invoked synchronously everywhere else.
+// Main-thread WASM: the synchronous, model-free geometry ops — clip, optimize, and the stateless
+// substitution note. `initWasm()` is idempotent and resolves before first render (see main.tsx),
+// so these can be called synchronously everywhere.
+//
+// Handwriting *generation* does NOT live here: it runs in a Web Worker with its own WASM instance
+// and the ~7 MB model blob (see core/wasm/genWorker.ts + core/generation.ts), so the heavy RNN
+// never blocks the UI. The main thread never loads the model.
 import init, {
   optimize,
-  generate_handwriting,
+  substitution_note,
   clip,
   GeometryBuffers,
 } from '@wasm/kg_toolpath.js'
@@ -18,4 +22,4 @@ export function initWasm(): Promise<void> {
   return ready
 }
 
-export { optimize, generate_handwriting, clip, GeometryBuffers }
+export { optimize, substitution_note, clip, GeometryBuffers }

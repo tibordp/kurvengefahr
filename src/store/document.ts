@@ -26,6 +26,9 @@ interface DocStore {
   /** Patch the machine profile. Invalidates only Emit. */
   setProfile: (patch: Partial<MachineProfile>) => void
   loadPreset: (presetId: string) => void
+  /** Re-render views over the document without changing element data — used by the generation
+   *  controller after async (worker) geometry lands in the cache. */
+  notifyGeometry: () => void
 }
 
 export const useDoc = create<DocStore>((set) => ({
@@ -89,4 +92,6 @@ export const useDoc = create<DocStore>((set) => ({
       const preset = PROFILE_PRESETS.find((p) => p.id === presetId) ?? PRUSA_MK4
       return { profile: preset }
     }),
+
+  notifyGeometry: () => set((state) => ({ elements: [...state.elements] })),
 }))

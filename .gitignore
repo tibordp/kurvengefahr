@@ -5,3 +5,13 @@ crate/pkg/
 *.local
 *.tsbuildinfo
 .DS_Store
+__pycache__/
+*.pyc
+
+# Raw pretrained TF checkpoint (converted to public/models/*.f16.bin by tools/convert_weights.py).
+# Only the derived f16 blob is committed; the checkpoint is large and fetched on demand.
+tools/checkpoints/
+*.ckpt
+model-*.data-*
+model-*.index
+model-*.meta

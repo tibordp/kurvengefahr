@@ -2,7 +2,7 @@
 //!
 //! `Stroke`/`Point` are the ergonomic in-crate representation. `GeometryBuffers` is the
 //! flat, CSR-style typed-array form handed to JS (mirrors `src/core/wasm/serde.ts`). Both
-//! `optimize` and `generate_handwriting` return `GeometryBuffers`, so the JS side has exactly
+//! `optimize`, `clip` and `generate_word` return `GeometryBuffers`, so the JS side has exactly
 //! one geometry decode path regardless of which marks produced the strokes.
 
 use wasm_bindgen::prelude::*;

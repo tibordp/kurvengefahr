@@ -1,18 +1,17 @@
-// The handwriting element. Generation (synthetic StrokeModel + Typesetter) lives entirely in
-// the Rust/WASM crate; this file is the thin JS seam: map params → WASM call → Geometry, and
-// register the element type. Swapping the synthetic model for the Graves RNN happens in Rust,
-// behind `generate_handwriting` — nothing here changes.
+// The handwriting element. Generation (Graves RNN-MDN + typesetter) lives entirely in the
+// Rust/WASM crate, and runs in a Web Worker (see core/generation.ts) because a long line of text
+// is hundreds of ms of RNN sampling — too slow for the main thread. So this type is registered as
+// **async**: it has no synchronous generator. The controller drives the worker, fills the registry
+// cache, and re-renders; `generateLocal` just reads the cached/stale ink.
 //
-// `generate` is synchronous because the WASM module is instantiated before first render
-// (see main.tsx), so element memoization and canvas rendering stay synchronous.
-import type { Geometry } from '../../core/types'
+// This file is now purely the element's param shape + registration.
 import { registerElement } from '../registry'
-import { generate_handwriting } from '../../core/wasm'
-import { unflatten } from '../../core/wasm/serde'
 
 export interface StrokeStyle {
-  /** Varies the generated forms; same (text, seed) → same ink. */
+  /** Varies the generated forms; same (text, seed, bias) → same ink. */
   seed: number
+  /** Sampling bias (neatness). 0 = loose/natural, higher = neater/more legible. */
+  bias: number
 }
 
 export interface Layout {
@@ -23,7 +22,7 @@ export interface Layout {
   /** Wrap width in millimetres. */
   maxWidthMm: number
   align: 'left' | 'center' | 'right'
-  /** Forward slant in degrees (italic shear). */
+  /** Forward slant in degrees (italic shear) applied on top of the model's natural slant. */
   slantDeg: number
 }
 
@@ -37,47 +36,26 @@ export interface HandwritingParams {
   globalOptimize: boolean
 }
 
-const ALIGN_CODE: Record<Layout['align'], number> = { left: 0, center: 1, right: 2 }
+/** Align enum → the u8 the WASM API expects. Shared with the generation worker. */
+export const ALIGN_CODE: Record<Layout['align'], number> = { left: 0, center: 1, right: 2 }
 
-function generate(params: HandwritingParams): Geometry {
-  const { text, layout, style } = params
-  const buf = generate_handwriting(
-    text,
-    layout.fontSizeMm,
-    layout.lineHeightEm,
-    layout.maxWidthMm,
-    ALIGN_CODE[layout.align],
-    layout.slantDeg,
-    style.seed >>> 0,
-  )
-  // Copy the typed arrays out before freeing the Rust-owned struct.
-  const geom = unflatten({
-    xy: buf.xy,
-    pressure: buf.pressure,
-    offsets: buf.offsets,
-    pen: buf.pen,
-    reversible: buf.reversible,
-    group: buf.group,
-  })
-  buf.free()
-  return geom
-}
-
-// Locked (natural order) unless the element opts into global optimization.
-registerElement('handwriting', generate, {
+// Async (worker-backed). Locked into natural reading order unless the element opts into global
+// optimization. No synchronous `generate` — the controller produces geometry off-thread.
+registerElement('handwriting', {
   isLocked: (p: HandwritingParams) => !p.globalOptimize,
 })
 
 export function defaultHandwritingParams(text = 'Kurvengefahr'): HandwritingParams {
   return {
     text,
-    style: { seed: 1 },
+    style: { seed: 1, bias: 2.5 },
     layout: {
       fontSizeMm: 8,
       lineHeightEm: 1.5,
       maxWidthMm: 160,
       align: 'left',
-      slantDeg: 8,
+      // The model already produces natural cursive slant; default extra shear to 0.
+      slantDeg: 0,
     },
     globalOptimize: false,
   }

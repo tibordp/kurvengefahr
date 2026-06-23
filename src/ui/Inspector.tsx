@@ -2,7 +2,9 @@
 // plus the document machine profile (→ re-emit). Pure view over the store.
 import { useEffect, useState } from 'react'
 import { useDoc } from '../store/document'
+import { useGeneration, regenerate, isElementDirty } from '../core/generation'
 import { PROFILE_PRESETS } from '../store/profiles'
+import { substitution_note } from '../core/wasm'
 import type { DocElement } from '../core/types'
 import type { HandwritingParams } from '../elements/handwriting'
 
@@ -22,19 +24,39 @@ function ElementList() {
   const selectedId = useDoc((s) => s.selectedId)
   const select = useDoc((s) => s.select)
   const removeElement = useDoc((s) => s.removeElement)
+  const genStatus = useGeneration((s) => s.status)
 
   if (elements.length === 0) return null
   return (
     <>
       <h3>Elements</h3>
       <ul className="elist">
-        {elements.map((el) => (
+        {elements.map((el) => {
+          const g = genStatus[el.id]
+          const rowDirty = !g && isElementDirty(el.id, el.params)
+          const badge =
+            g?.phase === 'loading-model'
+              ? '⏳'
+              : g?.phase === 'generating'
+                ? '✎'
+                : g?.phase === 'error'
+                  ? '⚠'
+                  : rowDirty
+                    ? '●'
+                    : ''
+          const badgeWarn = g?.phase === 'error' || rowDirty
+          return (
           <li
             key={el.id}
             className={el.id === selectedId ? 'sel' : ''}
             onClick={() => select(el.id)}
           >
             <span className="name">{elementName(el)}</span>
+            {badge && (
+              <span className={badgeWarn ? 'badge warn' : 'badge'} title={g?.phase ?? (rowDirty ? 'edited' : '')}>
+                {badge}
+              </span>
+            )}
             <button
               className="x"
               title="Delete"
@@ -46,7 +68,8 @@ function ElementList() {
               ✕
             </button>
           </li>
-        ))}
+          )
+        })}
       </ul>
     </>
   )
@@ -112,15 +135,50 @@ function Num({
   )
 }
 
+/** Per-element generation feedback: model load on first use, per-line progress, or an error with
+ *  retry. Generation runs in a worker; the element keeps showing its previous ink meanwhile. */
+function GenerationNote({ id }: { id: string }) {
+  const status = useGeneration((s) => s.status[id])
+  if (!status) return null
+  if (status.phase === 'loading-model') {
+    return <p className="note">⏳ Loading handwriting model… (first use only)</p>
+  }
+  if (status.phase === 'generating') {
+    const { done = 0, total = 0 } = status
+    return <p className="note">✎ Generating… {total > 0 ? `${done}/${total} lines` : ''}</p>
+  }
+  return (
+    <p className="note warn">
+      ⚠ Generation failed{status.message ? `: ${status.message}` : ''}.{' '}
+      <button className="link" onClick={() => regenerate(id)}>Retry</button>
+    </p>
+  )
+}
+
 function HandwritingInspector({ id, params }: { id: string; params: HandwritingParams }) {
   const setParams = useDoc((s) => s.setParams)
   const update = (patch: Partial<HandwritingParams>) => setParams(id, { ...params, ...patch })
   const setLayout = (patch: Partial<HandwritingParams['layout']>) =>
     update({ layout: { ...params.layout, ...patch } })
+  const setStyle = (patch: Partial<HandwritingParams['style']>) =>
+    update({ style: { ...params.style, ...patch } })
+
+  // Stateless, model-independent: warn about characters the model can't draw.
+  const subs = substitution_note(params.text)
+  // Dirty = params edited since the last generation (and nothing currently running).
+  const busy = useGeneration((s) => !!s.status[id])
+  const dirty = !busy && isElementDirty(id, params)
 
   return (
     <>
       <h3>Handwriting</h3>
+      <GenerationNote id={id} />
+      {dirty && (
+        <div className="dirty">
+          <span>● Edited — preview is out of date</span>
+          <button className="primary" onClick={() => regenerate(id)}>Regenerate</button>
+        </div>
+      )}
       <div className="field full">
         <textarea
           rows={3}
@@ -128,6 +186,7 @@ function HandwritingInspector({ id, params }: { id: string; params: HandwritingP
           onChange={(e) => update({ text: e.target.value })}
         />
       </div>
+      {subs && <p className="note warn" title="The model's alphabet is limited; these were remapped.">⚠ Substituted: {subs}</p>}
       <Num label="Font (mm)" value={params.layout.fontSizeMm} step={0.5}
         onChange={(v) => setLayout({ fontSizeMm: v })} />
       <Num label="Line height" value={params.layout.lineHeightEm} step={0.1}
@@ -148,7 +207,23 @@ function HandwritingInspector({ id, params }: { id: string; params: HandwritingP
         </select>
       </div>
       <Num label="Seed" value={params.style.seed} step={1}
-        onChange={(v) => update({ style: { ...params.style, seed: v } })} />
+        onChange={(v) => setStyle({ seed: v })} />
+      <div className="field">
+        <label title="Neatness. Lower = looser/more natural, higher = neater and more legible.">
+          Neatness
+        </label>
+        <div className="range">
+          <input
+            type="range"
+            min={0}
+            max={2.5}
+            step={0.05}
+            value={params.style.bias}
+            onChange={(e) => setStyle({ bias: parseFloat(e.target.value) })}
+          />
+          <span className="rangeval">{params.style.bias.toFixed(2)}</span>
+        </div>
+      </div>
       <div className="field">
         <label title="Off: plot strokes in natural reading order (one locked unit). On: let the optimizer reorder this element's strokes with everything else.">
           Global optimize

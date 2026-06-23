@@ -6,6 +6,7 @@ import type Konva from 'konva'
 import type { DocElement } from '../core/types'
 import { generateLocal } from '../elements/registry'
 import { useDoc } from '../store/document'
+import { useGeneration, isElementDirty } from '../core/generation'
 
 interface Props {
   element: DocElement
@@ -27,6 +28,12 @@ export function ElementNode({ element, pxPerMm, interactive = true }: Props) {
   const geom = generateLocal(element)
   const colorFor = (pen: number) => pens.find((p) => p.id === pen)?.color ?? '#1a1a1a'
 
+  // Dim the ink when it's stale (params edited but not regenerated yet) — a conspicuous "this isn't
+  // current" cue right on the canvas. While generating (status present) we keep full opacity so the
+  // lines streaming in read clearly.
+  const generating = useGeneration((s) => !!s.status[element.id])
+  const dirty = !generating && isElementDirty(element.id, element.params)
+
   const commit = (node: Konva.Node) => {
     setTransform(element.id, {
       x: node.x(),
@@ -45,7 +52,7 @@ export function ElementNode({ element, pxPerMm, interactive = true }: Props) {
       rotation={element.transform.rotation}
       scaleX={element.transform.scaleX}
       scaleY={element.transform.scaleY}
-      opacity={interactive ? 1 : 0.18}
+      opacity={interactive ? (dirty ? 0.4 : 1) : 0.18}
       listening={interactive}
       draggable={interactive}
       onMouseDown={() => select(element.id)}

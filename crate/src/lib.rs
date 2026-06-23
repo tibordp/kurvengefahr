@@ -1,46 +1,128 @@
 //! Toolpath + mark generation for Kurvengefahr — all the "fancy" geometry work, in Rust.
 //!
-//! Two WASM entry points, both returning the same flat `GeometryBuffers` (see `geom.rs`),
-//! so JS has a single geometry decode path:
-//!
-//!   - `generate_handwriting` — text → strokes (synthetic model + typesetter; the RNN slots
-//!      in behind the `StrokeModel` trait later, invisibly to JS).
-//!   - `optimize` — strokes → reordered strokes (greedy nearest-neighbour, honours
-//!      `reversible`; seed of the Z-aware lift-minimizer).
+//! WASM entry points:
+//!   - `init_model` — load the Graves RNN-MDN weight blob (once, lazily fetched by JS).
+//!   - `generate_word` — one word → positioned strokes + width (the worker lays words out).
+//!   - `clean_text` / `substitution_note` — alphabet substitution (cleaned text + a human note).
+//!   - `clip` — split strokes to the reachable rectangle.
+//!   - `optimize` — reorder strokes (greedy nearest-neighbour, honours `reversible`).
 
 mod clip;
+mod compose;
 mod geom;
-mod stroke_model;
+mod model;
 mod typeset;
+
+use std::cell::RefCell;
 
 use wasm_bindgen::prelude::*;
 
 use clip::Rect;
 use geom::{decode, GeometryBuffers, Stroke};
-use stroke_model::{StrokeModel, SyntheticStrokeModel};
-use typeset::{typeset, Align, Layout};
+use model::Model;
+use typeset::place_word;
 
-/// Generate handwriting geometry (element-local mm) from text + layout. The whole
-/// model→typesetter path is here; JS just unflattens the result like any other geometry.
+thread_local! {
+    /// The handwriting model, loaded once via `init_model`. WASM is single-threaded, so a
+    /// thread-local is effectively a module global.
+    static MODEL: RefCell<Option<Model>> = const { RefCell::new(None) };
+}
+
+/// Load the f16 weight blob (see `tools/convert_weights.py`). Idempotent-friendly: re-loading
+/// just replaces the weights. JS fetches the blob lazily and calls this before generating.
 #[wasm_bindgen]
-pub fn generate_handwriting(
-    text: &str,
+pub fn init_model(bytes: &[u8]) -> Result<(), JsValue> {
+    let model = Model::load(bytes).map_err(|e| JsValue::from_str(&e))?;
+    MODEL.with(|m| *m.borrow_mut() = Some(model));
+    Ok(())
+}
+
+/// Whether the handwriting model has been loaded.
+#[wasm_bindgen]
+pub fn model_ready() -> bool {
+    MODEL.with(|m| m.borrow().is_some())
+}
+
+
+/// Positioned geometry for one word plus its advance width (mm). Exposes the same flat-buffer
+/// getters as `GeometryBuffers` so JS decodes the geometry identically, with `width` read separately
+/// for layout.
+#[wasm_bindgen]
+pub struct WordResult {
+    geom: GeometryBuffers,
+    width: f32,
+}
+
+#[wasm_bindgen]
+impl WordResult {
+    #[wasm_bindgen(getter)]
+    pub fn xy(&self) -> Vec<f32> {
+        self.geom.xy()
+    }
+    #[wasm_bindgen(getter)]
+    pub fn pressure(&self) -> Vec<f32> {
+        self.geom.pressure()
+    }
+    #[wasm_bindgen(getter)]
+    pub fn offsets(&self) -> Vec<u32> {
+        self.geom.offsets()
+    }
+    #[wasm_bindgen(getter)]
+    pub fn pen(&self) -> Vec<u16> {
+        self.geom.pen()
+    }
+    #[wasm_bindgen(getter)]
+    pub fn reversible(&self) -> Vec<u8> {
+        self.geom.reversible()
+    }
+    #[wasm_bindgen(getter)]
+    pub fn group(&self) -> Vec<u32> {
+        self.geom.group()
+    }
+    /// Advance width in mm (used by the worker to lay words out left→right and wrap).
+    #[wasm_bindgen(getter)]
+    pub fn width(&self) -> f32 {
+        self.width
+    }
+}
+
+/// Synthesize one already-substituted, space-free `word`, primed on the golden sample for a
+/// consistent hand, scaled to `font_size_mm` (+ optional extra `slant_deg`), with its baseline at
+/// y=0 and x from 0. The worker places it on the page. Deterministic for `(word, seed, bias)`.
+/// Errors if the model isn't loaded.
+#[wasm_bindgen]
+pub fn generate_word(
+    word: &str,
     font_size_mm: f32,
-    line_height_em: f32,
-    max_width_mm: f32,
-    align: u8,
     slant_deg: f32,
     seed: u32,
-) -> GeometryBuffers {
-    let glyphs = SyntheticStrokeModel.generate(text, seed);
-    let layout = Layout {
-        font_size_mm,
-        line_height_em,
-        max_width_mm,
-        align: Align::from_u8(align),
-        slant_deg,
-    };
-    GeometryBuffers::from_strokes(&typeset(&glyphs, &layout))
+    bias: f32,
+) -> Result<WordResult, JsValue> {
+    MODEL.with(|m| {
+        let borrow = m.borrow();
+        let model = borrow
+            .as_ref()
+            .ok_or_else(|| JsValue::from_str("handwriting model not loaded"))?;
+        let ink = model.generate_word(word, seed, bias);
+        Ok(WordResult {
+            geom: GeometryBuffers::from_strokes(&place_word(&ink, font_size_mm, slant_deg)),
+            width: ink.width * font_size_mm,
+        })
+    })
+}
+
+/// Substitute out-of-alphabet characters, returning the cleaned text (newlines/spaces preserved).
+/// The worker splits this into words + line breaks before generating.
+#[wasm_bindgen]
+pub fn clean_text(text: &str) -> String {
+    compose::substitute(text).0
+}
+
+/// The character-substitution note for `text` (e.g. `"Q→q, ’→'"`), or empty if every character is
+/// in the model's alphabet. Stateless and model-independent, so the UI can warn as the user types.
+#[wasm_bindgen]
+pub fn substitution_note(text: &str) -> String {
+    compose::substitute(text).1
 }
 
 /// Clip geometry to the reachable rectangle (computed JS-side). Strokes that leave and re-enter

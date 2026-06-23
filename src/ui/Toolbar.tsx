@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useDoc } from '../store/document'
 import { usePreview } from '../store/preview'
+import { regenerateAll, isElementDirty } from '../core/generation'
 import { runPipeline, buildPlottableGeometry } from '../core/pipeline'
 import { optimizeGeometry } from '../core/pipeline/optimize'
 import { penParkInPage } from '../core/pipeline/toMachine'
@@ -9,9 +10,12 @@ import { downloadSink } from '../output/sink'
 
 export function Toolbar() {
   const addHandwriting = useDoc((s) => s.addHandwriting)
+  const elements = useDoc((s) => s.elements)
   const previewActive = usePreview((s) => s.active)
   const [busy, setBusy] = useState(false)
   const [preparing, setPreparing] = useState(false)
+
+  const dirtyCount = elements.filter((e) => isElementDirty(e.id, e.params)).length
 
   const togglePreview = async () => {
     if (previewActive) {
@@ -51,6 +55,12 @@ export function Toolbar() {
       <button onClick={() => addHandwriting()} disabled={previewActive}>
         + Handwriting
       </button>
+
+      {dirtyCount > 0 && !previewActive && (
+        <button className="warn" onClick={() => regenerateAll()} title="Regenerate edited elements">
+          ↻ Regenerate ({dirtyCount})
+        </button>
+      )}
 
       <span className="spacer" />
 

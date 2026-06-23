@@ -194,6 +194,12 @@ button.primary {
   color: white;
 }
 
+button.warn {
+  background: #fffbeb;
+  border-color: #f0c36d;
+  color: #92400e;
+}
+
 button:hover {
   filter: brightness(0.97);
 }
@@ -201,6 +207,44 @@ button:hover {
 .empty {
   color: var(--muted);
   font-size: 13px;
+}
+
+.note {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 2px 0 8px;
+  line-height: 1.4;
+}
+
+.note.warn {
+  color: #9a6700;
+}
+
+button.link {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--accent);
+  text-decoration: underline;
+  font-size: inherit;
+}
+
+.field .range {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.field .range input {
+  flex: 1;
+  padding: 0;
+}
+
+.rangeval {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  min-width: 2.6em;
+  text-align: right;
 }
 
 .elist {
@@ -230,6 +274,35 @@ button:hover {
   flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.elist li .badge {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.elist li .badge.warn {
+  color: #d97706;
+}
+
+.dirty {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 0 8px;
+  padding: 6px 8px;
+  border: 1px solid #f0c36d;
+  background: #fffbeb;
+  border-radius: 6px;
+  font-size: 12px;
+  color: #92400e;
+}
+
+.dirty button.primary {
+  padding: 4px 10px;
+  font-size: 12px;
   white-space: nowrap;
 }
 
