@@ -10,6 +10,7 @@ import { penParkInPage } from '../core/pipeline/toMachine'
 import { buildToolpath } from '../core/preview/toolpath'
 import { downloadSink } from '../output/sink'
 import { Button, IconButton } from './primitives'
+import { DocumentMenu } from './DocumentMenu'
 
 /** A curving trail with a gap + head — a nod to "Achtung, die Kurve!" (and to drawing one
  *  continuous line). `currentColor`, so it inherits the accent. */
@@ -77,12 +78,16 @@ export function Toolbar() {
 
   return (
     <header className="col-span-full flex items-center gap-2 border-b border-border bg-surface px-3 py-2">
-      <div className="mr-1 flex items-center gap-2">
+      <div className="flex items-center gap-2">
         <LogoMark className="text-accent" />
-        <span className="hidden text-[15px] font-semibold tracking-tight sm:inline">
+        <span className="hidden text-[15px] font-semibold tracking-tight lg:inline">
           Kurvengefahr
         </span>
       </div>
+
+      <span className="mx-1 hidden h-5 w-px bg-border sm:block" aria-hidden />
+      <DocumentMenu />
+      <span className="mx-1 h-5 w-px bg-border" aria-hidden />
 
       {/* Creation */}
       <Button

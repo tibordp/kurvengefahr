@@ -1,7 +1,7 @@
 // Small, shared UI primitives. Centralising the button/field/banner styling here (rather than
 // repeating utility soup or scattering @apply) is what keeps the chrome cohesive as element types
 // grow. Everything is plain Tailwind utilities over the tokens in index.css.
-import type { ButtonHTMLAttributes, ReactNode } from 'react'
+import { useEffect, useRef, useState, type ButtonHTMLAttributes, type ReactNode } from 'react'
 
 /** Tiny classname joiner (drops falsy values). */
 export const cx = (...parts: Array<string | false | null | undefined>) =>
@@ -100,6 +100,80 @@ export function SectionTitle({ children, title }: { children: ReactNode; title?:
     >
       {children}
     </h3>
+  )
+}
+
+/** A click-to-open dropdown menu. Closes on outside-click, Esc, or any click inside the panel.
+ *  `trigger` renders the button; `children` are `MenuItem`s / `MenuSeparator`s / `MenuLabel`s. */
+export function Menu({
+  trigger,
+  children,
+  align = 'left',
+}: {
+  trigger: (p: { open: boolean }) => ReactNode
+  children: ReactNode
+  align?: 'left' | 'right'
+}) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!open) return
+    const onDown = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false)
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [open])
+  return (
+    <div ref={ref} className="relative">
+      <div onClick={() => setOpen((o) => !o)}>{trigger({ open })}</div>
+      {open && (
+        <div
+          className={cx(
+            'absolute z-40 mt-1 min-w-48 rounded-md border border-border bg-surface p-1 shadow-panel',
+            align === 'right' ? 'right-0' : 'left-0',
+          )}
+          onClick={() => setOpen(false)}
+        >
+          {children}
+        </div>
+      )}
+    </div>
+  )
+}
+
+export function MenuItem({
+  danger,
+  className,
+  ...props
+}: ButtonHTMLAttributes<HTMLButtonElement> & { danger?: boolean }) {
+  return (
+    <button
+      className={cx(
+        'flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm transition-colors',
+        'disabled:pointer-events-none disabled:opacity-40',
+        danger ? 'text-accent-text hover:bg-accent-subtle' : 'text-text hover:bg-bg',
+        className,
+      )}
+      {...props}
+    />
+  )
+}
+
+export function MenuSeparator() {
+  return <div className="my-1 h-px bg-border" />
+}
+
+export function MenuLabel({ children }: { children: ReactNode }) {
+  return (
+    <div className="px-2 pb-1 pt-1.5 text-2xs font-semibold uppercase tracking-wider text-faint">
+      {children}
+    </div>
   )
 }
 

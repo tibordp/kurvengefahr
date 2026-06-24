@@ -35,3 +35,12 @@ export const GENERIC_A4: MachineProfile = {
 }
 
 export const PROFILE_PRESETS: MachineProfile[] = [PRUSA_MK4, GENERIC_A4]
+
+/** Built-in presets differ from custom profiles only in that they can't be deleted or renamed. */
+export function isBuiltinProfile(id: string): boolean {
+  return PROFILE_PRESETS.some((p) => p.id === id)
+}
+
+export function findBuiltinProfile(id: string): MachineProfile | undefined {
+  return PROFILE_PRESETS.find((p) => p.id === id)
+}

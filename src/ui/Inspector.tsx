@@ -2,11 +2,15 @@
 // plus the document machine profile (→ re-emit). Pure view over the store. On narrow viewports it
 // renders as a slide-over drawer (see `useUI`); on desktop it's docked in the layout grid.
 import { useEffect, useState } from 'react'
-import { X, Trash2, Eye } from 'lucide-react'
+import { X, Trash2, Eye, Upload, Download } from 'lucide-react'
 import { useDoc } from '../store/document'
 import { useUI } from '../store/ui'
+import { useLibrary } from '../store/library'
 import { useGeneration, regenerate, isElementDirty } from '../core/generation'
-import { PROFILE_PRESETS } from '../store/profiles'
+import { PROFILE_PRESETS, findBuiltinProfile } from '../store/profiles'
+import { hashParams } from '../elements/registry'
+import { profilesFile, parseProfilesFile } from '../store/persistence/schema'
+import { downloadJson, pickJsonFile } from '../output/download'
 import { substitution_note } from '../core/wasm'
 import type { DocElement } from '../core/types'
 import type { HandwritingParams } from '../elements/handwriting'
@@ -336,23 +340,127 @@ function ElementSection() {
   )
 }
 
-function MachineSection() {
+/** Profile selector + library actions. Built-ins seed the working profile; "Save as" stores the
+ *  current (possibly edited) profile under a name; "Update" overwrites the selected saved profile.
+ *  A profile is "modified" when the working copy differs from its source (or its source is gone). */
+function ProfileControls() {
   const profile = useDoc((s) => s.profile)
-  const setProfile = useDoc((s) => s.setProfile)
-  const loadPreset = useDoc((s) => s.loadPreset)
+  const selectProfile = useDoc((s) => s.selectProfile)
+  const custom = useLibrary((s) => s.customProfiles)
+
+  const source = findBuiltinProfile(profile.id) ?? custom.find((p) => p.id === profile.id)
+  const isCustom = custom.some((p) => p.id === profile.id)
+  const detached = !source
+  const modified = detached || hashParams(profile) !== hashParams(source)
+
+  const saveAs = () => {
+    const name = prompt('Save profile as:', profile.name || 'My machine')?.trim()
+    if (!name) return
+    const created = useLibrary.getState().addProfile(profile, name)
+    selectProfile(created.id)
+  }
+  const update = () => useLibrary.getState().updateProfile(profile.id, profile)
+  const rename = () => {
+    const name = prompt('Rename profile:', profile.name)?.trim()
+    if (!name) return
+    useLibrary.getState().renameProfile(profile.id, name)
+    useDoc.getState().setProfile({ name })
+  }
+  const remove = () => {
+    if (!confirm(`Delete profile "${profile.name}"? Your current settings stay loaded but unsaved.`)) return
+    useLibrary.getState().removeProfile(profile.id)
+  }
+  const exportProfiles = () => downloadJson('kurvengefahr-profiles', profilesFile(custom))
+  const importProfiles = async () => {
+    try {
+      const raw = await pickJsonFile()
+      if (raw == null) return
+      const res = parseProfilesFile(raw)
+      if (res.status === 'ok') useLibrary.getState().importProfiles(res.value)
+      else if (res.status === 'unsupported') alert(`Can't import — ${res.message}. Try updating the app.`)
+      else alert('That file is not a valid Kurvengefahr profiles file.')
+    } catch {
+      alert('Could not read that file.')
+    }
+  }
 
   return (
     <>
       <SectionTitle>Profile</SectionTitle>
-      <Field label="Preset">
-        <select className={controlClass} value={profile.id} onChange={(e) => loadPreset(e.target.value)}>
-          {PROFILE_PRESETS.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.name}
-            </option>
-          ))}
+      <Field label="Profile">
+        <select className={controlClass} value={profile.id} onChange={(e) => selectProfile(e.target.value)}>
+          {detached && <option value={profile.id}>{profile.name || 'Unsaved'} (unsaved)</option>}
+          <optgroup label="Built-in">
+            {PROFILE_PRESETS.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </optgroup>
+          {custom.length > 0 && (
+            <optgroup label="Saved">
+              {custom.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </optgroup>
+          )}
         </select>
       </Field>
+
+      {modified && (
+        <Banner
+          action={
+            isCustom ? (
+              <Button variant="primary" className="h-7 px-2.5 text-xs" onClick={update}>
+                Update
+              </Button>
+            ) : undefined
+          }
+        >
+          {detached ? '● Unsaved profile' : '● Modified — not saved'}
+        </Banner>
+      )}
+
+      <div className="mb-1 flex flex-wrap items-center gap-1.5">
+        <Button className="h-7 px-2.5 text-xs" onClick={saveAs}>
+          Save as…
+        </Button>
+        {isCustom && (
+          <Button className="h-7 px-2.5 text-xs" onClick={rename}>
+            Rename
+          </Button>
+        )}
+        {isCustom && (
+          <Button className="h-7 px-2.5 text-xs" onClick={remove}>
+            Delete
+          </Button>
+        )}
+        <span className="flex-1" />
+        <IconButton aria-label="Import profiles" title="Import profiles" className="h-7 w-7" onClick={importProfiles}>
+          <Upload size={14} />
+        </IconButton>
+        <IconButton
+          aria-label="Export saved profiles"
+          title="Export saved profiles"
+          className="h-7 w-7"
+          onClick={exportProfiles}
+        >
+          <Download size={14} />
+        </IconButton>
+      </div>
+    </>
+  )
+}
+
+function MachineSection() {
+  const profile = useDoc((s) => s.profile)
+  const setProfile = useDoc((s) => s.setProfile)
+
+  return (
+    <>
+      <ProfileControls />
 
       <SectionTitle>Bed &amp; motion</SectionTitle>
       <Num label="Bed W (mm)" value={profile.bed.width} step={1}

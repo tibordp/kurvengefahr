@@ -6,7 +6,9 @@ import type { DocElement, MachineProfile, Transform } from '../core/types'
 import { IDENTITY_TRANSFORM } from '../core/types'
 import { dropFromCache } from '../elements/registry'
 import { defaultHandwritingParams } from '../elements/handwriting'
-import { PRUSA_MK4, PROFILE_PRESETS } from './profiles'
+import { PRUSA_MK4, findBuiltinProfile } from './profiles'
+import { useLibrary } from './library'
+import type { DocSnapshot } from './persistence/schema'
 
 let seedCounter = 1
 
@@ -25,7 +27,12 @@ interface DocStore {
   setTransform: (id: string, patch: Partial<Transform>) => void
   /** Patch the machine profile. Invalidates only Emit. */
   setProfile: (patch: Partial<MachineProfile>) => void
-  loadPreset: (presetId: string) => void
+  /** Adopt a built-in or saved profile as the working profile (a clone — subsequent edits don't
+   *  mutate the source until explicitly saved). */
+  selectProfile: (id: string) => void
+  /** Replace the whole working document (elements + profile + selection). Used by open/new/import
+   *  and cross-tab sync. Geometry is recomputed by the generation controller. */
+  loadDocument: (snapshot: DocSnapshot) => void
   /** Re-render views over the document without changing element data — used by the generation
    *  controller after async (worker) geometry lands in the cache. */
   notifyGeometry: () => void
@@ -87,10 +94,18 @@ export const useDoc = create<DocStore>((set) => ({
 
   setProfile: (patch) => set((state) => ({ profile: { ...state.profile, ...patch } })),
 
-  loadPreset: (presetId) =>
+  selectProfile: (id) =>
     set(() => {
-      const preset = PROFILE_PRESETS.find((p) => p.id === presetId) ?? PRUSA_MK4
-      return { profile: preset }
+      const source =
+        findBuiltinProfile(id) ?? useLibrary.getState().customProfiles.find((p) => p.id === id)
+      return source ? { profile: structuredClone(source) } : {}
+    }),
+
+  loadDocument: (snapshot) =>
+    set({
+      elements: snapshot.elements,
+      profile: snapshot.profile,
+      selectedId: snapshot.selectedId,
     }),
 
   notifyGeometry: () => set((state) => ({ elements: [...state.elements] })),

@@ -43,7 +43,34 @@ export const ALIGN_CODE: Record<Layout['align'], number> = { left: 0, center: 1,
 // optimization. No synchronous `generate` — the controller produces geometry off-thread.
 registerElement('handwriting', {
   isLocked: (p: HandwritingParams) => !p.globalOptimize,
+  sanitizeParams: sanitizeHandwritingParams,
 })
+
+const numOr = (v: unknown, dflt: number) =>
+  typeof v === 'number' && Number.isFinite(v) ? v : dflt
+
+/** Coerce arbitrary (persisted/imported, possibly older or malformed) params into a valid
+ *  `HandwritingParams`, filling every field from defaults so the inspector/worker never see holes. */
+export function sanitizeHandwritingParams(raw: unknown): HandwritingParams {
+  const d = defaultHandwritingParams()
+  const p = (raw && typeof raw === 'object' ? raw : {}) as Record<string, any>
+  const s = (p.style && typeof p.style === 'object' ? p.style : {}) as Record<string, any>
+  const l = (p.layout && typeof p.layout === 'object' ? p.layout : {}) as Record<string, any>
+  const align: Layout['align'] =
+    l.align === 'left' || l.align === 'center' || l.align === 'right' ? l.align : d.layout.align
+  return {
+    text: typeof p.text === 'string' ? p.text : d.text,
+    style: { seed: numOr(s.seed, d.style.seed), bias: numOr(s.bias, d.style.bias) },
+    layout: {
+      fontSizeMm: numOr(l.fontSizeMm, d.layout.fontSizeMm),
+      lineHeightEm: numOr(l.lineHeightEm, d.layout.lineHeightEm),
+      maxWidthMm: numOr(l.maxWidthMm, d.layout.maxWidthMm),
+      align,
+      slantDeg: numOr(l.slantDeg, d.layout.slantDeg),
+    },
+    globalOptimize: typeof p.globalOptimize === 'boolean' ? p.globalOptimize : d.globalOptimize,
+  }
+}
 
 export function defaultHandwritingParams(text = 'Kurvengefahr'): HandwritingParams {
   return {

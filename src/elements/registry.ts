@@ -20,12 +20,27 @@ interface ElementType {
   /** Synchronous generator, or undefined for async (worker-backed) types. */
   generate?: Generator
   isLocked?: LockPredicate
+  /** Coerce arbitrary (persisted/imported) params into a valid shape, filling defaults. Used by
+   *  persistence so a malformed or older params object can't crash the inspector or generator. */
+  sanitizeParams?: (raw: unknown) => unknown
 }
 
 const types = new Map<string, ElementType>()
 
 export function registerElement(type: string, def: ElementType): void {
   types.set(type, def)
+}
+
+/** Whether a type has been registered. Persistence uses this to drop unknown element types safely
+ *  (e.g. a document written by a newer app version that added an element type we don't have). */
+export function isKnownType(type: string): boolean {
+  return types.has(type)
+}
+
+/** Coerce persisted/imported params for a type into a valid shape (no-op if the type registers no
+ *  sanitizer). */
+export function sanitizeParams(type: string, raw: unknown): unknown {
+  return types.get(type)?.sanitizeParams?.(raw) ?? raw
 }
 
 /** Element types without a predicate are never locked — their strokes always go in the bag. */
