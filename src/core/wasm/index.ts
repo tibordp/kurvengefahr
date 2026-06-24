@@ -9,6 +9,12 @@ import init, {
   optimize,
   substitution_note,
   clip,
+  tessellate_rect,
+  tessellate_ellipse,
+  tessellate_path,
+  simplify_polyline,
+  hatch,
+  concentric,
   GeometryBuffers,
 } from '@wasm/kg_toolpath.js'
 import wasmUrl from '@wasm/kg_toolpath_bg.wasm?url'
@@ -22,4 +28,15 @@ export function initWasm(): Promise<void> {
   return ready
 }
 
-export { optimize, substitution_note, clip, GeometryBuffers }
+export {
+  optimize,
+  substitution_note,
+  clip,
+  tessellate_rect,
+  tessellate_ellipse,
+  tessellate_path,
+  simplify_polyline,
+  hatch,
+  concentric,
+  GeometryBuffers,
+}

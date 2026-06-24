@@ -4,7 +4,13 @@
 import { useEffect } from 'react'
 import { Play, Pause, RotateCcw } from 'lucide-react'
 import { usePreview } from '../store/preview'
-import { Button, controlClass, cx } from './primitives'
+import { Button } from './primitives'
+
+// Like `controlClass` but width-auto + non-shrinking, so it sits at its natural size in the flex row
+// (the shared controlClass is `w-full`, which would starve the scrub slider).
+const selectClass =
+  'h-8 shrink-0 rounded-md border border-border bg-surface px-2 text-sm text-text outline-none ' +
+  'transition-colors hover:border-border-strong focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/35'
 
 const SPEEDS = [0.5, 1, 2, 4, 8]
 const BASE_SPEED = 120 // mm/s at 1×
@@ -80,7 +86,7 @@ export function PreviewControls() {
         {dist.toFixed(0)} / {total.toFixed(0)} mm
       </span>
       <select
-        className={cx(controlClass, 'w-auto')}
+        className={selectClass}
         value={speed / BASE_SPEED}
         onChange={(e) => setSpeed(parseFloat(e.target.value) * BASE_SPEED)}
         title="Playback speed"

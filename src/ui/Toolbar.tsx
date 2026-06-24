@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Plus, RotateCw, Play, Pencil, Download, PanelRight } from 'lucide-react'
+import { RotateCw, Play, Pencil, Download, PanelRight } from 'lucide-react'
 import { useDoc } from '../store/document'
 import { usePreview } from '../store/preview'
 import { useUI } from '../store/ui'
@@ -35,14 +35,13 @@ function LogoMark({ className }: { className?: string }) {
 }
 
 export function Toolbar() {
-  const addHandwriting = useDoc((s) => s.addHandwriting)
   const elements = useDoc((s) => s.elements)
   const previewActive = usePreview((s) => s.active)
   const toggleInspector = useUI((s) => s.toggleInspector)
   const [busy, setBusy] = useState(false)
   const [preparing, setPreparing] = useState(false)
 
-  const dirtyCount = elements.filter((e) => isElementDirty(e.id, e.params)).length
+  const dirtyCount = elements.filter((e) => isElementDirty(e.id, e.type, e.params)).length
 
   const togglePreview = async () => {
     if (previewActive) {
@@ -89,17 +88,7 @@ export function Toolbar() {
       <DocumentMenu />
       <span className="mx-1 h-5 w-px bg-border" aria-hidden />
 
-      {/* Creation */}
-      <Button
-        onClick={() => addHandwriting()}
-        disabled={previewActive}
-        aria-label="Add handwriting"
-        title="Add handwriting"
-      >
-        <Plus size={15} />
-        <span className="hidden sm:inline">Handwriting</span>
-      </Button>
-
+      {/* Regenerate edited (dirty) elements */}
       {dirtyCount > 0 && !previewActive && (
         <Button
           variant="warn"

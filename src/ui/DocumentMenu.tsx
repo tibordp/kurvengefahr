@@ -46,7 +46,7 @@ export function DocumentMenu() {
 
   const onExport = () => {
     const { activeId, activeName, index } = useDocuments.getState()
-    const { elements, profile, selectedId } = useDoc.getState()
+    const { elements, profile, selectedIds } = useDoc.getState()
     const doc: StoredDoc = {
       schemaVersion: CURRENT_DOC_SCHEMA,
       id: activeId,
@@ -54,7 +54,7 @@ export function DocumentMenu() {
       updatedAt: index.find((m) => m.id === activeId)?.updatedAt ?? Date.now(),
       elements,
       profile,
-      selectedId,
+      selectedIds,
     }
     downloadJson(safeFilename(activeName, 'kurvengefahr'), documentFile(doc))
   }

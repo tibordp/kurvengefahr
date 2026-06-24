@@ -24,7 +24,7 @@ export const PROFILES_FILE_KIND = 'kurvengefahr/profiles'
 export interface DocSnapshot {
   elements: DocElement[]
   profile: MachineProfile
-  selectedId: string | null
+  selectedIds: string[]
 }
 
 /** A document as stored under `kg-doc:<id>` — snapshot + identity/metadata. */
@@ -112,11 +112,15 @@ function sanitizeElements(arr: unknown): DocElement[] {
 export function sanitizeSnapshot(raw: unknown): DocSnapshot {
   const o = isObj(raw) ? raw : {}
   const elements = sanitizeElements(o.elements)
-  const selectedId =
-    typeof o.selectedId === 'string' && elements.some((e) => e.id === o.selectedId)
-      ? o.selectedId
-      : null
-  return { elements, profile: sanitizeProfile(o.profile), selectedId }
+  const ids = new Set(elements.map((e) => e.id))
+  // Back-compat: a pre-multi-select doc stored a single `selectedId`.
+  const rawIds = Array.isArray(o.selectedIds)
+    ? o.selectedIds
+    : typeof o.selectedId === 'string'
+      ? [o.selectedId]
+      : []
+  const selectedIds = rawIds.filter((id: unknown): id is string => typeof id === 'string' && ids.has(id))
+  return { elements, profile: sanitizeProfile(o.profile), selectedIds }
 }
 
 // ---- migrations ---------------------------------------------------------------------------------
@@ -194,7 +198,7 @@ export function documentFile(doc: StoredDoc) {
   return {
     kind: DOC_FILE_KIND,
     schemaVersion: CURRENT_DOC_SCHEMA,
-    document: { name: doc.name, elements: doc.elements, profile: doc.profile, selectedId: doc.selectedId },
+    document: { name: doc.name, elements: doc.elements, profile: doc.profile, selectedIds: doc.selectedIds },
   }
 }
 

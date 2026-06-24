@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { Toolbar } from './ui/Toolbar'
+import { ToolSidebar } from './ui/ToolSidebar'
 import { Inspector } from './ui/Inspector'
 import { Canvas } from './canvas/Canvas'
 import { PreviewControls } from './ui/PreviewControls'
@@ -35,8 +36,9 @@ export function App() {
   }, [inspectorOpen, setInspectorOpen])
 
   return (
-    <div className="grid h-screen grid-rows-[auto_1fr] md:grid-cols-[1fr_320px]">
+    <div className="grid h-screen grid-rows-[auto_1fr] md:grid-cols-[auto_1fr_320px]">
       <Toolbar />
+      <ToolSidebar />
       <main className="relative flex min-h-0 min-w-0 flex-col">
         <Canvas />
         <PreviewControls />

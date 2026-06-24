@@ -4,6 +4,7 @@
 // G-code, shown only when the pen is offset from the nozzle in X/Y.
 import { useCursor, useViewport } from '../store/viewport'
 import { useDoc } from '../store/document'
+import { useSnap } from '../store/snap'
 import { toMachine } from '../core/pipeline/toMachine'
 
 const fmt = (v: number) => v.toFixed(1)
@@ -40,7 +41,32 @@ export function StatusBar() {
         </>
       )}
       <span className="flex-1" />
+      <SnapControl />
+      <span className="h-3.5 w-px bg-border" aria-hidden />
       <span className="font-mono tabular-nums">{Math.round((scale / fit) * 100)}%</span>
     </div>
+  )
+}
+
+function SnapControl() {
+  const grid = useSnap((s) => s.grid)
+  const gridSize = useSnap((s) => s.gridSize)
+  const s = useSnap.getState()
+  return (
+    <span className="flex items-center gap-2" title="Snap to grid — hold Alt to bypass">
+      <label className="flex items-center gap-1">
+        <input type="checkbox" className="h-3.5 w-3.5" checked={grid} onChange={(e) => s.setGrid(e.target.checked)} />
+        Grid
+      </label>
+      <input
+        type="number"
+        value={gridSize}
+        min={0.5}
+        step={0.5}
+        onChange={(e) => s.setGridSize(parseFloat(e.target.value) || 1)}
+        className="w-12 rounded border border-border bg-surface px-1 py-0.5 text-xs tabular-nums"
+        title="Grid size (mm)"
+      />
+    </span>
   )
 }

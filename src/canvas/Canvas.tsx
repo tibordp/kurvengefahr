@@ -12,11 +12,27 @@ import type Konva from 'konva'
 import type { KonvaEventObject } from 'konva/lib/Node'
 import { useDoc } from '../store/document'
 import { usePreview } from '../store/preview'
+import { useTools } from '../store/tools'
 import { useViewport, useCursor } from '../store/viewport'
 import { clampViewport, fitScale, MIN_SCALE, MAX_SCALE } from './viewport'
 import { drawableRegion } from '../core/pipeline/clip'
 import { ElementNode } from './ElementNode'
 import { PreviewLayer } from './PreviewLayer'
+import { DrawingPreview } from './DrawingPreview'
+import { NodeEditLayer } from './NodeEditLayer'
+import { SnapGrid } from './SnapLayer'
+import { useSnap } from '../store/snap'
+import {
+  drawPointerDown,
+  drawPointerMove,
+  drawPointerUp,
+  drawDblClick,
+  drawKey,
+  cancelDraft,
+  type Pt,
+} from './drawing'
+import { place } from '../core/pipeline/place'
+import { generateLocal } from '../elements/registry'
 
 const clamp = (v: number, lo: number, hi: number) => (v < lo ? lo : v > hi ? hi : v)
 
@@ -24,9 +40,10 @@ export function Canvas() {
   const elements = useDoc((s) => s.elements)
   const profile = useDoc((s) => s.profile)
   const bed = profile.bed
-  const selectedId = useDoc((s) => s.selectedId)
-  const select = useDoc((s) => s.select)
+  const selectedIds = useDoc((s) => s.selectedIds)
   const previewActive = usePreview((s) => s.active)
+  const tool = useTools((s) => s.tool)
+  const drawing = tool !== 'select' && !previewActive
 
   const scale = useViewport((s) => s.scale)
   const vx = useViewport((s) => s.x)
@@ -42,7 +59,10 @@ export function Canvas() {
   const fittedFor = useRef('')
   const [size, setSize] = useState({ w: 0, h: 0 })
   const [spaceHeld, setSpaceHeld] = useState(false)
+  const [shiftHeld, setShiftHeld] = useState(false)
   const [hoverElement, setHoverElement] = useState(false)
+  const [marquee, setMarquee] = useState<{ a: Pt; b: Pt } | null>(null)
+  const marqueeStart = useRef<Pt | null>(null)
 
   // Track the host size.
   useEffect(() => {
@@ -77,12 +97,14 @@ export function Canvas() {
       return !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)
     }
     const down = (e: KeyboardEvent) => {
+      if (e.key === 'Shift') setShiftHeld(true)
       if (e.code === 'Space' && !typing(e.target)) {
         setSpaceHeld(true)
         e.preventDefault()
       }
     }
     const up = (e: KeyboardEvent) => {
+      if (e.key === 'Shift') setShiftHeld(false)
       if (e.code === 'Space') setSpaceHeld(false)
     }
     window.addEventListener('keydown', down)
@@ -93,15 +115,45 @@ export function Canvas() {
     }
   }, [])
 
-  // Attach the Transformer to the selected element (never in preview / pan mode).
+  // A lone selected path is edited via the node overlay (NodeEditLayer), not the bounding-box
+  // Transformer; everything else (incl. multi-selection) uses the Transformer for group transforms.
+  const solePath =
+    selectedIds.length === 1 && elements.find((e) => e.id === selectedIds[0])?.type === 'path'
+  const showTransformer = selectedIds.length > 0 && !previewActive && !drawing && !solePath
+
   useEffect(() => {
     const tr = trRef.current
     const stage = tr?.getStage()
     if (!tr || !stage) return
-    const node = selectedId && !previewActive ? stage.findOne('#' + selectedId) : null
-    tr.nodes(node ? [node] : [])
+    const nodes = showTransformer
+      ? (selectedIds.map((id) => stage.findOne('#' + id)).filter(Boolean) as Konva.Node[])
+      : []
+    tr.nodes(nodes)
     tr.getLayer()?.batchDraw()
-  }, [selectedId, elements, previewActive, scale, vx, vy])
+  }, [selectedIds, elements, showTransformer, scale, vx, vy])
+
+  // Drawing keyboard: Enter finishes a pen path, Esc cancels the draft / returns to Select.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement | null
+      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) return
+      if (drawKey(e)) e.preventDefault()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
+  // Switching tools mid-draft abandons the draft.
+  useEffect(() => {
+    cancelDraft()
+  }, [tool])
+
+  // Finalize an in-progress drag even if the mouse is released outside the stage (e.g. freehand).
+  useEffect(() => {
+    const up = () => drawPointerUp()
+    window.addEventListener('mouseup', up)
+    return () => window.removeEventListener('mouseup', up)
+  }, [])
 
   const onWheel = (e: KonvaEventObject<WheelEvent>) => {
     e.evt.preventDefault()
@@ -124,14 +176,33 @@ export function Canvas() {
     )
   }
 
+  /** Pointer position in page-mm, or null. */
+  const pointerMM = (stage: Konva.Stage | null) => {
+    const pointer = stage?.getPointerPosition()
+    if (!pointer) return null
+    const cur = useViewport.getState()
+    return { x: (pointer.x - cur.x) / cur.scale, y: (pointer.y - cur.y) / cur.scale }
+  }
+
   const onMouseDown = (e: KonvaEventObject<MouseEvent>) => {
     if (spaceHeld || e.evt.button === 1) {
       pan.current = { active: true, lastX: e.evt.clientX, lastY: e.evt.clientY }
       e.evt.preventDefault()
       return
     }
-    // Click on empty canvas (stage or bed) deselects.
-    if (e.target === e.target.getStage() || e.target.name() === 'bed') select(null)
+    if (drawing && e.evt.button === 0) {
+      const p = pointerMM(e.target.getStage())
+      if (p) drawPointerDown(p, { scale: useViewport.getState().scale, alt: e.evt.altKey })
+      return
+    }
+    // Empty canvas (stage or bed) → start a marquee selection (resolved on mouse-up).
+    if (e.target === e.target.getStage() || e.target.name() === 'bed') {
+      const p = pointerMM(e.target.getStage())
+      if (p) {
+        marqueeStart.current = p
+        setMarquee({ a: p, b: p })
+      }
+    }
   }
 
   const onMouseMove = (e: KonvaEventObject<MouseEvent>) => {
@@ -153,6 +224,18 @@ export function Canvas() {
       )
       return
     }
+
+    const p = pointerMM(stage)
+    if (!p) return
+    setCursor(p.x, p.y, p.x >= 0 && p.x <= bed.width && p.y >= 0 && p.y <= bed.height)
+    if (drawing) {
+      drawPointerMove(p, { scale, shift: e.evt.shiftKey, alt: e.evt.altKey })
+      return
+    }
+    if (marqueeStart.current) {
+      setMarquee({ a: marqueeStart.current, b: p })
+      return
+    }
     // Hover affordance: is the pointer over a draggable element? (walk up to a draggable node)
     let node: Konva.Node | null = e.target
     let over = false
@@ -164,17 +247,48 @@ export function Canvas() {
       node = node.getParent()
     }
     if (over !== hoverElement) setHoverElement(over)
-
-    const pointer = stage?.getPointerPosition()
-    if (!pointer) return
-    const cur = useViewport.getState()
-    const mx = (pointer.x - cur.x) / cur.scale
-    const my = (pointer.y - cur.y) / cur.scale
-    setCursor(mx, my, mx >= 0 && mx <= bed.width && my >= 0 && my <= bed.height)
   }
 
+  const onMouseUp = () => {
+    pan.current.active = false
+    if (drawing) {
+      drawPointerUp()
+      return
+    }
+    const start = marqueeStart.current
+    if (start && marquee) {
+      const x0 = Math.min(marquee.a.x, marquee.b.x)
+      const x1 = Math.max(marquee.a.x, marquee.b.x)
+      const y0 = Math.min(marquee.a.y, marquee.b.y)
+      const y1 = Math.max(marquee.a.y, marquee.b.y)
+      if (x1 - x0 < 2 / scale && y1 - y0 < 2 / scale) {
+        useDoc.getState().clearSelection() // a click on empty space → deselect
+      } else {
+        const ids: string[] = []
+        for (const el of useDoc.getState().elements) {
+          let bx0 = Infinity
+          let by0 = Infinity
+          let bx1 = -Infinity
+          let by1 = -Infinity
+          for (const s of place(generateLocal(el), el.transform))
+            for (const pt of s.points) {
+              if (pt.x < bx0) bx0 = pt.x
+              if (pt.y < by0) by0 = pt.y
+              if (pt.x > bx1) bx1 = pt.x
+              if (pt.y > by1) by1 = pt.y
+            }
+          if (Number.isFinite(bx0) && bx0 <= x1 && bx1 >= x0 && by0 <= y1 && by1 >= y0) ids.push(el.id)
+        }
+        useDoc.getState().selectMany(ids)
+      }
+      marqueeStart.current = null
+      setMarquee(null)
+    }
+  }
   const endPan = () => {
     pan.current.active = false
+    marqueeStart.current = null
+    setMarquee(null)
   }
 
   // Paper the pen can't reach (pen-offset shrinks the reachable area), as up-to-four strips.
@@ -207,7 +321,8 @@ export function Canvas() {
         onWheel={onWheel}
         onMouseDown={onMouseDown}
         onMouseMove={onMouseMove}
-        onMouseUp={endPan}
+        onMouseUp={onMouseUp}
+        onDblClick={() => drawing && drawDblClick()}
         onMouseLeave={() => {
           endPan()
           clearCursor()
@@ -228,6 +343,7 @@ export function Canvas() {
             shadowBlur={6}
             shadowOpacity={0.08}
           />
+          <SnapGrid />
           {inaccessible.map((s, i) => (
             <Rect
               key={`noreach-${i}`}
@@ -245,10 +361,25 @@ export function Canvas() {
               key={el.id}
               element={el}
               pxPerMm={scale}
-              interactive={!previewActive && !spaceHeld}
+              interactive={!previewActive && !spaceHeld && !drawing}
             />
           ))}
           {previewActive && <PreviewLayer pxPerMm={scale} />}
+          {drawing && <DrawingPreview pxPerMm={scale} />}
+          {!previewActive && !drawing && <NodeEditLayer pxPerMm={scale} />}
+          {marquee && (
+            <Rect
+              x={Math.min(marquee.a.x, marquee.b.x)}
+              y={Math.min(marquee.a.y, marquee.b.y)}
+              width={Math.abs(marquee.b.x - marquee.a.x)}
+              height={Math.abs(marquee.b.y - marquee.a.y)}
+              fill="rgba(229,72,77,0.12)"
+              stroke="#e5484d"
+              strokeWidth={1 / scale}
+              dash={[4 / scale, 3 / scale]}
+              listening={false}
+            />
+          )}
           {/* Machine origin + axes (X red, Y green), screen-constant size. */}
           <Line
             points={[originPage.x, originPage.y, originPage.x + axis, originPage.y]}
@@ -282,6 +413,31 @@ export function Canvas() {
             rotateAnchorOffset={24}
             padding={6}
             rotateAnchorCursor="grab"
+            // Corner drag is free aspect by default; holding Shift keeps the ratio (Konva built-in).
+            keepRatio={false}
+            // Rotation is free; holding Shift snaps it to 45° increments.
+            rotationSnaps={shiftHeld ? [0, 45, 90, 135, 180, 225, 270, 315] : []}
+            rotationSnapTolerance={23}
+            // Snap resize to the grid: boundBox is in absolute (screen) coords; convert each moved
+            // edge to mm, round to the grid step, convert back. Skipped when rotated or grid is off.
+            boundBoxFunc={(oldBox, newBox) => {
+              const s = useSnap.getState()
+              if (!s.grid || s.gridSize <= 0 || Math.abs(newBox.rotation) > 1e-3) return newBox
+              const g = s.gridSize
+              const mm = (px: number, off: number) => (px - off) / scale
+              const px = (v: number, off: number) => v * scale + off
+              const snapMM = (v: number) => Math.round(v / g) * g
+              const eps = 0.01
+              let left = newBox.x
+              let top = newBox.y
+              let right = newBox.x + newBox.width
+              let bottom = newBox.y + newBox.height
+              if (Math.abs(left - oldBox.x) > eps) left = px(snapMM(mm(left, vx)), vx)
+              if (Math.abs(right - (oldBox.x + oldBox.width)) > eps) right = px(snapMM(mm(right, vx)), vx)
+              if (Math.abs(top - oldBox.y) > eps) top = px(snapMM(mm(top, vy)), vy)
+              if (Math.abs(bottom - (oldBox.y + oldBox.height)) > eps) bottom = px(snapMM(mm(bottom, vy)), vy)
+              return { ...newBox, x: left, y: top, width: Math.max(right - left, 1), height: Math.max(bottom - top, 1) }
+            }}
           />
         </Layer>
       </Stage>

@@ -2,8 +2,20 @@
 // plus the document machine profile (→ re-emit). Pure view over the store. On narrow viewports it
 // renders as a slide-over drawer (see `useUI`); on desktop it's docked in the layout grid.
 import { useEffect, useState } from 'react'
-import { X, Trash2, Eye, Upload, Download } from 'lucide-react'
-import { useDoc } from '../store/document'
+import {
+  X,
+  Trash2,
+  Eye,
+  Upload,
+  Download,
+  AlignStartVertical,
+  AlignCenterVertical,
+  AlignEndVertical,
+  AlignStartHorizontal,
+  AlignCenterHorizontal,
+  AlignEndHorizontal,
+} from 'lucide-react'
+import { useDoc, type AlignEdge } from '../store/document'
 import { useUI } from '../store/ui'
 import { useLibrary } from '../store/library'
 import { useGeneration, regenerate, isElementDirty } from '../core/generation'
@@ -14,6 +26,7 @@ import { downloadJson, pickJsonFile } from '../output/download'
 import { substitution_note } from '../core/wasm'
 import type { DocElement } from '../core/types'
 import type { HandwritingParams } from '../elements/handwriting'
+import type { RectParams, EllipseParams, PathParams, Hatch, HatchPattern } from '../elements/shapes'
 import { Button, IconButton, Field, SectionTitle, Banner, controlClass, textareaClass, cx } from './primitives'
 
 function elementName(el: DocElement): string {
@@ -22,6 +35,12 @@ function elementName(el: DocElement): string {
     if (!text) return 'Handwriting (empty)'
     return text.length > 20 ? `“${text.slice(0, 20)}…”` : `“${text}”`
   }
+  if (el.type === 'rect') return 'Rectangle'
+  if (el.type === 'ellipse') return 'Ellipse'
+  if (el.type === 'path') {
+    const p = el.params as PathParams
+    return `${p.closed ? 'Shape' : 'Path'} (${p.nodes.length})`
+  }
   return el.type
 }
 
@@ -29,7 +48,7 @@ function elementName(el: DocElement): string {
  *  dragged off the bed. Selection here drives the same store as clicking on the canvas. */
 function ElementList() {
   const elements = useDoc((s) => s.elements)
-  const selectedId = useDoc((s) => s.selectedId)
+  const selectedIds = useDoc((s) => s.selectedIds)
   const select = useDoc((s) => s.select)
   const removeElement = useDoc((s) => s.removeElement)
   const genStatus = useGeneration((s) => s.status)
@@ -41,7 +60,7 @@ function ElementList() {
       <ul className="flex flex-col gap-1">
         {elements.map((el) => {
           const g = genStatus[el.id]
-          const rowDirty = !g && isElementDirty(el.id, el.params)
+          const rowDirty = !g && isElementDirty(el.id, el.type, el.params)
           const badge =
             g?.phase === 'loading-model'
               ? '⏳'
@@ -54,7 +73,7 @@ function ElementList() {
                     : ''
           const badgeWarn = g?.phase === 'error' || rowDirty
           const busy = g?.phase === 'loading-model' || g?.phase === 'generating'
-          const selected = el.id === selectedId
+          const selected = selectedIds.includes(el.id)
           return (
             <li
               key={el.id}
@@ -64,7 +83,7 @@ function ElementList() {
                   ? 'border-accent-border bg-accent-subtle'
                   : 'border-border hover:bg-bg',
               )}
-              onClick={() => select(el.id)}
+              onClick={(e) => select(el.id, e.shiftKey || e.metaKey || e.ctrlKey)}
             >
               <span className="flex-1 truncate">{elementName(el)}</span>
               {badge && (
@@ -205,7 +224,7 @@ function HandwritingInspector({ id, params }: { id: string; params: HandwritingP
   const subs = substitution_note(params.text)
   // Dirty = params edited since the last generation (and nothing currently running).
   const busy = useGeneration((s) => !!s.status[id])
-  const dirty = !busy && isElementDirty(id, params)
+  const dirty = !busy && isElementDirty(id, 'handwriting', params)
 
   return (
     <>
@@ -292,22 +311,146 @@ function HandwritingInspector({ id, params }: { id: string; params: HandwritingP
   )
 }
 
+/** Fill (hatch) controls shared by all closed shapes. */
+function HatchControls({ hatch, onChange }: { hatch: Hatch; onChange: (h: Hatch) => void }) {
+  const set = (patch: Partial<Hatch>) => onChange({ ...hatch, ...patch })
+  return (
+    <>
+      <SectionTitle>Fill</SectionTitle>
+      <Field label="Pattern">
+        <select
+          className={controlClass}
+          value={hatch.pattern}
+          onChange={(e) => set({ pattern: e.target.value as HatchPattern })}
+        >
+          <option value="none">None</option>
+          <option value="lines">Lines</option>
+          <option value="cross">Cross-hatch</option>
+          <option value="grid">Grid</option>
+          <option value="concentric">Concentric</option>
+          <option value="hilbert">Hilbert curve</option>
+        </select>
+      </Field>
+      {hatch.pattern !== 'none' && (
+        <Num label="Density (mm)" value={hatch.spacing} step={0.5}
+          onChange={(v) => set({ spacing: Math.max(0.3, v) })} />
+      )}
+      {(hatch.pattern === 'lines' || hatch.pattern === 'cross') && (
+        <Num label="Angle (°)" value={hatch.angle} step={5} onChange={(v) => set({ angle: v })} />
+      )}
+    </>
+  )
+}
+
+function RectInspector({ id, params }: { id: string; params: RectParams }) {
+  const setParams = useDoc((s) => s.setParams)
+  const up = (patch: Partial<RectParams>) => setParams(id, { ...params, ...patch })
+  return (
+    <>
+      <SectionTitle>Rectangle</SectionTitle>
+      <Num label="Width (mm)" value={params.w} step={1} onChange={(v) => up({ w: Math.max(0, v) })} />
+      <Num label="Height (mm)" value={params.h} step={1} onChange={(v) => up({ h: Math.max(0, v) })} />
+      <Num label="Corner radius (mm)" value={params.cornerRadius} step={1}
+        onChange={(v) => up({ cornerRadius: Math.max(0, v) })} />
+      <HatchControls hatch={params.hatch} onChange={(h) => up({ hatch: h })} />
+    </>
+  )
+}
+
+function EllipseInspector({ id, params }: { id: string; params: EllipseParams }) {
+  const setParams = useDoc((s) => s.setParams)
+  const up = (patch: Partial<EllipseParams>) => setParams(id, { ...params, ...patch })
+  return (
+    <>
+      <SectionTitle>Ellipse</SectionTitle>
+      <Num label="Radius X (mm)" value={params.rx} step={1} onChange={(v) => up({ rx: Math.max(0, v) })} />
+      <Num label="Radius Y (mm)" value={params.ry} step={1} onChange={(v) => up({ ry: Math.max(0, v) })} />
+      <HatchControls hatch={params.hatch} onChange={(h) => up({ hatch: h })} />
+    </>
+  )
+}
+
+function PathInspector({ id, params }: { id: string; params: PathParams }) {
+  const setParams = useDoc((s) => s.setParams)
+  return (
+    <>
+      <SectionTitle>Path</SectionTitle>
+      <Field label="Closed">
+        <input
+          type="checkbox"
+          className="h-4 w-4 justify-self-start"
+          checked={params.closed}
+          onChange={(e) => setParams(id, { ...params, closed: e.target.checked })}
+        />
+      </Field>
+      <p className="note text-xs text-muted">
+        {params.nodes.length} node{params.nodes.length === 1 ? '' : 's'} · drag points & handles on
+        the canvas to edit.
+      </p>
+      {params.closed && (
+        <HatchControls
+          hatch={params.hatch}
+          onChange={(h) => setParams(id, { ...params, hatch: h })}
+        />
+      )}
+    </>
+  )
+}
+
+/** Shown when 2+ elements are selected: align + group actions. */
+function MultiSelectSection({ count }: { count: number }) {
+  const align = useDoc((s) => s.align)
+  const removeSelected = useDoc((s) => s.removeSelected)
+  const duplicateSelected = useDoc((s) => s.duplicateSelected)
+  const A = ({ edge, Icon, title }: { edge: AlignEdge; Icon: typeof AlignStartVertical; title: string }) => (
+    <IconButton aria-label={title} title={title} onClick={() => align(edge)}>
+      <Icon size={16} />
+    </IconButton>
+  )
+  return (
+    <>
+      <SectionTitle>{count} selected</SectionTitle>
+      <div className="mb-1 flex flex-wrap items-center gap-1">
+        <A edge="left" Icon={AlignStartVertical} title="Align left" />
+        <A edge="centerX" Icon={AlignCenterVertical} title="Align centre (horizontal)" />
+        <A edge="right" Icon={AlignEndVertical} title="Align right" />
+        <span className="mx-1 h-5 w-px bg-border" />
+        <A edge="top" Icon={AlignStartHorizontal} title="Align top" />
+        <A edge="centerY" Icon={AlignCenterHorizontal} title="Align middle (vertical)" />
+        <A edge="bottom" Icon={AlignEndHorizontal} title="Align bottom" />
+      </div>
+      <div className="mt-3 flex gap-2">
+        <Button className="flex-1" onClick={() => duplicateSelected()}>
+          Duplicate
+        </Button>
+        <Button onClick={() => removeSelected()}>Delete</Button>
+      </div>
+    </>
+  )
+}
+
 function ElementSection() {
-  const selectedId = useDoc((s) => s.selectedId)
-  const element = useDoc((s) => s.elements.find((e) => e.id === s.selectedId) ?? null)
+  const selectedIds = useDoc((s) => s.selectedIds)
+  const element = useDoc((s) =>
+    s.selectedIds.length === 1 ? (s.elements.find((e) => e.id === s.selectedIds[0]) ?? null) : null,
+  )
   const setTransform = useDoc((s) => s.setTransform)
   const removeElement = useDoc((s) => s.removeElement)
 
-  if (!element || !selectedId) {
+  if (selectedIds.length === 0) {
     return (
       <div className="mt-6 flex flex-col items-center gap-2 px-4 text-center">
         <Eye size={22} className="text-faint" />
         <p className="text-xs text-muted">
-          Nothing selected. Add a handwriting element, then click it on the canvas to edit.
+          Nothing selected. Pick a tool to draw, or click an element to edit. Shift-click or drag a
+          marquee to select several.
         </p>
       </div>
     )
   }
+
+  if (selectedIds.length > 1) return <MultiSelectSection count={selectedIds.length} />
+  if (!element) return null
 
   const t = element.transform
   return (
@@ -315,6 +458,11 @@ function ElementSection() {
       {element.type === 'handwriting' && (
         <HandwritingInspector id={element.id} params={element.params as HandwritingParams} />
       )}
+      {element.type === 'rect' && <RectInspector id={element.id} params={element.params as RectParams} />}
+      {element.type === 'ellipse' && (
+        <EllipseInspector id={element.id} params={element.params as EllipseParams} />
+      )}
+      {element.type === 'path' && <PathInspector id={element.id} params={element.params as PathParams} />}
 
       <SectionTitle>Transform</SectionTitle>
       <Num label="X (mm)" value={t.x} step={1} onChange={(v) => setTransform(element.id, { x: v })} />

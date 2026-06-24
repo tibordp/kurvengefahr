@@ -49,8 +49,12 @@ const setStatus = (id: string, s: GenStatus) => useGeneration.getState()._set(id
 const clearStatus = (id: string) => useGeneration.getState()._clear(id)
 
 /** True if the element's displayed geometry is stale relative to its current params (edited since
- *  the last generation). A never-generated element is not "dirty" — it auto-generates. */
-export function isElementDirty(id: string, params: unknown): boolean {
+ *  the last generation). Only **async** (worker-backed) types can be dirty — sync types
+ *  (shapes) re-tessellate on render via `generateLocal`, so their cache is never behind their
+ *  params (and the toolbar/inspector must not offer a no-op "Regenerate" for them). A
+ *  never-generated element is not "dirty" — it auto-generates. */
+export function isElementDirty(id: string, type: string, params: unknown): boolean {
+  if (!isAsyncType(type)) return false
   const cached = getCached(id)
   return !!cached && cached.hash !== hashParams(params)
 }
@@ -183,6 +187,6 @@ export function regenerate(id: string): void {
 /** Regenerate every dirty (or failed) async element. */
 export function regenerateAll(): void {
   for (const el of useDoc.getState().elements) {
-    if (isAsyncType(el.type) && (isElementDirty(el.id, el.params) || failed.has(el.id))) postGenerate(el)
+    if (isAsyncType(el.type) && (isElementDirty(el.id, el.type, el.params) || failed.has(el.id))) postGenerate(el)
   }
 }

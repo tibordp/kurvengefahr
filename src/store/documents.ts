@@ -15,7 +15,7 @@ import type { DocMeta } from './persistence/storage'
 const emptySnapshot = (): DocSnapshot => ({
   elements: [],
   profile: structuredClone(PRUSA_MK4),
-  selectedId: null,
+  selectedIds: [],
 })
 
 interface DocsStore {
@@ -51,7 +51,7 @@ export const useDocuments = create<DocsStore>((set, get) => ({
     const doc = storage.readDoc(id)
     if (!doc) return
     storage.setActiveId(id)
-    useDoc.getState().loadDocument({ elements: doc.elements, profile: doc.profile, selectedId: doc.selectedId })
+    useDoc.getState().loadDocument({ elements: doc.elements, profile: doc.profile, selectedIds: doc.selectedIds })
     set({ activeId: id, activeName: doc.name })
     lastContent = contentKey() // matches storage → no redundant rewrite
   },
@@ -96,8 +96,8 @@ export const useDocuments = create<DocsStore>((set, get) => ({
 // defeat the diff). A no-op `notifyGeometry()` re-render produces an identical key → skipped.
 function contentKey(): string {
   const { activeName } = useDocuments.getState()
-  const { elements, profile, selectedId } = useDoc.getState()
-  return JSON.stringify({ activeName, elements, profile, selectedId })
+  const { elements, profile, selectedIds } = useDoc.getState()
+  return JSON.stringify({ activeName, elements, profile, selectedIds })
 }
 
 let lastContent: string | null = null
@@ -126,7 +126,7 @@ function persistActive(opts?: { force?: boolean }): void {
   lastContent = key
 
   const { activeId, activeName } = useDocuments.getState()
-  const { elements, profile, selectedId } = useDoc.getState()
+  const { elements, profile, selectedIds } = useDoc.getState()
   const doc: StoredDoc = {
     schemaVersion: CURRENT_DOC_SCHEMA,
     id: activeId,
@@ -134,7 +134,7 @@ function persistActive(opts?: { force?: boolean }): void {
     updatedAt: Date.now(),
     elements,
     profile,
-    selectedId,
+    selectedIds,
   }
   storage.writeDocRaw(activeId, storage.docPayload(doc))
   const index = upsert(useDocuments.getState().index, { id: activeId, name: activeName, updatedAt: doc.updatedAt })
@@ -148,7 +148,7 @@ function isEditingText(): boolean {
 }
 
 function applyRemote(doc: StoredDoc): void {
-  useDoc.getState().loadDocument({ elements: doc.elements, profile: doc.profile, selectedId: doc.selectedId })
+  useDoc.getState().loadDocument({ elements: doc.elements, profile: doc.profile, selectedIds: doc.selectedIds })
   useDocuments.setState({ activeName: doc.name })
   lastContent = contentKey() // echo guard: our own autosave now sees no change
   pendingRemote = null
@@ -197,7 +197,7 @@ export function initDocuments(): void {
   if (activeId) {
     const doc = storage.readDoc(activeId)
     if (doc) {
-      useDoc.getState().loadDocument({ elements: doc.elements, profile: doc.profile, selectedId: doc.selectedId })
+      useDoc.getState().loadDocument({ elements: doc.elements, profile: doc.profile, selectedIds: doc.selectedIds })
       useDocuments.setState({ index, activeId, activeName: doc.name })
       lastContent = contentKey()
       wire()

@@ -23,6 +23,10 @@ interface ElementType {
   /** Coerce arbitrary (persisted/imported) params into a valid shape, filling defaults. Used by
    *  persistence so a malformed or older params object can't crash the inspector or generator. */
   sanitizeParams?: (raw: unknown) => unknown
+  /** Bake a scale factor into the params (returning new params), so the Konva Transformer's resize
+   *  edits real dimensions instead of leaving a residual transform scale. Types without this keep
+   *  the scale in their transform (e.g. handwriting scales its ink). */
+  applyScale?: (params: any, sx: number, sy: number) => unknown
 }
 
 const types = new Map<string, ElementType>()
@@ -41,6 +45,17 @@ export function isKnownType(type: string): boolean {
  *  sanitizer). */
 export function sanitizeParams(type: string, raw: unknown): unknown {
   return types.get(type)?.sanitizeParams?.(raw) ?? raw
+}
+
+/** Whether this type bakes transform-scale into its params (vs keeping it in the transform). */
+export function bakesScale(type: string): boolean {
+  return !!types.get(type)?.applyScale
+}
+
+/** Bake a scale into a type's params (no-op if the type doesn't support it). */
+export function applyScale(type: string, params: unknown, sx: number, sy: number): unknown {
+  const def = types.get(type)
+  return def?.applyScale ? def.applyScale(params, sx, sy) : params
 }
 
 /** Element types without a predicate are never locked — their strokes always go in the bag. */
