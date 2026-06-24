@@ -1,7 +1,6 @@
 // One element on the canvas: a Konva Group at the element's transform, containing its
 // local-mm strokes as Lines. The Group transform is the *view* of the element transform;
 // on drag/transform end we read the affine back into the store (the authority).
-import { useRef } from 'react'
 import { Group, Line } from 'react-konva'
 import type Konva from 'konva'
 import type { DocElement } from '../core/types'
@@ -22,14 +21,24 @@ interface Props {
 /** Nominal pen-tip width. Later this comes from the pen/machine profile, not the element. */
 const PEN_WIDTH_MM = 0.4
 
+// The single active group-drag gesture, shared by every ElementNode (only one drag at a time).
+// Konva's Transformer puts *every* selected node into its own drag (Transformer `_proxyDrag`), so
+// each fires `onDragMove` — left to its own devices each would snap to the grid independently and
+// shear the selection apart. So the first node to start a drag becomes the **anchor**: it owns grid
+// snapping and computes one delta for the whole selection; the others just re-assert that delta
+// (Konva keeps moving them to the raw pointer position, so they must snap back every frame).
+let dragGesture: {
+  anchorId: string
+  starts: Map<string, { x: number; y: number }>
+  dx: number
+  dy: number
+} | null = null
+
 export function ElementNode({ element, pxPerMm, interactive = true }: Props) {
   const select = useDoc((s) => s.select)
   const setTransform = useDoc((s) => s.setTransform)
   const setParams = useDoc((s) => s.setParams)
   const pens = useDoc((s) => s.profile.pens)
-  // Captured at drag-start: this element's origin + the other selected elements' origins, so a
-  // group drag moves them all by the same delta.
-  const dragRef = useRef<{ sx: number; sy: number; others: { id: string; x: number; y: number }[] } | null>(null)
 
   const geom = generateLocal(element)
   const colorFor = (pen: number) => pens.find((p) => p.id === pen)?.color ?? '#1a1a1a'
@@ -85,35 +94,49 @@ export function ElementNode({ element, pxPerMm, interactive = true }: Props) {
       }}
       onTap={() => select(element.id)}
       onDragStart={() => {
+        // The first node to start owns the gesture (the anchor). Konva will `startDrag` the rest of
+        // the selection on the anchor's first move; they join this same gesture.
+        if (dragGesture) return
         const { selectedIds, elements } = useDoc.getState()
         const group = selectedIds.includes(element.id) ? selectedIds : [element.id]
-        dragRef.current = {
-          sx: element.transform.x,
-          sy: element.transform.y,
-          others: group
-            .filter((id) => id !== element.id)
-            .map((id) => {
-              const o = elements.find((x) => x.id === id)!
-              return { id, x: o.transform.x, y: o.transform.y }
-            }),
+        const starts = new Map<string, { x: number; y: number }>()
+        for (const id of group) {
+          const o = elements.find((x) => x.id === id)
+          if (o) starts.set(id, { x: o.transform.x, y: o.transform.y })
         }
+        dragGesture = { anchorId: element.id, starts, dx: 0, dy: 0 }
       }}
-      // Snap the element origin to the grid while dragging; carry the rest of the selection by the
-      // same delta. Live store update so a path's node overlay tracks the move (cheap re-place).
+      // The anchor snaps to the grid and drives the whole selection by one shared delta; every other
+      // node re-asserts that delta (Konva keeps re-positioning it to the raw pointer each frame).
+      // The anchor fires before the others in a frame, so its delta is fresh when they read it.
       onDragMove={(e) => {
-        const sp = snap({ x: e.target.x(), y: e.target.y() }, !!e.evt.altKey)
-        e.target.position(sp)
-        setTransform(element.id, { x: sp.x, y: sp.y })
-        const ds = dragRef.current
-        if (ds) {
-          const dx = sp.x - ds.sx
-          const dy = sp.y - ds.sy
-          for (const o of ds.others) setTransform(o.id, { x: o.x + dx, y: o.y + dy })
+        const g = dragGesture
+        if (g && element.id === g.anchorId) {
+          const start = g.starts.get(element.id)!
+          const sp = snap({ x: e.target.x(), y: e.target.y() }, !!e.evt.altKey)
+          g.dx = sp.x - start.x
+          g.dy = sp.y - start.y
+          const stage = e.target.getStage()
+          for (const [id, s] of g.starts) {
+            const nx = s.x + g.dx
+            const ny = s.y + g.dy
+            setTransform(id, { x: nx, y: ny })
+            const node = id === element.id ? e.target : stage?.findOne('#' + id)
+            node?.position({ x: nx, y: ny })
+          }
+        } else if (g) {
+          const s = g.starts.get(element.id)
+          if (s) e.target.position({ x: s.x + g.dx, y: s.y + g.dy })
+        } else {
+          // No gesture (defensive): plain solo snap.
+          const sp = snap({ x: e.target.x(), y: e.target.y() }, !!e.evt.altKey)
+          e.target.position(sp)
+          setTransform(element.id, { x: sp.x, y: sp.y })
         }
       }}
       onDragEnd={(e) => {
         commit(e.target)
-        dragRef.current = null
+        dragGesture = null
       }}
       onTransformEnd={(e) => commit(e.target)}
     >

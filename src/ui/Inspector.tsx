@@ -30,6 +30,7 @@ import type { DocElement, Pen } from '../core/types'
 import type { HandwritingParams } from '../elements/handwriting'
 import type { RectParams, EllipseParams, PathParams, Hatch, HatchPattern } from '../elements/shapes'
 import { Button, IconButton, Field, SectionTitle, Banner, controlClass, textareaClass, cx } from './primitives'
+import { MOD_KEY } from './shortcuts'
 
 function elementName(el: DocElement): string {
   if (el.type === 'handwriting') {
@@ -471,10 +472,12 @@ function MultiSelectSection({ count }: { count: number }) {
         <PenSelect value={commonPen} onChange={(pen) => setPenSelected(pen)} />
       </div>
       <div className="mt-3 flex gap-2">
-        <Button className="flex-1" onClick={() => duplicateSelected()}>
+        <Button className="flex-1" title={`Duplicate (${MOD_KEY}D)`} onClick={() => duplicateSelected()}>
           Duplicate
         </Button>
-        <Button onClick={() => removeSelected()}>Delete</Button>
+        <Button variant="danger" title="Delete (Del)" onClick={() => removeSelected()}>
+          <Trash2 size={15} /> Delete
+        </Button>
       </div>
     </>
   )
@@ -501,8 +504,8 @@ function FiducialSection() {
       )}
       <Num label="X (mm)" value={fiducial.x} step={1} onChange={(v) => setFiducial({ ...fiducial, x: v })} />
       <Num label="Y (mm)" value={fiducial.y} step={1} onChange={(v) => setFiducial({ ...fiducial, y: v })} />
-      <Button className="mt-2 w-full" onClick={() => setFiducial(null)}>
-        Remove fiducial
+      <Button variant="danger" className="mt-2 w-full" onClick={() => setFiducial(null)}>
+        <Trash2 size={15} /> Remove fiducial
       </Button>
     </>
   )
@@ -569,7 +572,9 @@ function ElementSection() {
         >
           Bring into view
         </Button>
-        <Button onClick={() => removeElement(element.id)}>Delete</Button>
+        <Button variant="danger" title="Delete (Del)" onClick={() => removeElement(element.id)}>
+          <Trash2 size={15} /> Delete
+        </Button>
       </div>
     </>
   )
@@ -668,8 +673,8 @@ function ProfileControls() {
           </Button>
         )}
         {isCustom && (
-          <Button className="h-7 px-2.5 text-xs" onClick={remove}>
-            Delete
+          <Button variant="danger" className="h-7 px-2.5 text-xs" onClick={remove}>
+            <Trash2 size={13} /> Delete
           </Button>
         )}
         <span className="flex-1" />
@@ -838,14 +843,22 @@ function MachineSection() {
 function Tab({
   active,
   onClick,
+  id,
+  controls,
   children,
 }: {
   active: boolean
   onClick: () => void
+  id: string
+  controls: string
   children: React.ReactNode
 }) {
   return (
     <button
+      role="tab"
+      id={id}
+      aria-selected={active}
+      aria-controls={controls}
       onClick={onClick}
       className={cx(
         '-mb-px border-b-2 px-3 py-2.5 text-sm font-medium transition-colors outline-none',
@@ -865,6 +878,19 @@ export function Inspector() {
   const inspectorOpen = useUI((s) => s.inspectorOpen)
   const setInspectorOpen = useUI((s) => s.setInspectorOpen)
 
+  // Reveal the Elements tab whenever an element is selected or manipulated, so you never tweak the
+  // canvas while looking at the Machine profile. The signal folds in the selected elements' ids +
+  // transforms, so a plain selection change *and* a canvas drag/nudge both flip the tab back.
+  const selectionSignal = useDoc((s) =>
+    s.elements
+      .filter((e) => s.selectedIds.includes(e.id))
+      .map((e) => `${e.id}:${e.transform.x},${e.transform.y},${e.transform.rotation},${e.transform.scaleX},${e.transform.scaleY}`)
+      .join('|'),
+  )
+  useEffect(() => {
+    if (selectionSignal) setTab('elements')
+  }, [selectionSignal])
+
   return (
     <aside
       className={cx(
@@ -874,11 +900,25 @@ export function Inspector() {
         inspectorOpen ? 'translate-x-0' : 'translate-x-full',
       )}
     >
-      <div className="flex shrink-0 items-center gap-1 border-b border-border px-2">
-        <Tab active={tab === 'elements'} onClick={() => setTab('elements')}>
+      <div
+        role="tablist"
+        aria-label="Inspector sections"
+        className="flex shrink-0 items-center gap-1 border-b border-border px-2"
+      >
+        <Tab
+          active={tab === 'elements'}
+          onClick={() => setTab('elements')}
+          id="tab-elements"
+          controls="panel-elements"
+        >
           Elements
         </Tab>
-        <Tab active={tab === 'machine'} onClick={() => setTab('machine')}>
+        <Tab
+          active={tab === 'machine'}
+          onClick={() => setTab('machine')}
+          id="tab-machine"
+          controls="panel-machine"
+        >
           Machine
         </Tab>
         <span className="flex-1" />
@@ -886,12 +926,19 @@ export function Inspector() {
           className="md:hidden"
           onClick={() => setInspectorOpen(false)}
           aria-label="Close inspector"
+          title="Close inspector"
         >
           <X size={17} />
         </IconButton>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-3">
+      <div
+        role="tabpanel"
+        id={tab === 'elements' ? 'panel-elements' : 'panel-machine'}
+        aria-labelledby={tab === 'elements' ? 'tab-elements' : 'tab-machine'}
+        tabIndex={0}
+        className="flex-1 overflow-y-auto p-3 outline-none"
+      >
         {tab === 'elements' ? (
           <>
             <ElementList />

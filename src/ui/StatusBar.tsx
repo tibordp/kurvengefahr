@@ -43,7 +43,9 @@ export function StatusBar() {
       <span className="flex-1" />
       <SnapControl />
       <span className="h-3.5 w-px bg-border" aria-hidden />
-      <span className="font-mono tabular-nums">{Math.round((scale / fit) * 100)}%</span>
+      <span className="font-mono tabular-nums" title="Zoom level" aria-label="Zoom level">
+        {Math.round((scale / fit) * 100)}%
+      </span>
     </div>
   )
 }
@@ -66,6 +68,7 @@ function SnapControl() {
         onChange={(e) => s.setGridSize(parseFloat(e.target.value) || 1)}
         className="w-12 rounded border border-border bg-surface px-1 py-0.5 text-xs tabular-nums"
         title="Grid size (mm)"
+        aria-label="Grid size in millimetres"
       />
     </span>
   )

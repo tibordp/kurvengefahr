@@ -17,6 +17,7 @@ import { useViewport, useCursor } from '../store/viewport'
 import { clampViewport, fitScale, MIN_SCALE, MAX_SCALE } from './viewport'
 import { drawableRegion } from '../core/pipeline/clip'
 import { ElementNode } from './ElementNode'
+import { CanvasContextMenu, type CanvasMenuState } from './CanvasContextMenu'
 import { PreviewLayer } from './PreviewLayer'
 import { DrawingPreview } from './DrawingPreview'
 import { NodeEditLayer } from './NodeEditLayer'
@@ -64,6 +65,7 @@ export function Canvas() {
   const [hoverElement, setHoverElement] = useState(false)
   const [marquee, setMarquee] = useState<{ a: Pt; b: Pt } | null>(null)
   const marqueeStart = useRef<Pt | null>(null)
+  const [menu, setMenu] = useState<CanvasMenuState | null>(null)
 
   // Track the host size.
   useEffect(() => {
@@ -185,7 +187,33 @@ export function Canvas() {
     return { x: (pointer.x - cur.x) / cur.scale, y: (pointer.y - cur.y) / cur.scale }
   }
 
+  // Right-click: open the context menu (acting on the element under the cursor, or the background).
+  // The element's own mousedown has already resolved selection, so we just read it.
+  const onContextMenu = (e: KonvaEventObject<MouseEvent>) => {
+    e.evt.preventDefault()
+    if (previewActive || drawing) return
+    const stage = e.target.getStage()
+    // Walk up from the hit node to the owning element Group (its id is the element id).
+    const ids = new Set(useDoc.getState().elements.map((el) => el.id))
+    let node: Konva.Node | null = e.target
+    let targetId: string | null = null
+    while (node && node !== stage) {
+      const nid = node.id()
+      if (nid && ids.has(nid)) {
+        targetId = nid
+        break
+      }
+      node = node.getParent()
+    }
+    if (targetId && !useDoc.getState().selectedIds.includes(targetId)) {
+      useDoc.getState().select(targetId, false)
+    }
+    const p = pointerMM(stage) ?? { x: 0, y: 0 }
+    setMenu({ x: e.evt.clientX, y: e.evt.clientY, page: p, targetId })
+  }
+
   const onMouseDown = (e: KonvaEventObject<MouseEvent>) => {
+    if (e.evt.button === 2) return // right-click → handled by onContextMenu (no marquee/pan)
     if (spaceHeld || e.evt.button === 1) {
       pan.current = { active: true, lastX: e.evt.clientX, lastY: e.evt.clientY }
       e.evt.preventDefault()
@@ -323,6 +351,7 @@ export function Canvas() {
         onMouseDown={onMouseDown}
         onMouseMove={onMouseMove}
         onMouseUp={onMouseUp}
+        onContextMenu={onContextMenu}
         onDblClick={() => drawing && drawDblClick()}
         onMouseLeave={() => {
           endPan()
@@ -444,6 +473,7 @@ export function Canvas() {
         </Layer>
       </Stage>
       )}
+      {menu && <CanvasContextMenu menu={menu} onClose={() => setMenu(null)} />}
     </div>
   )
 }

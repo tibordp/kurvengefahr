@@ -61,18 +61,24 @@ export function PreviewControls() {
   }
 
   return (
-    <div className="m-2 flex shrink-0 items-center gap-2.5 rounded-card border border-border bg-surface px-2.5 py-2 shadow-panel">
+    <div
+      role="group"
+      aria-label="Preview playback"
+      className="m-2 flex shrink-0 items-center gap-2.5 rounded-card border border-border bg-surface px-2.5 py-2 shadow-panel"
+    >
       <Button
         onClick={onPlay}
         className="w-9 px-0"
         aria-label={playing ? 'Pause' : atEnd ? 'Replay' : 'Play'}
-        title={playing ? 'Pause' : atEnd ? 'Replay' : 'Play'}
+        title={`${playing ? 'Pause' : atEnd ? 'Replay' : 'Play'} (Space)`}
       >
         {playing ? <Pause size={15} /> : atEnd ? <RotateCcw size={15} /> : <Play size={15} />}
       </Button>
       <input
         type="range"
         className="min-w-0 flex-1"
+        aria-label="Scrub playback position"
+        aria-valuetext={`${dist.toFixed(0)} of ${total.toFixed(0)} mm`}
         min={0}
         max={total || 1}
         step={Math.max(total / 1000, 0.1)}
@@ -89,6 +95,7 @@ export function PreviewControls() {
         className={selectClass}
         value={speed / BASE_SPEED}
         onChange={(e) => setSpeed(parseFloat(e.target.value) * BASE_SPEED)}
+        aria-label="Playback speed"
         title="Playback speed"
       >
         {SPEEDS.map((m) => (

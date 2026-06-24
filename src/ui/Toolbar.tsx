@@ -1,15 +1,16 @@
 import { useState } from 'react'
-import { RotateCw, Play, Pencil, Download, PanelRight } from 'lucide-react'
+import { RotateCw, Play, Pencil, Download, PanelRight, CircleHelp } from 'lucide-react'
 import { useDoc } from '../store/document'
 import { usePreview } from '../store/preview'
 import { useUI } from '../store/ui'
 import { regenerateAll, isElementDirty } from '../core/generation'
-import { runPipeline, buildPlottableGeometry } from '../core/pipeline'
+import { buildPlottableGeometry } from '../core/pipeline'
 import { optimizeGeometry } from '../core/pipeline/optimize'
 import { penParkInPage } from '../core/pipeline/toMachine'
 import { buildToolpath } from '../core/preview/toolpath'
-import { downloadSink } from '../output/sink'
+import { exportGcode } from '../output/export'
 import { Button, IconButton } from './primitives'
+import { MOD_KEY } from './shortcuts'
 import { DocumentMenu } from './DocumentMenu'
 
 /** A curving trail with a gap + head — a nod to "Achtung, die Kurve!" (and to drawing one
@@ -38,6 +39,7 @@ export function Toolbar() {
   const elements = useDoc((s) => s.elements)
   const previewActive = usePreview((s) => s.active)
   const toggleInspector = useUI((s) => s.toggleInspector)
+  const toggleHelp = useUI((s) => s.toggleHelp)
   const [busy, setBusy] = useState(false)
   const [preparing, setPreparing] = useState(false)
 
@@ -64,19 +66,21 @@ export function Toolbar() {
   }
 
   const onGenerate = async () => {
-    const { elements, profile, fiducial } = useDoc.getState()
     if (elements.length === 0) return
     setBusy(true)
     try {
-      const gcode = await runPipeline(elements, profile, [], fiducial)
-      await downloadSink.send('kurvengefahr.gcode', gcode)
+      await exportGcode()
     } finally {
       setBusy(false)
     }
   }
 
   return (
-    <header className="col-span-full flex items-center gap-2 border-b border-border bg-surface px-3 py-2">
+    <header
+      role="toolbar"
+      aria-label="Main toolbar"
+      className="col-span-full flex items-center gap-2 border-b border-border bg-surface px-3 py-2"
+    >
       <div className="flex items-center gap-2">
         <LogoMark className="text-accent" />
         <span className="hidden text-[15px] font-semibold tracking-tight lg:inline">
@@ -104,7 +108,12 @@ export function Toolbar() {
       <span className="flex-1" />
 
       {/* Output */}
-      <Button onClick={togglePreview} disabled={preparing} title={previewActive ? 'Edit' : 'Preview'}>
+      <Button
+        onClick={togglePreview}
+        disabled={preparing}
+        aria-label={previewActive ? 'Exit preview' : 'Preview toolpath'}
+        title={previewActive ? 'Back to editing' : 'Preview the toolpath'}
+      >
         {previewActive ? <Pencil size={15} /> : <Play size={15} />}
         <span className="hidden sm:inline">
           {previewActive ? 'Edit' : preparing ? 'Preparing…' : 'Preview'}
@@ -114,12 +123,22 @@ export function Toolbar() {
         variant="primary"
         onClick={onGenerate}
         disabled={busy}
-        aria-label="Generate G-code"
-        title="Generate G-code"
+        aria-label="Generate and download G-code"
+        title={`Generate & download G-code (${MOD_KEY}S)`}
       >
         <Download size={15} />
         <span className="hidden sm:inline">{busy ? 'Generating…' : 'Generate G-code'}</span>
       </Button>
+
+      {/* Help / About + keyboard shortcuts. */}
+      <IconButton
+        onClick={toggleHelp}
+        aria-label="Help and about"
+        aria-haspopup="dialog"
+        title="Shortcuts & about (?)"
+      >
+        <CircleHelp size={17} />
+      </IconButton>
 
       {/* Inspector toggle — mobile only (drawer). */}
       <IconButton

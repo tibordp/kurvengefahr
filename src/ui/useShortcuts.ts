@@ -1,8 +1,13 @@
 // Global keyboard shortcuts. Reads/acts on the document store directly so it doesn't need to
-// re-subscribe on every selection change. Ignored while typing in a field.
+// re-subscribe on every selection change. Ignored while typing in a field. The bindings here are
+// mirrored in the Help dialog + button tooltips via `./shortcuts`.
 import { useEffect } from 'react'
 import { useDoc } from '../store/document'
-import { useTools, type Tool } from '../store/tools'
+import { useTools } from '../store/tools'
+import { useUI } from '../store/ui'
+import { usePreview } from '../store/preview'
+import { exportGcode } from '../output/export'
+import { TOOL_KEYS } from './shortcuts'
 
 function isTyping(target: EventTarget | null): boolean {
   const el = target as HTMLElement | null
@@ -11,22 +16,40 @@ function isTyping(target: EventTarget | null): boolean {
   return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable
 }
 
-// Single-key tool selection (no modifier).
-const TOOL_KEYS: Record<string, Tool> = {
-  v: 'select',
-  t: 'handwriting',
-  l: 'line',
-  r: 'rect',
-  o: 'ellipse',
-  p: 'pen',
-  f: 'freehand',
-  x: 'fiducial',
-}
-
 export function useShortcuts(): void {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      // `?` opens the help/shortcuts dialog — works even mid-typing-free, always available.
+      if (e.key === '?' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        if (isTyping(e.target)) return
+        e.preventDefault()
+        useUI.getState().toggleHelp()
+        return
+      }
+
+      // While the Help dialog owns the screen, swallow the rest (it handles its own Esc/Tab).
+      if (useUI.getState().helpOpen) return
+
+      // ⌘/Ctrl+S — generate & download G-code (overrides the browser's save).
+      if ((e.metaKey || e.ctrlKey) && (e.key === 's' || e.key === 'S')) {
+        e.preventDefault()
+        void exportGcode()
+        return
+      }
+
       if (isTyping(e.target)) return
+
+      // Space toggles preview playback (only while the preview transport is active). If a button
+      // has focus, let its native Space-activation handle it instead (avoids a double-toggle).
+      if (e.key === ' ' && usePreview.getState().active) {
+        const el = e.target as HTMLElement | null
+        if (el?.tagName === 'BUTTON' || el?.closest?.('button')) return
+        e.preventDefault()
+        const p = usePreview.getState()
+        if (p.dist >= (p.toolpath?.total ?? 0)) p.setDist(0) // replay from start
+        p.setPlaying(!p.playing)
+        return
+      }
 
       // Tool switching — plain letters, no modifiers (so Ctrl/Cmd shortcuts pass through).
       if (!e.metaKey && !e.ctrlKey && !e.altKey) {

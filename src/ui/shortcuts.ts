@@ -1,0 +1,72 @@
+// Single source of truth for keyboard shortcuts. Shared by three places so they never drift:
+//   • `useShortcuts` — the global key handler (TOOL_KEYS, derived below)
+//   • `ToolSidebar` — the tool buttons (TOOLS) and their `(key)` tooltips
+//   • `HelpDialog` — the discoverable reference table (SHORTCUT_GROUPS)
+import {
+  MousePointer2,
+  Signature,
+  Minus,
+  Square,
+  Circle,
+  PenTool,
+  Pencil,
+  Crosshair,
+  type LucideIcon,
+} from 'lucide-react'
+import type { Tool } from '../store/tools'
+
+/** The modifier key glyph, platform-aware (⌘ on Apple, Ctrl elsewhere). Display-only. */
+const isApple =
+  typeof navigator !== 'undefined' &&
+  /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent)
+export const MOD_KEY = isApple ? '⌘' : 'Ctrl'
+
+/** The tool palette: icon + label + single-key shortcut. Drives the sidebar and the key handler. */
+export const TOOLS: { tool: Tool; icon: LucideIcon; label: string; key: string }[] = [
+  { tool: 'select', icon: MousePointer2, label: 'Select', key: 'V' },
+  { tool: 'handwriting', icon: Signature, label: 'Handwriting', key: 'T' },
+  { tool: 'line', icon: Minus, label: 'Line', key: 'L' },
+  { tool: 'rect', icon: Square, label: 'Rectangle', key: 'R' },
+  { tool: 'ellipse', icon: Circle, label: 'Ellipse', key: 'O' },
+  { tool: 'pen', icon: PenTool, label: 'Pen (Bézier)', key: 'P' },
+  { tool: 'freehand', icon: Pencil, label: 'Freehand', key: 'F' },
+  { tool: 'fiducial', icon: Crosshair, label: 'Fiducial (align point)', key: 'X' },
+]
+
+/** Lower-cased single key → tool, derived from TOOLS so the binding can't drift from the label. */
+export const TOOL_KEYS: Record<string, Tool> = Object.fromEntries(
+  TOOLS.map((t) => [t.key.toLowerCase(), t.tool]),
+)
+
+/** Grouped, human-readable reference for the Help dialog. `keys` are display tokens (chips). */
+export interface ShortcutItem {
+  keys: string[]
+  label: string
+}
+export const SHORTCUT_GROUPS: { title: string; items: ShortcutItem[] }[] = [
+  {
+    title: 'Tools',
+    items: TOOLS.map((t) => ({ keys: [t.key], label: t.label })),
+  },
+  {
+    title: 'Edit',
+    items: [
+      { keys: [MOD_KEY, 'D'], label: 'Duplicate selection' },
+      { keys: ['Del'], label: 'Delete selection' },
+      { keys: ['↑ ↓ ← →'], label: 'Nudge 1 mm' },
+      { keys: ['Shift', '↑ ↓ ← →'], label: 'Nudge 10 mm' },
+      { keys: ['Esc'], label: 'Deselect' },
+    ],
+  },
+  {
+    title: 'Output',
+    items: [
+      { keys: [MOD_KEY, 'S'], label: 'Generate & download G-code' },
+      { keys: ['Space'], label: 'Play / pause preview' },
+    ],
+  },
+  {
+    title: 'Help',
+    items: [{ keys: ['?'], label: 'Shortcuts & about' }],
+  },
+]

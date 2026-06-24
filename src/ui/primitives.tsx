@@ -1,7 +1,14 @@
 // Small, shared UI primitives. Centralising the button/field/banner styling here (rather than
 // repeating utility soup or scattering @apply) is what keeps the chrome cohesive as element types
 // grow. Everything is plain Tailwind utilities over the tokens in index.css.
-import { useEffect, useRef, useState, type ButtonHTMLAttributes, type ReactNode } from 'react'
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ButtonHTMLAttributes,
+  type ReactNode,
+} from 'react'
 
 /** Tiny classname joiner (drops falsy values). */
 export const cx = (...parts: Array<string | false | null | undefined>) =>
@@ -18,7 +25,7 @@ export const textareaClass =
   'transition-colors placeholder:text-faint hover:border-border-strong resize-y ' +
   'focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/35'
 
-type Variant = 'default' | 'primary' | 'warn' | 'ghost'
+type Variant = 'default' | 'primary' | 'warn' | 'ghost' | 'danger'
 
 const base =
   'inline-flex items-center justify-center gap-1.5 rounded-md text-sm font-medium ' +
@@ -31,6 +38,8 @@ const variants: Record<Variant, string> = {
   primary: 'h-8 px-3 bg-accent-solid text-white hover:bg-accent-solid-hover',
   warn: 'h-8 px-3 border border-warn-border bg-warn-bg text-warn-text hover:brightness-[0.98]',
   ghost: 'h-8 px-3 text-muted hover:bg-bg hover:text-text',
+  // Destructive — outlined accent-red (not a solid fill, so it reads as "careful" not "primary").
+  danger: 'h-8 px-3 border border-accent-border bg-surface text-accent-text hover:bg-accent-subtle',
 }
 
 export function Button({
@@ -147,6 +156,65 @@ export function Menu({
   )
 }
 
+/** A context menu pinned to viewport coords (x, y) — e.g. a right-click. Clamps to stay on-screen,
+ *  and closes on outside-click, Esc, scroll, resize, or any click inside (action then bubbles).
+ *  Children are the same `MenuItem`/`MenuSeparator`/`MenuLabel`s as {@link Menu}. */
+export function ContextMenu({
+  x,
+  y,
+  onClose,
+  children,
+}: {
+  x: number
+  y: number
+  onClose: () => void
+  children: ReactNode
+}) {
+  const ref = useRef<HTMLDivElement>(null)
+  const [pos, setPos] = useState({ x, y })
+
+  // Clamp within the viewport once we know the panel's size (before paint → no flash).
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const { width, height } = el.getBoundingClientRect()
+    setPos({
+      x: Math.max(8, Math.min(x, window.innerWidth - width - 8)),
+      y: Math.max(8, Math.min(y, window.innerHeight - height - 8)),
+    })
+  }, [x, y])
+
+  useEffect(() => {
+    const onDown = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose()
+    }
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
+    window.addEventListener('mousedown', onDown)
+    window.addEventListener('keydown', onKey)
+    window.addEventListener('resize', onClose)
+    window.addEventListener('wheel', onClose, { passive: true })
+    return () => {
+      window.removeEventListener('mousedown', onDown)
+      window.removeEventListener('keydown', onKey)
+      window.removeEventListener('resize', onClose)
+      window.removeEventListener('wheel', onClose)
+    }
+  }, [onClose])
+
+  return (
+    <div
+      ref={ref}
+      role="menu"
+      className="fixed z-50 min-w-48 rounded-md border border-border bg-surface p-1 shadow-panel"
+      style={{ left: pos.x, top: pos.y }}
+      onClick={onClose}
+      onContextMenu={(e) => e.preventDefault()}
+    >
+      {children}
+    </div>
+  )
+}
+
 export function MenuItem({
   danger,
   className,
@@ -173,6 +241,91 @@ export function MenuLabel({ children }: { children: ReactNode }) {
   return (
     <div className="px-2 pb-1 pt-1.5 text-2xs font-semibold uppercase tracking-wider text-faint">
       {children}
+    </div>
+  )
+}
+
+/** An accessible modal dialog: a centred panel over a scrim. Closes on Esc or backdrop click;
+ *  focus moves into the panel on open, is trapped (Tab cycles within), and is restored to the
+ *  previously-focused element on close. `title` labels the dialog for screen readers. */
+export function Modal({
+  title,
+  onClose,
+  children,
+  className,
+}: {
+  title: string
+  onClose: () => void
+  children: ReactNode
+  className?: string
+}) {
+  const panel = useRef<HTMLDivElement>(null)
+  const titleId = `dlg-${title.replace(/\W+/g, '-').toLowerCase()}`
+
+  useEffect(() => {
+    const restore = document.activeElement as HTMLElement | null
+    // Focus the panel itself; it's tabindex=-1 so it accepts focus without being a tab stop.
+    panel.current?.focus()
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        onClose()
+        return
+      }
+      if (e.key !== 'Tab' || !panel.current) return
+      // Minimal focus trap: keep Tab within the panel's focusable descendants.
+      const f = panel.current.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), input, select, textarea, [tabindex]:not([tabindex="-1"])',
+      )
+      if (!f.length) return
+      const first = f[0]
+      const last = f[f.length - 1]
+      const active = document.activeElement
+      if (e.shiftKey && (active === first || active === panel.current)) {
+        e.preventDefault()
+        last.focus()
+      } else if (!e.shiftKey && active === last) {
+        e.preventDefault()
+        first.focus()
+      }
+    }
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      restore?.focus?.()
+    }
+  }, [onClose])
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-[1px]"
+      onClick={onClose}
+    >
+      <div
+        ref={panel}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        tabIndex={-1}
+        onClick={(e) => e.stopPropagation()}
+        className={cx(
+          'flex max-h-[85vh] w-[min(34rem,92vw)] flex-col overflow-hidden rounded-card border ' +
+            'border-border bg-surface shadow-panel outline-none',
+          className,
+        )}
+      >
+        <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-4 py-3">
+          <h2 id={titleId} className="text-sm font-semibold text-text">
+            {title}
+          </h2>
+          <IconButton aria-label="Close dialog" title="Close (Esc)" onClick={onClose}>
+            <span aria-hidden className="text-base leading-none">
+              ✕
+            </span>
+          </IconButton>
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto p-4">{children}</div>
+      </div>
     </div>
   )
 }
