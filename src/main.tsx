@@ -2,6 +2,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { App } from './App'
 import { initWasm } from './core/wasm'
+import '@fontsource-variable/inter/index.css'
 import './index.css'
 
 // Instantiate WASM before the first render. After this resolves, the crate's exported

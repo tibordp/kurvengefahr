@@ -195,7 +195,7 @@ export function Canvas() {
   return (
     <div
       ref={hostRef}
-      className="stage-host"
+      className="relative min-h-0 flex-1 overflow-hidden bg-canvas"
       // Base cursor (Konva overrides this on its own resize/rotate anchors). Space → pan grab;
       // over a draggable element → move; otherwise crosshair for placement.
       style={{ cursor: spaceHeld ? 'grab' : hoverElement ? 'move' : 'crosshair' }}

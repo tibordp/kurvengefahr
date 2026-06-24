@@ -1,17 +1,43 @@
 import { useState } from 'react'
+import { Plus, RotateCw, Play, Pencil, Download, PanelRight } from 'lucide-react'
 import { useDoc } from '../store/document'
 import { usePreview } from '../store/preview'
+import { useUI } from '../store/ui'
 import { regenerateAll, isElementDirty } from '../core/generation'
 import { runPipeline, buildPlottableGeometry } from '../core/pipeline'
 import { optimizeGeometry } from '../core/pipeline/optimize'
 import { penParkInPage } from '../core/pipeline/toMachine'
 import { buildToolpath } from '../core/preview/toolpath'
 import { downloadSink } from '../output/sink'
+import { Button, IconButton } from './primitives'
+
+/** A curving trail with a gap + head — a nod to "Achtung, die Kurve!" (and to drawing one
+ *  continuous line). `currentColor`, so it inherits the accent. */
+function LogoMark({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" className={className} aria-hidden>
+      <path
+        d="M3 18C6.5 18 6 8 11 8"
+        stroke="currentColor"
+        strokeWidth="2.6"
+        strokeLinecap="round"
+      />
+      <path
+        d="M14.5 8C19 8 18 17 21 17"
+        stroke="currentColor"
+        strokeWidth="2.6"
+        strokeLinecap="round"
+      />
+      <circle cx="21" cy="17" r="1.9" fill="currentColor" />
+    </svg>
+  )
+}
 
 export function Toolbar() {
   const addHandwriting = useDoc((s) => s.addHandwriting)
   const elements = useDoc((s) => s.elements)
   const previewActive = usePreview((s) => s.active)
+  const toggleInspector = useUI((s) => s.toggleInspector)
   const [busy, setBusy] = useState(false)
   const [preparing, setPreparing] = useState(false)
 
@@ -50,26 +76,66 @@ export function Toolbar() {
   }
 
   return (
-    <div className="toolbar">
-      <span className="brand">Kurvengefahr</span>
-      <button onClick={() => addHandwriting()} disabled={previewActive}>
-        + Handwriting
-      </button>
+    <header className="col-span-full flex items-center gap-2 border-b border-border bg-surface px-3 py-2">
+      <div className="mr-1 flex items-center gap-2">
+        <LogoMark className="text-accent" />
+        <span className="hidden text-[15px] font-semibold tracking-tight sm:inline">
+          Kurvengefahr
+        </span>
+      </div>
+
+      {/* Creation */}
+      <Button
+        onClick={() => addHandwriting()}
+        disabled={previewActive}
+        aria-label="Add handwriting"
+        title="Add handwriting"
+      >
+        <Plus size={15} />
+        <span className="hidden sm:inline">Handwriting</span>
+      </Button>
 
       {dirtyCount > 0 && !previewActive && (
-        <button className="warn" onClick={() => regenerateAll()} title="Regenerate edited elements">
-          ↻ Regenerate ({dirtyCount})
-        </button>
+        <Button
+          variant="warn"
+          onClick={() => regenerateAll()}
+          title={`Regenerate ${dirtyCount} edited element(s)`}
+          aria-label={`Regenerate ${dirtyCount} edited elements`}
+        >
+          <RotateCw size={15} />
+          <span className="hidden sm:inline">Regenerate</span> ({dirtyCount})
+        </Button>
       )}
 
-      <span className="spacer" />
+      <span className="flex-1" />
 
-      <button onClick={togglePreview} disabled={preparing}>
-        {previewActive ? '✎ Edit' : preparing ? 'Preparing…' : '▶ Preview'}
-      </button>
-      <button className="primary" onClick={onGenerate} disabled={busy}>
-        {busy ? 'Generating…' : 'Generate G-code'}
-      </button>
-    </div>
+      {/* Output */}
+      <Button onClick={togglePreview} disabled={preparing} title={previewActive ? 'Edit' : 'Preview'}>
+        {previewActive ? <Pencil size={15} /> : <Play size={15} />}
+        <span className="hidden sm:inline">
+          {previewActive ? 'Edit' : preparing ? 'Preparing…' : 'Preview'}
+        </span>
+      </Button>
+      <Button
+        variant="primary"
+        onClick={onGenerate}
+        disabled={busy}
+        aria-label="Generate G-code"
+        title="Generate G-code"
+      >
+        <Download size={15} />
+        <span className="hidden sm:inline">{busy ? 'Generating…' : 'Generate G-code'}</span>
+      </Button>
+
+      {/* Inspector toggle — mobile only (drawer). */}
+      <IconButton
+        className="md:hidden"
+        onClick={toggleInspector}
+        aria-label="Toggle inspector"
+        title="Toggle inspector"
+      >
+        <PanelRight size={17} />
+      </IconButton>
+    </header>
   )
 }

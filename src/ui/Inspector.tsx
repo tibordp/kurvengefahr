@@ -1,12 +1,16 @@
 // Inspector: edits the selected element's `params` (→ re-generate) and `transform` (→ re-place),
-// plus the document machine profile (→ re-emit). Pure view over the store.
+// plus the document machine profile (→ re-emit). Pure view over the store. On narrow viewports it
+// renders as a slide-over drawer (see `useUI`); on desktop it's docked in the layout grid.
 import { useEffect, useState } from 'react'
+import { X, Trash2, Eye } from 'lucide-react'
 import { useDoc } from '../store/document'
+import { useUI } from '../store/ui'
 import { useGeneration, regenerate, isElementDirty } from '../core/generation'
 import { PROFILE_PRESETS } from '../store/profiles'
 import { substitution_note } from '../core/wasm'
 import type { DocElement } from '../core/types'
 import type { HandwritingParams } from '../elements/handwriting'
+import { Button, IconButton, Field, SectionTitle, Banner, controlClass, textareaClass, cx } from './primitives'
 
 function elementName(el: DocElement): string {
   if (el.type === 'handwriting') {
@@ -29,8 +33,8 @@ function ElementList() {
   if (elements.length === 0) return null
   return (
     <>
-      <h3>Elements</h3>
-      <ul className="elist">
+      <SectionTitle>Elements</SectionTitle>
+      <ul className="flex flex-col gap-1">
         {elements.map((el) => {
           const g = genStatus[el.id]
           const rowDirty = !g && isElementDirty(el.id, el.params)
@@ -45,29 +49,44 @@ function ElementList() {
                     ? '●'
                     : ''
           const badgeWarn = g?.phase === 'error' || rowDirty
+          const busy = g?.phase === 'loading-model' || g?.phase === 'generating'
+          const selected = el.id === selectedId
           return (
-          <li
-            key={el.id}
-            className={el.id === selectedId ? 'sel' : ''}
-            onClick={() => select(el.id)}
-          >
-            <span className="name">{elementName(el)}</span>
-            {badge && (
-              <span className={badgeWarn ? 'badge warn' : 'badge'} title={g?.phase ?? (rowDirty ? 'edited' : '')}>
-                {badge}
-              </span>
-            )}
-            <button
-              className="x"
-              title="Delete"
-              onClick={(e) => {
-                e.stopPropagation()
-                removeElement(el.id)
-              }}
+            <li
+              key={el.id}
+              className={cx(
+                'group flex cursor-pointer items-center gap-2 rounded-md border px-2 py-1.5 text-sm transition-colors',
+                selected
+                  ? 'border-accent-border bg-accent-subtle'
+                  : 'border-border hover:bg-bg',
+              )}
+              onClick={() => select(el.id)}
             >
-              ✕
-            </button>
-          </li>
+              <span className="flex-1 truncate">{elementName(el)}</span>
+              {badge && (
+                <span
+                  className={cx(
+                    'text-2xs leading-none',
+                    busy && 'animate-pulse',
+                    badgeWarn ? 'text-accent-text' : 'text-muted',
+                  )}
+                  title={g?.phase ?? (rowDirty ? 'edited' : '')}
+                >
+                  {badge}
+                </span>
+              )}
+              <button
+                className="rounded p-1 text-faint opacity-60 transition-colors hover:bg-surface hover:text-accent-text sm:opacity-0 sm:group-hover:opacity-100"
+                title="Delete"
+                aria-label="Delete element"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  removeElement(el.id)
+                }}
+              >
+                <Trash2 size={14} />
+              </button>
+            </li>
           )
         })}
       </ul>
@@ -108,11 +127,11 @@ function Num({
   }
 
   return (
-    <div className="field">
-      <label>{label}</label>
+    <Field label={label}>
       <input
         type="text"
         inputMode="decimal"
+        className={controlClass}
         value={text}
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
@@ -131,7 +150,7 @@ function Num({
           }
         }}
       />
-    </div>
+    </Field>
   )
 }
 
@@ -141,17 +160,32 @@ function GenerationNote({ id }: { id: string }) {
   const status = useGeneration((s) => s.status[id])
   if (!status) return null
   if (status.phase === 'loading-model') {
-    return <p className="note">⏳ Loading handwriting model… (first use only)</p>
+    return (
+      <p className="mb-2 animate-pulse text-xs text-muted">⏳ Loading handwriting model… (first use only)</p>
+    )
   }
   if (status.phase === 'generating') {
     const { done = 0, total = 0 } = status
-    return <p className="note">✎ Generating… {total > 0 ? `${done}/${total} lines` : ''}</p>
+    return (
+      <p className="mb-2 animate-pulse text-xs text-muted">
+        ✎ Generating… {total > 0 ? `${done}/${total} lines` : ''}
+      </p>
+    )
   }
   return (
-    <p className="note warn">
-      ⚠ Generation failed{status.message ? `: ${status.message}` : ''}.{' '}
-      <button className="link" onClick={() => regenerate(id)}>Retry</button>
-    </p>
+    <Banner
+      variant="warn"
+      action={
+        <button
+          className="shrink-0 font-medium underline underline-offset-2 hover:no-underline"
+          onClick={() => regenerate(id)}
+        >
+          Retry
+        </button>
+      }
+    >
+      ⚠ Generation failed{status.message ? `: ${status.message}` : ''}
+    </Banner>
   )
 }
 
@@ -171,22 +205,34 @@ function HandwritingInspector({ id, params }: { id: string; params: HandwritingP
 
   return (
     <>
-      <h3>Handwriting</h3>
+      <SectionTitle>Handwriting</SectionTitle>
       <GenerationNote id={id} />
       {dirty && (
-        <div className="dirty">
-          <span>● Edited — preview is out of date</span>
-          <button className="primary" onClick={() => regenerate(id)}>Regenerate</button>
-        </div>
+        <Banner
+          action={
+            <Button variant="primary" className="h-7 px-2.5 text-xs" onClick={() => regenerate(id)}>
+              Regenerate
+            </Button>
+          }
+        >
+          ● Edited — preview is out of date
+        </Banner>
       )}
-      <div className="field full">
+      <Field full>
         <textarea
+          className={textareaClass}
           rows={3}
           value={params.text}
           onChange={(e) => update({ text: e.target.value })}
         />
-      </div>
-      {subs && <p className="note warn" title="The model's alphabet is limited; these were remapped.">⚠ Substituted: {subs}</p>}
+      </Field>
+      {subs && (
+        <Banner variant="warn">
+          <span title="The model's alphabet is limited; these were remapped.">
+            ⚠ Substituted: {subs}
+          </span>
+        </Banner>
+      )}
       <Num label="Font (mm)" value={params.layout.fontSizeMm} step={0.5}
         onChange={(v) => setLayout({ fontSizeMm: v })} />
       <Num label="Line height" value={params.layout.lineHeightEm} step={0.1}
@@ -195,9 +241,9 @@ function HandwritingInspector({ id, params }: { id: string; params: HandwritingP
         onChange={(v) => setLayout({ maxWidthMm: v })} />
       <Num label="Slant (°)" value={params.layout.slantDeg} step={1}
         onChange={(v) => setLayout({ slantDeg: v })} />
-      <div className="field">
-        <label>Align</label>
+      <Field label="Align">
         <select
+          className={controlClass}
           value={params.layout.align}
           onChange={(e) => setLayout({ align: e.target.value as HandwritingParams['layout']['align'] })}
         >
@@ -205,35 +251,39 @@ function HandwritingInspector({ id, params }: { id: string; params: HandwritingP
           <option value="center">center</option>
           <option value="right">right</option>
         </select>
-      </div>
+      </Field>
       <Num label="Seed" value={params.style.seed} step={1}
         onChange={(v) => setStyle({ seed: v })} />
-      <div className="field">
-        <label title="Neatness. Lower = looser/more natural, higher = neater and more legible.">
-          Neatness
-        </label>
-        <div className="range">
+      <Field
+        label="Neatness"
+        title="Neatness. Lower = looser/more natural, higher = neater and more legible."
+      >
+        <div className="flex items-center gap-2">
           <input
             type="range"
+            className="min-w-0 flex-1"
             min={0}
             max={2.5}
             step={0.05}
             value={params.style.bias}
             onChange={(e) => setStyle({ bias: parseFloat(e.target.value) })}
           />
-          <span className="rangeval">{params.style.bias.toFixed(2)}</span>
+          <span className="min-w-[2.6em] text-right text-xs tabular-nums text-muted">
+            {params.style.bias.toFixed(2)}
+          </span>
         </div>
-      </div>
-      <div className="field">
-        <label title="Off: plot strokes in natural reading order (one locked unit). On: let the optimizer reorder this element's strokes with everything else.">
-          Global optimize
-        </label>
+      </Field>
+      <Field
+        label="Global optimize"
+        title="Off: plot strokes in natural reading order (one locked unit). On: let the optimizer reorder this element's strokes with everything else."
+      >
         <input
           type="checkbox"
+          className="h-4 w-4 justify-self-start"
           checked={params.globalOptimize}
           onChange={(e) => update({ globalOptimize: e.target.checked })}
         />
-      </div>
+      </Field>
     </>
   )
 }
@@ -245,7 +295,14 @@ function ElementSection() {
   const removeElement = useDoc((s) => s.removeElement)
 
   if (!element || !selectedId) {
-    return <p className="empty">No selection. Add a handwriting element, then click it.</p>
+    return (
+      <div className="mt-6 flex flex-col items-center gap-2 px-4 text-center">
+        <Eye size={22} className="text-faint" />
+        <p className="text-xs text-muted">
+          Nothing selected. Add a handwriting element, then click it on the canvas to edit.
+        </p>
+      </div>
+    )
   }
 
   const t = element.transform
@@ -255,7 +312,7 @@ function ElementSection() {
         <HandwritingInspector id={element.id} params={element.params as HandwritingParams} />
       )}
 
-      <h3>Transform</h3>
+      <SectionTitle>Transform</SectionTitle>
       <Num label="X (mm)" value={t.x} step={1} onChange={(v) => setTransform(element.id, { x: v })} />
       <Num label="Y (mm)" value={t.y} step={1} onChange={(v) => setTransform(element.id, { y: v })} />
       <Num label="Rotation (°)" value={t.rotation} step={1}
@@ -265,14 +322,15 @@ function ElementSection() {
       <Num label="Scale Y" value={t.scaleY} step={0.1}
         onChange={(v) => setTransform(element.id, { scaleY: v })} />
 
-      <div className="field full" style={{ marginTop: 8, display: 'flex', gap: 6 }}>
-        <button
+      <div className="mt-3 flex gap-2">
+        <Button
+          className="flex-1"
           title="Reset position to a visible spot near the top-left of the bed"
           onClick={() => setTransform(element.id, { x: 20, y: 20 })}
         >
           Bring into view
-        </button>
-        <button onClick={() => removeElement(element.id)}>Delete</button>
+        </Button>
+        <Button onClick={() => removeElement(element.id)}>Delete</Button>
       </div>
     </>
   )
@@ -285,33 +343,32 @@ function MachineSection() {
 
   return (
     <>
-      <h3>Profile</h3>
-      <div className="field">
-        <label>Preset</label>
-        <select value={profile.id} onChange={(e) => loadPreset(e.target.value)}>
+      <SectionTitle>Profile</SectionTitle>
+      <Field label="Preset">
+        <select className={controlClass} value={profile.id} onChange={(e) => loadPreset(e.target.value)}>
           {PROFILE_PRESETS.map((p) => (
             <option key={p.id} value={p.id}>
               {p.name}
             </option>
           ))}
         </select>
-      </div>
+      </Field>
 
-      <h3>Bed &amp; motion</h3>
+      <SectionTitle>Bed &amp; motion</SectionTitle>
       <Num label="Bed W (mm)" value={profile.bed.width} step={1}
         onChange={(v) => setProfile({ bed: { ...profile.bed, width: v } })} />
       <Num label="Bed H (mm)" value={profile.bed.height} step={1}
         onChange={(v) => setProfile({ bed: { ...profile.bed, height: v } })} />
-      <div className="field">
-        <label>Origin</label>
+      <Field label="Origin">
         <select
+          className={controlClass}
           value={profile.origin}
           onChange={(e) => setProfile({ origin: e.target.value as typeof profile.origin })}
         >
           <option value="bottom-left">bottom-left</option>
           <option value="top-left">top-left</option>
         </select>
-      </div>
+      </Field>
       <Num label="Travel (mm/min)" value={profile.feeds.travel} step={100}
         onChange={(v) => setProfile({ feeds: { ...profile.feeds, travel: v } })} />
       <Num label="Draw (mm/min)" value={profile.feeds.draw} step={100}
@@ -323,9 +380,9 @@ function MachineSection() {
       <Num label="Dwell (ms)" value={profile.penZ.dwell} step={10}
         onChange={(v) => setProfile({ penZ: { ...profile.penZ, dwell: v } })} />
 
-      <h3 title="Pen tip position relative to the nozzle. Shrinks the reachable area; offsets G-code coordinates.">
+      <SectionTitle title="Pen tip position relative to the nozzle. Shrinks the reachable area; offsets G-code coordinates.">
         Pen offset (vs nozzle)
-      </h3>
+      </SectionTitle>
       <Num label="Offset X (mm)" value={profile.penOffset.x} step={0.5}
         onChange={(v) => setProfile({ penOffset: { ...profile.penOffset, x: v } })} />
       <Num label="Offset Y (mm)" value={profile.penOffset.y} step={0.5}
@@ -333,57 +390,95 @@ function MachineSection() {
       <Num label="Offset Z (mm)" value={profile.penOffset.z} step={0.1}
         onChange={(v) => setProfile({ penOffset: { ...profile.penOffset, z: v } })} />
 
-      <h3>G-code</h3>
-      <div className="field full">
-        <label>Preamble</label>
+      <SectionTitle>G-code</SectionTitle>
+      <Field full label="Preamble">
         <textarea
-          className="mono"
+          className={cx(textareaClass, 'font-mono text-xs')}
           rows={4}
           value={profile.preamble}
           spellCheck={false}
           onChange={(e) => setProfile({ preamble: e.target.value })}
         />
-      </div>
-      <div className="field full">
-        <label>Postamble</label>
+      </Field>
+      <Field full label="Postamble">
         <textarea
-          className="mono"
+          className={cx(textareaClass, 'font-mono text-xs')}
           rows={3}
           value={profile.postamble}
           spellCheck={false}
           onChange={(e) => setProfile({ postamble: e.target.value })}
         />
-      </div>
+      </Field>
     </>
+  )
+}
+
+function Tab({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean
+  onClick: () => void
+  children: React.ReactNode
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={cx(
+        '-mb-px border-b-2 px-3 py-2.5 text-sm font-medium transition-colors outline-none',
+        'focus-visible:text-text',
+        active
+          ? 'border-accent text-text'
+          : 'border-transparent text-muted hover:text-text',
+      )}
+    >
+      {children}
+    </button>
   )
 }
 
 export function Inspector() {
   const [tab, setTab] = useState<'elements' | 'machine'>('elements')
+  const inspectorOpen = useUI((s) => s.inspectorOpen)
+  const setInspectorOpen = useUI((s) => s.setInspectorOpen)
+
   return (
-    <div className="inspector">
-      <div className="tabs">
-        <button
-          className={tab === 'elements' ? 'active' : ''}
-          onClick={() => setTab('elements')}
-        >
-          Elements
-        </button>
-        <button
-          className={tab === 'machine' ? 'active' : ''}
-          onClick={() => setTab('machine')}
-        >
-          Machine
-        </button>
-      </div>
-      {tab === 'elements' ? (
-        <>
-          <ElementList />
-          <ElementSection />
-        </>
-      ) : (
-        <MachineSection />
+    <aside
+      className={cx(
+        'z-30 flex w-[min(320px,85vw)] flex-col overflow-hidden border-l border-border bg-surface shadow-panel',
+        'fixed inset-y-0 right-0 transition-transform duration-200 ease-out',
+        'md:static md:z-auto md:w-auto md:translate-x-0 md:shadow-none',
+        inspectorOpen ? 'translate-x-0' : 'translate-x-full',
       )}
-    </div>
+    >
+      <div className="flex shrink-0 items-center gap-1 border-b border-border px-2">
+        <Tab active={tab === 'elements'} onClick={() => setTab('elements')}>
+          Elements
+        </Tab>
+        <Tab active={tab === 'machine'} onClick={() => setTab('machine')}>
+          Machine
+        </Tab>
+        <span className="flex-1" />
+        <IconButton
+          className="md:hidden"
+          onClick={() => setInspectorOpen(false)}
+          aria-label="Close inspector"
+        >
+          <X size={17} />
+        </IconButton>
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-3">
+        {tab === 'elements' ? (
+          <>
+            <ElementList />
+            <ElementSection />
+          </>
+        ) : (
+          <MachineSection />
+        )}
+      </div>
+    </aside>
   )
 }

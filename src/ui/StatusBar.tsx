@@ -23,17 +23,24 @@ export function StatusBar() {
     inside ? `X ${fmt(cx)}  Y ${fmt(cy)} mm` : 'X —  Y —'
 
   return (
-    <div className="statusbar">
+    <div className="flex shrink-0 items-center gap-3 border-t border-border bg-surface px-3 py-1 text-xs text-muted">
       <span>
-        <strong>Pen</strong> {coords(pen.x, pen.y)}
+        <strong className="mr-1.5 font-semibold text-text">Pen</strong>
+        <span className="font-mono tabular-nums">{coords(pen.x, pen.y)}</span>
       </span>
       {hasOffset && (
-        <span>
-          <strong>Nozzle</strong> {coords(pen.x - offset.x, pen.y - offset.y)}
-        </span>
+        <>
+          <span className="h-3.5 w-px bg-border" aria-hidden />
+          <span>
+            <strong className="mr-1.5 font-semibold text-text">Nozzle</strong>
+            <span className="font-mono tabular-nums">
+              {coords(pen.x - offset.x, pen.y - offset.y)}
+            </span>
+          </span>
+        </>
       )}
-      <span className="spacer" />
-      <span>{Math.round((scale / fit) * 100)}%</span>
+      <span className="flex-1" />
+      <span className="font-mono tabular-nums">{Math.round((scale / fit) * 100)}%</span>
     </div>
   )
 }
