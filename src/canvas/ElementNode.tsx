@@ -5,7 +5,7 @@ import { useRef } from 'react'
 import { Group, Line } from 'react-konva'
 import type Konva from 'konva'
 import type { DocElement } from '../core/types'
-import { generateLocal, bakesScale, applyScale } from '../elements/registry'
+import { generateLocal, bakesScale, applyScale, isMultiPen } from '../elements/registry'
 import { useDoc } from '../store/document'
 import { useGeneration, isElementDirty } from '../core/generation'
 import { snap } from './snap'
@@ -33,6 +33,11 @@ export function ElementNode({ element, pxPerMm, interactive = true }: Props) {
 
   const geom = generateLocal(element)
   const colorFor = (pen: number) => pens.find((p) => p.id === pen)?.color ?? '#1a1a1a'
+  // Local geometry carries the generator's pens; the element's chosen pen is stamped on later in
+  // the pipeline (page space). So colour single-pen elements by `element.pen`, and only honour a
+  // stroke's own pen for natively multi-colour types.
+  const multiPen = isMultiPen(element.type)
+  const elementColor = colorFor(element.pen)
 
   // Dim the ink when it's stale (params edited but not regenerated yet) — a conspicuous "this isn't
   // current" cue right on the canvas. While generating (status present) we keep full opacity so the
@@ -119,7 +124,7 @@ export function ElementNode({ element, pxPerMm, interactive = true }: Props) {
           <Line
             key={i}
             points={pts}
-            stroke={colorFor(stroke.pen)}
+            stroke={multiPen ? colorFor(stroke.pen) : elementColor}
             // Pen width is a property of the pen, not the element: keep it constant in
             // physical mm at the current zoom, unaffected by the element's scale. With
             // strokeScaleEnabled false, strokeWidth is in screen px → use mm × pxPerMm.

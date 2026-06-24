@@ -1,6 +1,16 @@
 // Left tool palette (Figma/Illustrator-style). Vertical on desktop (a grid column), a horizontal
 // strip above the canvas on mobile. Selecting a tool puts the canvas into that drawing mode.
-import { MousePointer2, Type, Minus, Square, Circle, PenTool, Pencil, type LucideIcon } from 'lucide-react'
+import {
+  MousePointer2,
+  Type,
+  Minus,
+  Square,
+  Circle,
+  PenTool,
+  Pencil,
+  Crosshair,
+  type LucideIcon,
+} from 'lucide-react'
 import { useTools, type Tool } from '../store/tools'
 import { cx } from './primitives'
 
@@ -12,6 +22,7 @@ const TOOLS: { tool: Tool; icon: LucideIcon; label: string; key: string }[] = [
   { tool: 'ellipse', icon: Circle, label: 'Ellipse', key: 'O' },
   { tool: 'pen', icon: PenTool, label: 'Pen (Bézier)', key: 'P' },
   { tool: 'freehand', icon: Pencil, label: 'Freehand', key: 'F' },
+  { tool: 'fiducial', icon: Crosshair, label: 'Fiducial (align point)', key: 'X' },
 ]
 
 export function ToolSidebar() {

@@ -2,7 +2,7 @@
 // inspector are pure views over this; the canvas library (Konva) never becomes authoritative.
 // On a Konva transform-end we read the affine back into here.
 import { create } from 'zustand'
-import type { DocElement, MachineProfile, Transform } from '../core/types'
+import type { DocElement, Fiducial, MachineProfile, PenId, Transform } from '../core/types'
 import { IDENTITY_TRANSFORM } from '../core/types'
 import { dropFromCache, generateLocal } from '../elements/registry'
 import { defaultHandwritingParams } from '../elements/handwriting'
@@ -43,6 +43,8 @@ interface DocStore {
   elements: DocElement[]
   profile: MachineProfile
   selectedIds: string[]
+  /** The document's single alignment fiducial (page-space mm), or null. */
+  fiducial: Fiducial | null
 
   addHandwriting: (text?: string, at?: { x: number; y: number }) => void
   /** Add an element of any registered type at a page-space transform; selects it. Returns its id. */
@@ -65,6 +67,12 @@ interface DocStore {
   setParams: (id: string, params: DocElement['params']) => void
   /** Patch an element's transform. Invalidates only Place. */
   setTransform: (id: string, patch: Partial<Transform>) => void
+  /** Assign an element's pen. Not a param — invalidates only Place/Emit (no regenerate). */
+  setPen: (id: string, pen: PenId) => void
+  /** Assign every selected element to a pen. */
+  setPenSelected: (pen: PenId) => void
+  /** Place / move / clear the document fiducial (page-space mm). Re-emit only (no geometry). */
+  setFiducial: (pt: Fiducial | null) => void
   /** Patch the machine profile. Invalidates only Emit. */
   setProfile: (patch: Partial<MachineProfile>) => void
   /** Adopt a built-in or saved profile as the working profile (a clone — subsequent edits don't
@@ -82,6 +90,7 @@ export const useDoc = create<DocStore>((set) => ({
   elements: [],
   profile: PRUSA_MK4,
   selectedIds: [],
+  fiducial: null,
 
   addHandwriting: (text = 'Kurvengefahr', at = { x: 20, y: 20 }) =>
     set((state) => {
@@ -92,6 +101,7 @@ export const useDoc = create<DocStore>((set) => ({
         type: 'handwriting',
         transform: { ...IDENTITY_TRANSFORM, x: at.x, y: at.y },
         params,
+        pen: 0,
       }
       return { elements: [...state.elements, el], selectedIds: [el.id] }
     }),
@@ -99,7 +109,7 @@ export const useDoc = create<DocStore>((set) => ({
   addElement: (type, params, transform) => {
     const id = crypto.randomUUID()
     set((state) => ({
-      elements: [...state.elements, { id, type, transform: { ...IDENTITY_TRANSFORM, ...transform }, params }],
+      elements: [...state.elements, { id, type, transform: { ...IDENTITY_TRANSFORM, ...transform }, params, pen: 0 }],
       selectedIds: [id],
     }))
     return id
@@ -130,6 +140,7 @@ export const useDoc = create<DocStore>((set) => ({
         type: el.type,
         transform: { ...el.transform, x: el.transform.x + 5, y: el.transform.y + 5 },
         params: structuredClone(el.params),
+        pen: el.pen,
       }
       return { elements: [...state.elements, copy], selectedIds: [copy.id] }
     }),
@@ -144,6 +155,7 @@ export const useDoc = create<DocStore>((set) => ({
           type: el.type,
           transform: { ...el.transform, x: el.transform.x + 5, y: el.transform.y + 5 },
           params: structuredClone(el.params),
+          pen: el.pen,
         }))
       if (!copies.length) return {}
       return { elements: [...state.elements, ...copies], selectedIds: copies.map((c) => c.id) }
@@ -223,6 +235,19 @@ export const useDoc = create<DocStore>((set) => ({
       ),
     })),
 
+  setPen: (id, pen) =>
+    set((state) => ({
+      elements: state.elements.map((e) => (e.id === id ? { ...e, pen } : e)),
+    })),
+
+  setPenSelected: (pen) =>
+    set((state) => {
+      const sel = new Set(state.selectedIds)
+      return { elements: state.elements.map((e) => (sel.has(e.id) ? { ...e, pen } : e)) }
+    }),
+
+  setFiducial: (pt) => set({ fiducial: pt }),
+
   setProfile: (patch) => set((state) => ({ profile: { ...state.profile, ...patch } })),
 
   selectProfile: (id) =>
@@ -237,6 +262,7 @@ export const useDoc = create<DocStore>((set) => ({
       elements: snapshot.elements,
       profile: snapshot.profile,
       selectedIds: snapshot.selectedIds,
+      fiducial: snapshot.fiducial,
     }),
 
   notifyGeometry: () => set((state) => ({ elements: [...state.elements] })),

@@ -9,6 +9,8 @@ import { flatten, unflatten } from '../wasm/serde'
 export async function optimizeGeometry(
   geom: Geometry,
   start: { x: number; y: number } = { x: 0, y: 0 },
+  /** Pen palette as ordered pen ids; pen groups are plotted in this order. Empty → first-appearance. */
+  penOrder: number[] = [],
 ): Promise<Geometry> {
   if (geom.length === 0) return geom
   await initWasm()
@@ -23,6 +25,7 @@ export async function optimizeGeometry(
     flat.group,
     start.x,
     start.y,
+    Uint16Array.from(penOrder),
   )
   // Copy the typed arrays out before freeing the Rust-owned struct.
   const out = unflatten({

@@ -27,6 +27,10 @@ interface ElementType {
    *  edits real dimensions instead of leaving a residual transform scale. Types without this keep
    *  the scale in their transform (e.g. handwriting scales its ink). */
   applyScale?: (params: any, sx: number, sy: number) => unknown
+  /** Natively multi-colour: the generator assigns per-stroke `pen`s itself, so concatenation must
+   *  NOT stamp the element's single `pen` over them. None today; the seam is here so adding such a
+   *  type (e.g. a multi-layer SVG import) needs no pipeline change. */
+  multiPen?: boolean
 }
 
 const types = new Map<string, ElementType>()
@@ -50,6 +54,11 @@ export function sanitizeParams(type: string, raw: unknown): unknown {
 /** Whether this type bakes transform-scale into its params (vs keeping it in the transform). */
 export function bakesScale(type: string): boolean {
   return !!types.get(type)?.applyScale
+}
+
+/** Whether this type assigns per-stroke pens itself (so concatenation leaves its pens untouched). */
+export function isMultiPen(type: string): boolean {
+  return !!types.get(type)?.multiPen
 }
 
 /** Bake a scale into a type's params (no-op if the type doesn't support it). */

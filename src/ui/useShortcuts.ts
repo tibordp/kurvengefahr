@@ -20,6 +20,7 @@ const TOOL_KEYS: Record<string, Tool> = {
   o: 'ellipse',
   p: 'pen',
   f: 'freehand',
+  x: 'fiducial',
 }
 
 export function useShortcuts(): void {

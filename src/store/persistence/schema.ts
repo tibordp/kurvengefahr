@@ -9,7 +9,7 @@
 //     simply backfilled when loading older data.
 //   • Forward (old app, newer data): a `schemaVersion` greater than CURRENT yields `unsupported`;
 //     callers report it and leave the stored bytes untouched rather than mangling them.
-import type { DocElement, MachineProfile, Transform } from '../../core/types'
+import type { DocElement, Fiducial, MachineProfile, Transform } from '../../core/types'
 import { IDENTITY_TRANSFORM } from '../../core/types'
 import { PRUSA_MK4 } from '../profiles'
 import { isKnownType, sanitizeParams } from '../../elements/registry'
@@ -25,6 +25,8 @@ export interface DocSnapshot {
   elements: DocElement[]
   profile: MachineProfile
   selectedIds: string[]
+  /** The single alignment fiducial (page-space mm), or null. */
+  fiducial: Fiducial | null
 }
 
 /** A document as stored under `kg-doc:<id>` — snapshot + identity/metadata. */
@@ -83,6 +85,7 @@ export function sanitizeProfile(p: unknown): MachineProfile {
     pens,
     preamble: str(p.preamble, base.preamble),
     postamble: str(p.postamble, base.postamble),
+    pause: str(p.pause, base.pause),
     units: 'mm',
   }
 }
@@ -99,14 +102,26 @@ function sanitizeElements(arr: unknown): DocElement[] {
       console.warn(`[kg] dropping element of unknown type "${type}"`)
       continue
     }
+    // Pen is a top-level element property. Older docs stored it inside `params.pen` (now removed
+    // from shape params) — lift it up so those documents keep their pen assignment.
+    const legacyPen = isObj(e.params) ? e.params.pen : undefined
     out.push({
       id: str(e.id, crypto.randomUUID()),
       type,
       transform: sanitizeTransform(e.transform),
       params: sanitizeParams(type, e.params),
+      pen: num(e.pen, num(legacyPen, 0)),
     })
   }
   return out
+}
+
+/** A fiducial is a finite {x,y} point, or null. Absent (older docs) → null. */
+function sanitizeFiducial(f: unknown): Fiducial | null {
+  if (!isObj(f)) return null
+  if (typeof f.x !== 'number' || typeof f.y !== 'number' || !Number.isFinite(f.x) || !Number.isFinite(f.y))
+    return null
+  return { x: f.x, y: f.y }
 }
 
 export function sanitizeSnapshot(raw: unknown): DocSnapshot {
@@ -120,7 +135,7 @@ export function sanitizeSnapshot(raw: unknown): DocSnapshot {
       ? [o.selectedId]
       : []
   const selectedIds = rawIds.filter((id: unknown): id is string => typeof id === 'string' && ids.has(id))
-  return { elements, profile: sanitizeProfile(o.profile), selectedIds }
+  return { elements, profile: sanitizeProfile(o.profile), selectedIds, fiducial: sanitizeFiducial(o.fiducial) }
 }
 
 // ---- migrations ---------------------------------------------------------------------------------
@@ -198,7 +213,13 @@ export function documentFile(doc: StoredDoc) {
   return {
     kind: DOC_FILE_KIND,
     schemaVersion: CURRENT_DOC_SCHEMA,
-    document: { name: doc.name, elements: doc.elements, profile: doc.profile, selectedIds: doc.selectedIds },
+    document: {
+      name: doc.name,
+      elements: doc.elements,
+      profile: doc.profile,
+      selectedIds: doc.selectedIds,
+      fiducial: doc.fiducial,
+    },
   }
 }
 

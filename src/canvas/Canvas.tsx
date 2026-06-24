@@ -20,6 +20,7 @@ import { ElementNode } from './ElementNode'
 import { PreviewLayer } from './PreviewLayer'
 import { DrawingPreview } from './DrawingPreview'
 import { NodeEditLayer } from './NodeEditLayer'
+import { FiducialLayer } from './FiducialLayer'
 import { SnapGrid } from './SnapLayer'
 import { useSnap } from '../store/snap'
 import {
@@ -367,6 +368,7 @@ export function Canvas() {
           {previewActive && <PreviewLayer pxPerMm={scale} />}
           {drawing && <DrawingPreview pxPerMm={scale} />}
           {!previewActive && !drawing && <NodeEditLayer pxPerMm={scale} />}
+          <FiducialLayer pxPerMm={scale} interactive={!previewActive && !spaceHeld && !drawing} />
           {marquee && (
             <Rect
               x={Math.min(marquee.a.x, marquee.b.x)}

@@ -30,11 +30,32 @@ function dist(a: { x: number; y: number }, b: { x: number; y: number }): number 
   return Math.hypot(a.x - b.x, a.y - b.y)
 }
 
-/** Build the ordered travel/draw path. `origin` is where the pen starts (machine park). */
-export function buildToolpath(geom: Geometry, origin = { x: 0, y: 0 }): Toolpath {
+/** Build the ordered travel/draw path. `origin` is where the pen starts (machine park). If a
+ *  `fiducial` page-point is given, the run begins with a travel over it (the real machine pauses
+ *  there for alignment; the pause isn't a motion, so only the travel is shown). */
+export function buildToolpath(
+  geom: Geometry,
+  origin = { x: 0, y: 0 },
+  fiducial?: { x: number; y: number } | null,
+): Toolpath {
   const moves: Move[] = []
   let cursor = { x: origin.x, y: origin.y }
   let cum = 0
+
+  if (fiducial) {
+    const fLen = dist(cursor, fiducial)
+    moves.push({
+      kind: 'travel',
+      pts: [
+        { x: cursor.x, y: cursor.y, pressure: 0 },
+        { x: fiducial.x, y: fiducial.y, pressure: 0 },
+      ],
+      len: fLen,
+      start: cum,
+    })
+    cum += fLen
+    cursor = { x: fiducial.x, y: fiducial.y }
+  }
 
   for (const s of geom) {
     if (s.points.length === 0) continue

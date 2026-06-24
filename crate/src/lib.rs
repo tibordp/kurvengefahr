@@ -187,6 +187,8 @@ pub fn clip(
 /// *chain*: strokes sharing a nonzero group are one locked, contiguous, fixed-direction unit
 /// (the whole handwriting element, internal pen-ups and all); group-0 strokes are free
 /// singletons that may be reordered and (if reversible) flipped. Geometry is preserved.
+/// `pen_order` is the document's pen palette as a list of pen ids; pen groups are plotted in that
+/// order (predictable manual swaps), with any stray pens not in the list appended last.
 #[wasm_bindgen]
 pub fn optimize(
     xy: &[f32],
@@ -197,9 +199,10 @@ pub fn optimize(
     group: &[u32],
     start_x: f32,
     start_y: f32,
+    pen_order: &[u16],
 ) -> GeometryBuffers {
     let strokes = decode(xy, pressure, offsets, pen, reversible, group);
-    GeometryBuffers::from_strokes(&order_greedy(&strokes, start_x, start_y))
+    GeometryBuffers::from_strokes(&order_greedy(&strokes, start_x, start_y, pen_order))
 }
 
 /// An orderable unit: the indices of the strokes it covers (in plot order), whether it may be
@@ -213,6 +216,9 @@ struct Unit {
     /// A single closed contour (first point ≈ last): the optimizer may begin at any vertex, so we
     /// travel to the nearest point on the loop and traverse from there back to it.
     closed: bool,
+    /// Which pen plots this unit (the pen of its strokes — a unit is single-pen). Ordering keeps
+    /// each pen's units contiguous so the job changes pens as few times as possible.
+    pen: u16,
 }
 
 /// How a chosen unit is emitted: a normal unit (optionally flipped if reversible), or a closed
@@ -259,6 +265,7 @@ fn build_units(strokes: &[Stroke]) -> Vec<Unit> {
                     entry: (pts[0].x, pts[0].y),
                     exit: (pts[pts.len() - 1].x, pts[pts.len() - 1].y),
                     closed: is_closed(&strokes[i]),
+                    pen: strokes[i].pen,
                 });
             }
             i += 1;
@@ -278,7 +285,8 @@ fn build_units(strokes: &[Stroke]) -> Vec<Unit> {
                     reversible: false, // a locked chain keeps its writing direction
                     entry: (fp[0].x, fp[0].y),
                     exit: (lp[lp.len() - 1].x, lp[lp.len() - 1].y),
-                    closed: false, // chains are ordered, fixed-direction units
+                    closed: false,             // chains are ordered, fixed-direction units
+                    pen: strokes[first].pen,   // a chain is single-pen (stamped at concatenation)
                 });
             }
         }
@@ -306,72 +314,163 @@ fn clone_stroke(s: &Stroke, reverse: bool) -> Stroke {
     }
 }
 
-fn order_greedy(strokes: &[Stroke], start_x: f32, start_y: f32) -> Vec<Stroke> {
+/// How to reach unit `u` from `cursor`: the pick (flip, or which vertex a closed loop starts at)
+/// and its travel cost² from the cursor.
+fn reach(u: &Unit, strokes: &[Stroke], cursor: (f32, f32)) -> (Pick, f32) {
+    if u.closed {
+        // Begin at whichever vertex is nearest the pen.
+        let pts = &strokes[u.strokes[0]].points;
+        let m = pts.len() - 1;
+        let mut bk = 0;
+        let mut bc = f32::INFINITY;
+        for k in 0..m {
+            let d = dist2(cursor, (pts[k].x, pts[k].y));
+            if d < bc {
+                bc = d;
+                bk = k;
+            }
+        }
+        (Pick::Closed(bk), bc)
+    } else {
+        let from_entry = dist2(cursor, u.entry);
+        if u.reversible && dist2(cursor, u.exit) < from_entry {
+            (Pick::Flip(true), dist2(cursor, u.exit))
+        } else {
+            (Pick::Flip(false), from_entry)
+        }
+    }
+}
+
+/// Append a chosen unit to `out` and return the pen's new resting position.
+fn emit_unit(u: &Unit, strokes: &[Stroke], pick: Pick, out: &mut Vec<Stroke>) -> (f32, f32) {
+    match pick {
+        Pick::Closed(start) => {
+            let s = &strokes[u.strokes[0]];
+            out.push(rotate_closed(s, start));
+            (s.points[start].x, s.points[start].y) // loop returns to its start
+        }
+        // Only singletons are reversible, so a flipped unit is exactly one stroke.
+        Pick::Flip(true) => {
+            out.push(clone_stroke(&strokes[u.strokes[0]], true));
+            u.entry
+        }
+        Pick::Flip(false) => {
+            for &si in &u.strokes {
+                out.push(clone_stroke(&strokes[si], false));
+            }
+            u.exit
+        }
+    }
+}
+
+/// Order strokes to minimise travel, **per pen**: pen changes are manual pauses, so we keep every
+/// pen's units contiguous (the change count is then just distinct-pens − 1 — the minimum). Pen
+/// groups are plotted in `pen_order` (the document's palette order) so swaps are predictable; only
+/// travel *within* a pen is optimised, by greedy nearest-neighbour.
+fn order_greedy(strokes: &[Stroke], start_x: f32, start_y: f32, pen_order: &[u16]) -> Vec<Stroke> {
     let units = build_units(strokes);
     let n = units.len();
     let mut used = vec![false; n];
     let mut cursor = (start_x, start_y);
     let mut out: Vec<Stroke> = Vec::with_capacity(strokes.len());
 
-    for _ in 0..n {
-        let mut best: Option<(usize, Pick, f32)> = None;
-        for (i, u) in units.iter().enumerate() {
-            if used[i] {
-                continue;
-            }
-            let (pick, cost) = if u.closed {
-                // Begin at whichever vertex is nearest the pen.
-                let pts = &strokes[u.strokes[0]].points;
-                let m = pts.len() - 1;
-                let mut bk = 0;
-                let mut bc = f32::INFINITY;
-                for k in 0..m {
-                    let d = dist2(cursor, (pts[k].x, pts[k].y));
-                    if d < bc {
-                        bc = d;
-                        bk = k;
-                    }
-                }
-                (Pick::Closed(bk), bc)
-            } else {
-                let from_entry = dist2(cursor, u.entry);
-                if u.reversible && dist2(cursor, u.exit) < from_entry {
-                    (Pick::Flip(true), dist2(cursor, u.exit))
-                } else {
-                    (Pick::Flip(false), from_entry)
-                }
-            };
-            if best.map_or(true, |(_, _, bc)| cost < bc) {
-                best = Some((i, pick, cost));
-            }
+    // Distinct pens actually present, in first-appearance order (the fallback for any pen not named
+    // in the palette).
+    let mut present: Vec<u16> = Vec::new();
+    for u in &units {
+        if !present.contains(&u.pen) {
+            present.push(u.pen);
         }
+    }
+    // Plot order = palette order (those present), then any stray present-but-unlisted pens.
+    let mut order: Vec<u16> = Vec::new();
+    for &p in pen_order {
+        if present.contains(&p) && !order.contains(&p) {
+            order.push(p);
+        }
+    }
+    for &p in &present {
+        if !order.contains(&p) {
+            order.push(p);
+        }
+    }
 
-        let (idx, pick, _) = match best {
-            Some(b) => b,
-            None => break,
-        };
-        used[idx] = true;
-        let u = &units[idx];
-
-        match pick {
-            Pick::Closed(start) => {
-                let s = &strokes[u.strokes[0]];
-                out.push(rotate_closed(s, start));
-                cursor = (s.points[start].x, s.points[start].y); // loop returns to its start
-            }
-            // Only singletons are reversible, so a flipped unit is exactly one stroke.
-            Pick::Flip(true) => {
-                out.push(clone_stroke(&strokes[u.strokes[0]], true));
-                cursor = u.entry;
-            }
-            Pick::Flip(false) => {
-                for &si in &u.strokes {
-                    out.push(clone_stroke(&strokes[si], false));
+    for &pen in &order {
+        // Exhaust this pen with greedy nearest-neighbour before changing pens.
+        loop {
+            let mut best: Option<(usize, Pick, f32)> = None;
+            for (i, u) in units.iter().enumerate() {
+                if used[i] || u.pen != pen {
+                    continue;
                 }
-                cursor = u.exit;
+                let (pick, cost) = reach(u, strokes, cursor);
+                if best.map_or(true, |(_, _, bc)| cost < bc) {
+                    best = Some((i, pick, cost));
+                }
             }
+            let (idx, pick, _) = match best {
+                Some(b) => b,
+                None => break,
+            };
+            used[idx] = true;
+            cursor = emit_unit(&units[idx], strokes, pick, &mut out);
         }
     }
 
     out
+}
+
+#[cfg(test)]
+mod optimize_tests {
+    use super::*;
+    use crate::geom::Point;
+
+    fn seg(pen: u16, x0: f32, x1: f32) -> Stroke {
+        Stroke {
+            points: vec![
+                Point { x: x0, y: 0.0, pressure: 1.0 },
+                Point { x: x1, y: 0.0, pressure: 1.0 },
+            ],
+            pen,
+            reversible: true,
+            group: 0,
+        }
+    }
+
+    /// The number of times the pen changes along the output (the count of M0 pauses + 1 group).
+    fn pen_runs(out: &[Stroke]) -> usize {
+        out.windows(2).filter(|w| w[0].pen != w[1].pen).count()
+    }
+
+    #[test]
+    fn keeps_each_pen_contiguous() {
+        // Spatially interleaved pens: a pen-blind NN would zig-zag 0→1→0 (2 changes). Pen-aware
+        // ordering must finish a pen before switching, so exactly distinct-pens − 1 = 1 change.
+        let strokes = vec![seg(0, 0.0, 0.5), seg(1, 1.0, 1.5), seg(0, 2.0, 2.5)];
+        let out = order_greedy(&strokes, 0.0, 0.0, &[0, 1]);
+        assert_eq!(out.len(), 3);
+        assert_eq!(pen_runs(&out), 1, "pens must not interleave");
+        assert_eq!(out[0].pen, 0);
+        assert_eq!(out[2].pen, 1);
+    }
+
+    #[test]
+    fn plots_pens_in_palette_order() {
+        // Same strokes; palette lists pen 1 before pen 0 → pen 1 plots first, regardless of which
+        // is nearer the start. Within a pen, travel is still NN-ordered.
+        let strokes = vec![seg(0, 0.0, 0.5), seg(1, 1.0, 1.5), seg(0, 2.0, 2.5)];
+        let out = order_greedy(&strokes, 0.0, 0.0, &[1, 0]);
+        assert_eq!(pen_runs(&out), 1);
+        assert_eq!(out[0].pen, 1, "palette order wins over nearest");
+        assert_eq!(out[2].pen, 0);
+    }
+
+    #[test]
+    fn single_pen_still_greedy_nn() {
+        // One pen: behaves exactly like before — nearest-first, flipping reversible strokes.
+        let strokes = vec![seg(0, 5.0, 6.0), seg(0, 0.0, 1.0)];
+        let out = order_greedy(&strokes, 0.0, 0.0, &[0]);
+        assert_eq!(pen_runs(&out), 0);
+        assert_eq!(out[0].points[0].x, 0.0, "nearest stroke first");
+    }
 }

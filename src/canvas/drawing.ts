@@ -154,6 +154,10 @@ export function drawPointerDown(p: Pt, mods: Mods): void {
   } else if (tool === 'handwriting') {
     useDoc.getState().addHandwriting(undefined, sp)
     useTools.getState().setTool('select')
+  } else if (tool === 'fiducial') {
+    // Singleton: placing simply sets (or moves) the one document fiducial.
+    useDoc.getState().setFiducial(sp)
+    useTools.getState().setTool('select')
   }
 }
 

@@ -9,7 +9,6 @@ export interface RectParams {
   h: number
   /** Corner radius in mm (0 = sharp). */
   cornerRadius: number
-  pen: number
   hatch: Hatch
 }
 
@@ -17,7 +16,6 @@ export const defaultRectParams = (w = 40, h = 25): RectParams => ({
   w,
   h,
   cornerRadius: 0,
-  pen: 0,
   hatch: defaultHatch(),
 })
 
@@ -37,7 +35,6 @@ registerElement('rect', {
       w: Math.max(0, num(o.w, 40)),
       h: Math.max(0, num(o.h, 25)),
       cornerRadius: Math.max(0, num(o.cornerRadius, 0)),
-      pen: num(o.pen, 0),
       hatch: sanitizeHatch(o.hatch),
     } as RectParams
   },

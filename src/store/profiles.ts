@@ -17,6 +17,7 @@ export const PRUSA_MK4: MachineProfile = {
   pens: DEFAULT_PENS,
   preamble: ['G21 ; mm', 'G90 ; absolute', 'G28 ; home'].join('\n'),
   postamble: ['G0 Z30 ; pen clear', 'G0 X0 Y0 ; park', 'M84 ; motors off'].join('\n'),
+  pause: ['G4 P500', 'M0 {message}'].join('\n'),
   units: 'mm',
 }
 
@@ -31,6 +32,7 @@ export const GENERIC_A4: MachineProfile = {
   pens: DEFAULT_PENS,
   preamble: ['G21', 'G90', 'G28'].join('\n'),
   postamble: ['G0 Z30', 'G0 X0 Y0'].join('\n'),
+  pause: ['G4 P500', 'M0 {message}'].join('\n'),
   units: 'mm',
 }
 

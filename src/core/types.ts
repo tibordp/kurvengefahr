@@ -59,6 +59,12 @@ export interface DocElement<TParams = unknown> {
   type: string
   transform: Transform
   params: TParams
+  /** Which pen draws this element. Like `transform`, this is *not* a geometry-affecting param:
+   *  it's stamped onto the element's strokes at concatenation (`buildPageGeometry`) and changing
+   *  it is a cheap re-place/re-emit, never a regenerate. Single-pen for now — a future element
+   *  type that is *natively* multi-colour sets per-stroke pens in its generator and opts out of
+   *  stamping (registry `multiPen`); `pen` then acts as its base/fallback. */
+  pen: PenId
 }
 
 export interface Pen {
@@ -66,6 +72,15 @@ export interface Pen {
   name: string
   /** Display colour for the canvas (not sent to the machine). */
   color: string
+}
+
+/** A page-space alignment point. At most one per document; produces no ink. At the start of a
+ *  print the machine travels over it at a high (clearance) Z and pauses (`M0`) so the operator can
+ *  align the medium to where features will be drawn. Its position uses the same pen→nozzle
+ *  transform as stroke points (`toMachine` − penOffset). */
+export interface Fiducial {
+  x: number
+  y: number
 }
 
 /** Global, document-level machine description. A feed/preamble tweak is a pure re-emit;
@@ -88,5 +103,12 @@ export interface MachineProfile {
   pens: Pen[]
   preamble: string
   postamble: string
+  /** Operator-pause macro, reused wherever the print stops for a human: between pen groups
+   *  ("Change to <pen>") and at the start when a fiducial is set ("Align medium…"). Only the
+   *  **pause** lives here — the positioning *moves* (clearance lift, travel to the fiducial) are
+   *  emitted by `emit`, since they need the pen→nozzle transform. Template: `{message}` → the
+   *  context message. May be multi-line, e.g. `G4 P500` then `M0 {message}` (Prusa shows the M0
+   *  text on the LCD). Empty = no pause. */
+  pause: string
   units: 'mm'
 }

@@ -8,6 +8,7 @@ import {
   Eye,
   Upload,
   Download,
+  Plus,
   AlignStartVertical,
   AlignCenterVertical,
   AlignEndVertical,
@@ -20,11 +21,12 @@ import { useUI } from '../store/ui'
 import { useLibrary } from '../store/library'
 import { useGeneration, regenerate, isElementDirty } from '../core/generation'
 import { PROFILE_PRESETS, findBuiltinProfile } from '../store/profiles'
-import { hashParams } from '../elements/registry'
+import { hashParams, isMultiPen } from '../elements/registry'
 import { profilesFile, parseProfilesFile } from '../store/persistence/schema'
+import { drawableRegion } from '../core/pipeline/clip'
 import { downloadJson, pickJsonFile } from '../output/download'
 import { substitution_note } from '../core/wasm'
-import type { DocElement } from '../core/types'
+import type { DocElement, Pen } from '../core/types'
 import type { HandwritingParams } from '../elements/handwriting'
 import type { RectParams, EllipseParams, PathParams, Hatch, HatchPattern } from '../elements/shapes'
 import { Button, IconButton, Field, SectionTitle, Banner, controlClass, textareaClass, cx } from './primitives'
@@ -397,11 +399,57 @@ function PathInspector({ id, params }: { id: string; params: PathParams }) {
   )
 }
 
+/** Default colours offered when adding a pen — a readable, distinct cycle. */
+const PEN_PALETTE = ['#1a1a1a', '#E5484D', '#2563EB', '#16A34A', '#D97706', '#7C3AED', '#0891B2', '#DB2777']
+
+function PenSwatch({ color }: { color: string }) {
+  return (
+    <span
+      className="h-3.5 w-3.5 shrink-0 rounded-sm border border-black/15"
+      style={{ background: color }}
+      aria-hidden
+    />
+  )
+}
+
+/** Assign an element (or selection) to a pen. `value === null` = a mixed selection. */
+function PenSelect({ value, onChange }: { value: number | null; onChange: (pen: number) => void }) {
+  const pens = useDoc((s) => s.profile.pens)
+  const current = value === null ? undefined : pens.find((p) => p.id === value)
+  return (
+    <Field label="Pen">
+      <div className="flex min-w-0 items-center gap-2">
+        <PenSwatch color={current?.color ?? '#1a1a1a'} />
+        <select
+          className={controlClass}
+          value={value ?? ''}
+          onChange={(e) => onChange(Number(e.target.value))}
+        >
+          {value === null && <option value="">Mixed</option>}
+          {pens.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
+            </option>
+          ))}
+        </select>
+      </div>
+    </Field>
+  )
+}
+
 /** Shown when 2+ elements are selected: align + group actions. */
 function MultiSelectSection({ count }: { count: number }) {
   const align = useDoc((s) => s.align)
   const removeSelected = useDoc((s) => s.removeSelected)
   const duplicateSelected = useDoc((s) => s.duplicateSelected)
+  const setPenSelected = useDoc((s) => s.setPenSelected)
+  // The shared pen of the selection, or null when they differ (→ "Mixed"). Single-pen elements
+  // only; a natively multi-colour element in the mix is ignored for this control.
+  const commonPen = useDoc((s) => {
+    const sel = s.elements.filter((e) => s.selectedIds.includes(e.id) && !isMultiPen(e.type))
+    if (!sel.length) return null
+    return sel.every((e) => e.pen === sel[0].pen) ? sel[0].pen : null
+  })
   const A = ({ edge, Icon, title }: { edge: AlignEdge; Icon: typeof AlignStartVertical; title: string }) => (
     <IconButton aria-label={title} title={title} onClick={() => align(edge)}>
       <Icon size={16} />
@@ -419,6 +467,9 @@ function MultiSelectSection({ count }: { count: number }) {
         <A edge="centerY" Icon={AlignCenterHorizontal} title="Align middle (vertical)" />
         <A edge="bottom" Icon={AlignEndHorizontal} title="Align bottom" />
       </div>
+      <div className="mt-3">
+        <PenSelect value={commonPen} onChange={(pen) => setPenSelected(pen)} />
+      </div>
       <div className="mt-3 flex gap-2">
         <Button className="flex-1" onClick={() => duplicateSelected()}>
           Duplicate
@@ -429,12 +480,41 @@ function MultiSelectSection({ count }: { count: number }) {
   )
 }
 
+/** The document fiducial (alignment point), if placed. Document-level, not an element — so it has
+ *  its own editor rather than living in the selection-driven element UI. */
+function FiducialSection() {
+  const fiducial = useDoc((s) => s.fiducial)
+  const setFiducial = useDoc((s) => s.setFiducial)
+  const profile = useDoc((s) => s.profile)
+  if (!fiducial) return null
+
+  const r = drawableRegion(profile)
+  const outOfReach = fiducial.x < r.x0 || fiducial.x > r.x1 || fiducial.y < r.y0 || fiducial.y > r.y1
+
+  return (
+    <>
+      <SectionTitle title="Alignment point. At the start of a print the pen travels here at a high Z and pauses (M0) so you can register the medium before drawing.">
+        Fiducial
+      </SectionTitle>
+      {outOfReach && (
+        <Banner variant="warn">⚠ Outside the pen's reachable area — it may not be plottable.</Banner>
+      )}
+      <Num label="X (mm)" value={fiducial.x} step={1} onChange={(v) => setFiducial({ ...fiducial, x: v })} />
+      <Num label="Y (mm)" value={fiducial.y} step={1} onChange={(v) => setFiducial({ ...fiducial, y: v })} />
+      <Button className="mt-2 w-full" onClick={() => setFiducial(null)}>
+        Remove fiducial
+      </Button>
+    </>
+  )
+}
+
 function ElementSection() {
   const selectedIds = useDoc((s) => s.selectedIds)
   const element = useDoc((s) =>
     s.selectedIds.length === 1 ? (s.elements.find((e) => e.id === s.selectedIds[0]) ?? null) : null,
   )
   const setTransform = useDoc((s) => s.setTransform)
+  const setPen = useDoc((s) => s.setPen)
   const removeElement = useDoc((s) => s.removeElement)
 
   if (selectedIds.length === 0) {
@@ -463,6 +543,13 @@ function ElementSection() {
         <EllipseInspector id={element.id} params={element.params as EllipseParams} />
       )}
       {element.type === 'path' && <PathInspector id={element.id} params={element.params as PathParams} />}
+
+      {!isMultiPen(element.type) && (
+        <>
+          <SectionTitle>Pen</SectionTitle>
+          <PenSelect value={element.pen} onChange={(pen) => setPen(element.id, pen)} />
+        </>
+      )}
 
       <SectionTitle>Transform</SectionTitle>
       <Num label="X (mm)" value={t.x} step={1} onChange={(v) => setTransform(element.id, { x: v })} />
@@ -602,6 +689,66 @@ function ProfileControls() {
   )
 }
 
+/** Pen palette editor. Pens are document-level (live on the profile); each is a colour + name.
+ *  Plotting changes pens with an M0 pause, so order/contiguity is handled by the optimizer. */
+function PensSection() {
+  const pens = useDoc((s) => s.profile.pens)
+  const setProfile = useDoc((s) => s.setProfile)
+
+  const update = (id: number, patch: Partial<Pen>) =>
+    setProfile({ pens: pens.map((p) => (p.id === id ? { ...p, ...patch } : p)) })
+  const add = () => {
+    const id = pens.reduce((m, p) => Math.max(m, p.id), -1) + 1
+    setProfile({
+      pens: [...pens, { id, name: `Pen ${pens.length + 1}`, color: PEN_PALETTE[pens.length % PEN_PALETTE.length] }],
+    })
+  }
+  const remove = (id: number) => {
+    if (pens.length <= 1) return // always keep at least one pen
+    setProfile({ pens: pens.filter((p) => p.id !== id) })
+  }
+
+  return (
+    <>
+      <SectionTitle title="Each pen is a manual swap: an M0 pause in the G-code. The optimizer plots one pen fully before changing to the next.">
+        Pens
+      </SectionTitle>
+      <ul className="flex flex-col gap-1.5">
+        {pens.map((p) => (
+          <li key={p.id} className="flex items-center gap-2">
+            <input
+              type="color"
+              value={p.color}
+              onChange={(e) => update(p.id, { color: e.target.value })}
+              className="h-8 w-8 shrink-0 cursor-pointer rounded-md border border-border bg-surface p-0.5"
+              aria-label={`${p.name} colour`}
+              title="Pen colour (display only — not sent to the machine)"
+            />
+            <input
+              type="text"
+              value={p.name}
+              onChange={(e) => update(p.id, { name: e.target.value })}
+              className={controlClass}
+              aria-label="Pen name"
+            />
+            <IconButton
+              aria-label={`Remove ${p.name}`}
+              title={pens.length <= 1 ? 'Keep at least one pen' : 'Remove pen'}
+              disabled={pens.length <= 1}
+              onClick={() => remove(p.id)}
+            >
+              <Trash2 size={14} />
+            </IconButton>
+          </li>
+        ))}
+      </ul>
+      <Button className="mt-2 h-7 px-2.5 text-xs" onClick={add}>
+        <Plus size={14} /> Add pen
+      </Button>
+    </>
+  )
+}
+
 function MachineSection() {
   const profile = useDoc((s) => s.profile)
   const setProfile = useDoc((s) => s.setProfile)
@@ -609,6 +756,7 @@ function MachineSection() {
   return (
     <>
       <ProfileControls />
+      <PensSection />
 
       <SectionTitle>Bed &amp; motion</SectionTitle>
       <Num label="Bed W (mm)" value={profile.bed.width} step={1}
@@ -664,6 +812,24 @@ function MachineSection() {
           spellCheck={false}
           onChange={(e) => setProfile({ postamble: e.target.value })}
         />
+      </Field>
+      <Field
+        full
+        label="Pause"
+        title="Operator pause, reused for pen swaps and the fiducial. The positioning moves are emitted automatically; this is just the stop. {message} is the context text (Prusa shows the M0 text on the LCD)."
+      >
+        <textarea
+          className={cx(textareaClass, 'font-mono text-xs')}
+          rows={3}
+          value={profile.pause}
+          spellCheck={false}
+          placeholder={'G4 P500\nM0 {message}'}
+          onChange={(e) => setProfile({ pause: e.target.value })}
+        />
+        <p className="mt-1 text-2xs text-faint">
+          Emitted at pen changes (“Change to …”) and the fiducial. <code>{'{message}'}</code> = the
+          context message; the lift/travel moves are added automatically.
+        </p>
       </Field>
     </>
   )
@@ -730,6 +896,7 @@ export function Inspector() {
           <>
             <ElementList />
             <ElementSection />
+            <FiducialSection />
           </>
         ) : (
           <MachineSection />

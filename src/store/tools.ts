@@ -4,7 +4,15 @@
 // continues until the path is finished).
 import { create } from 'zustand'
 
-export type Tool = 'select' | 'handwriting' | 'line' | 'rect' | 'ellipse' | 'pen' | 'freehand'
+export type Tool =
+  | 'select'
+  | 'handwriting'
+  | 'line'
+  | 'rect'
+  | 'ellipse'
+  | 'pen'
+  | 'freehand'
+  | 'fiducial'
 
 interface ToolsStore {
   tool: Tool

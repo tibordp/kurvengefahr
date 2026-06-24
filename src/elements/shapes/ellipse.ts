@@ -7,11 +7,10 @@ export interface EllipseParams {
   /** Radii in mm; the ellipse is centred at the local origin (0,0). */
   rx: number
   ry: number
-  pen: number
   hatch: Hatch
 }
 
-export const defaultEllipseParams = (rx = 20, ry = 20): EllipseParams => ({ rx, ry, pen: 0, hatch: defaultHatch() })
+export const defaultEllipseParams = (rx = 20, ry = 20): EllipseParams => ({ rx, ry, hatch: defaultHatch() })
 
 const num = (v: unknown, d: number) => (typeof v === 'number' && Number.isFinite(v) ? v : d)
 
@@ -28,7 +27,6 @@ registerElement('ellipse', {
     return {
       rx: Math.max(0, num(o.rx, 20)),
       ry: Math.max(0, num(o.ry, 20)),
-      pen: num(o.pen, 0),
       hatch: sanitizeHatch(o.hatch),
     } as EllipseParams
   },

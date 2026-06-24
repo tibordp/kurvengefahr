@@ -48,7 +48,7 @@ export function Toolbar() {
       usePreview.getState().exit()
       return
     }
-    const { elements, profile } = useDoc.getState()
+    const { elements, profile, fiducial } = useDoc.getState()
     if (elements.length === 0) return
     setPreparing(true)
     try {
@@ -56,19 +56,19 @@ export function Toolbar() {
       // point (machine origin in page space), so the dotted line starts at the right corner.
       const park = penParkInPage(profile)
       const plottable = buildPlottableGeometry(elements, profile)
-      const optimized = await optimizeGeometry(plottable, park)
-      usePreview.getState().enter(buildToolpath(optimized, park))
+      const optimized = await optimizeGeometry(plottable, park, profile.pens.map((p) => p.id))
+      usePreview.getState().enter(buildToolpath(optimized, park, fiducial))
     } finally {
       setPreparing(false)
     }
   }
 
   const onGenerate = async () => {
-    const { elements, profile } = useDoc.getState()
+    const { elements, profile, fiducial } = useDoc.getState()
     if (elements.length === 0) return
     setBusy(true)
     try {
-      const gcode = await runPipeline(elements, profile)
+      const gcode = await runPipeline(elements, profile, [], fiducial)
       await downloadSink.send('kurvengefahr.gcode', gcode)
     } finally {
       setBusy(false)

@@ -8,8 +8,8 @@
 //
 // The invalidation taxonomy maps onto these: text/params → re-generate; transform → re-place;
 // feeds/preamble/Z → re-emit only.
-import type { DocElement, Geometry, MachineProfile } from '../types'
-import { generateLocal, isElementLocked } from '../../elements/registry'
+import type { DocElement, Fiducial, Geometry, MachineProfile } from '../types'
+import { generateLocal, isElementLocked, isMultiPen } from '../../elements/registry'
 import { place } from './place'
 import { applyFilters, type StrokeFilter } from './filters'
 import { optimizeGeometry } from './optimize'
@@ -22,7 +22,12 @@ import { clipToRegion, drawableRegion } from './clip'
  *  Grouping is assigned here, where elements are concatenated: a locked element (e.g. a
  *  handwriting element with global optimization off) gets a unique chain id and fixed
  *  direction, so the optimizer keeps its strokes in natural order as one unit. Everything else
- *  stays group 0 — free singletons in the global bag. */
+ *  stays group 0 — free singletons in the global bag.
+ *
+ *  Pen assignment also happens here: each element's `pen` is stamped onto its strokes (so a pen
+ *  change is a cheap re-place, never a regenerate). A natively multi-colour type (registry
+ *  `multiPen`) keeps the per-stroke pens its generator produced. A locked chain is therefore
+ *  single-pen — which is what the per-pen optimizer and the M0-per-pen emit assume. */
 export function buildPageGeometry(
   elements: DocElement[],
   filters: StrokeFilter[] = [],
@@ -32,11 +37,12 @@ export function buildPageGeometry(
   for (const el of elements) {
     const placed = place(generateLocal(el), el.transform)
     const filtered = applyFilters(placed, filters)
+    const stamp = isMultiPen(el.type) ? (s: (typeof filtered)[number]) => s.pen : () => el.pen
     if (isElementLocked(el.type, el.params)) {
       chainId++
-      for (const s of filtered) out.push({ ...s, group: chainId, reversible: false })
+      for (const s of filtered) out.push({ ...s, pen: stamp(s), group: chainId, reversible: false })
     } else {
-      for (const s of filtered) out.push(s)
+      for (const s of filtered) out.push({ ...s, pen: stamp(s) })
     }
   }
   return out
@@ -57,8 +63,10 @@ export async function runPipeline(
   elements: DocElement[],
   profile: MachineProfile,
   filters: StrokeFilter[] = [],
+  fiducial?: Fiducial | null,
 ): Promise<string> {
   const plottable = buildPlottableGeometry(elements, profile, filters)
-  const optimized = await optimizeGeometry(plottable, penParkInPage(profile))
-  return emit(optimized, profile)
+  const penOrder = profile.pens.map((p) => p.id)
+  const optimized = await optimizeGeometry(plottable, penParkInPage(profile), penOrder)
+  return emit(optimized, profile, fiducial)
 }

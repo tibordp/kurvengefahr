@@ -17,11 +17,10 @@ export interface PathNode {
 export interface PathParams {
   nodes: PathNode[]
   closed: boolean
-  pen: number
   hatch: Hatch
 }
 
-export const defaultPathParams = (): PathParams => ({ nodes: [], closed: false, pen: 0, hatch: defaultHatch() })
+export const defaultPathParams = (): PathParams => ({ nodes: [], closed: false, hatch: defaultHatch() })
 
 /** A corner node (no handles) at (x,y). */
 export const cornerNode = (x: number, y: number): PathNode => ({
@@ -69,7 +68,7 @@ registerElement('path', {
           houtY: num(n?.houtY, 0),
         }))
       : []
-    return { nodes, closed: !!o.closed, pen: num(o.pen, 0), hatch: sanitizeHatch(o.hatch) } as PathParams
+    return { nodes, closed: !!o.closed, hatch: sanitizeHatch(o.hatch) } as PathParams
   },
   // Baking scale into a path keeps the sign (a flip is valid geometry); handles scale too.
   applyScale: (p: PathParams, sx, sy) => ({
