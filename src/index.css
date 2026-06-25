@@ -43,6 +43,37 @@
   --shadow-panel: 0 1px 2px rgb(0 0 0 / 0.04), 0 1px 3px rgb(0 0 0 / 0.06);
 }
 
+/* Dark theme: re-point the same tokens, so every utility (bg-surface, text-muted, …) tracks the
+   mode for free — no `dark:` variants in the chrome. Toggled by the `.dark` class on <html>
+   (store/theme.ts + the no-flash boot script in index.html). `html.dark` outranks `:root`.
+   The Konva canvas keeps its own light colours: the white paper *is* the plotted result, so only
+   the surround (--color-canvas) darkens; the render path is untouched. */
+html.dark {
+  --color-bg: #18181b;
+  --color-canvas: #0a0a0c; /* surround behind the stage */
+  --color-surface: #232328; /* panels sit just above the app bg */
+  --color-border: #34343b;
+  --color-border-strong: #4a4a52;
+  --color-text: #f4f4f5;
+  --color-muted: #a1a1aa;
+  --color-faint: #6c6c75;
+
+  /* Accent stays signal-red; text/border/subtle shift for legibility on dark surfaces. */
+  --color-accent: #e5484d;
+  --color-accent-solid: #dc3d43;
+  --color-accent-solid-hover: #ec5a5f;
+  --color-accent-subtle: #2c1517;
+  --color-accent-border: #6f2c2f;
+  --color-accent-text: #f4787b;
+
+  /* Warn (amber) on dark */
+  --color-warn-text: #fcd34d;
+  --color-warn-bg: #2a2207;
+  --color-warn-border: #57480f;
+
+  --shadow-panel: 0 1px 2px rgb(0 0 0 / 0.4), 0 1px 3px rgb(0 0 0 / 0.5);
+}
+
 @layer base {
   html,
   body,

@@ -15,9 +15,13 @@ import {
   AlignStartHorizontal,
   AlignCenterHorizontal,
   AlignEndHorizontal,
+  Sun,
+  Moon,
+  Monitor,
 } from 'lucide-react'
 import { useDoc, type AlignEdge } from '../store/document'
 import { useUI } from '../store/ui'
+import { useTheme, type Theme } from '../store/theme'
 import { useLibrary } from '../store/library'
 import { useGeneration, regenerate, needsManualRegen } from '../core/generation'
 import { PROFILE_PRESETS, findBuiltinProfile } from '../store/profiles'
@@ -927,6 +931,55 @@ function MachineSection() {
   )
 }
 
+// App-wide preferences (not document state) — currently just appearance. Lives in its own inspector
+// tab so it's discoverable without crowding the per-element / per-machine panels.
+const THEME_OPTIONS: { value: Theme; label: string; Icon: typeof Sun }[] = [
+  { value: 'light', label: 'Light', Icon: Sun },
+  { value: 'system', label: 'System', Icon: Monitor },
+  { value: 'dark', label: 'Dark', Icon: Moon },
+]
+
+function PreferencesSection() {
+  const theme = useTheme((s) => s.theme)
+  const setTheme = useTheme((s) => s.setTheme)
+  return (
+    <>
+      <SectionTitle>Appearance</SectionTitle>
+      <Field label="Theme" full>
+        <div
+          role="radiogroup"
+          aria-label="Theme"
+          className="grid grid-cols-3 gap-0.5 rounded-md border border-border bg-bg p-0.5"
+        >
+          {THEME_OPTIONS.map(({ value, label, Icon }) => (
+            <button
+              key={value}
+              role="radio"
+              aria-checked={theme === value}
+              title={`${label} theme`}
+              onClick={() => setTheme(value)}
+              className={cx(
+                'flex items-center justify-center gap-1.5 rounded px-2 py-1.5 text-xs font-medium',
+                'transition-colors outline-none focus-visible:ring-2 focus-visible:ring-accent/45',
+                theme === value
+                  ? 'bg-surface text-text shadow-panel'
+                  : 'text-muted hover:text-text',
+              )}
+            >
+              <Icon size={14} aria-hidden />
+              {label}
+            </button>
+          ))}
+        </div>
+      </Field>
+      <p className="mt-1 text-2xs text-faint">
+        System follows your OS appearance. The drawing canvas stays light — the white page is the
+        plotted result.
+      </p>
+    </>
+  )
+}
+
 function Tab({
   active,
   onClick,
@@ -961,7 +1014,7 @@ function Tab({
 }
 
 export function Inspector() {
-  const [tab, setTab] = useState<'elements' | 'machine'>('elements')
+  const [tab, setTab] = useState<'elements' | 'machine' | 'preferences'>('elements')
   const inspectorOpen = useUI((s) => s.inspectorOpen)
   const setInspectorOpen = useUI((s) => s.setInspectorOpen)
 
@@ -1008,6 +1061,14 @@ export function Inspector() {
         >
           Machine
         </Tab>
+        <Tab
+          active={tab === 'preferences'}
+          onClick={() => setTab('preferences')}
+          id="tab-preferences"
+          controls="panel-preferences"
+        >
+          Preferences
+        </Tab>
         <span className="flex-1" />
         <IconButton
           className="md:hidden"
@@ -1021,8 +1082,8 @@ export function Inspector() {
 
       <div
         role="tabpanel"
-        id={tab === 'elements' ? 'panel-elements' : 'panel-machine'}
-        aria-labelledby={tab === 'elements' ? 'tab-elements' : 'tab-machine'}
+        id={`panel-${tab}`}
+        aria-labelledby={`tab-${tab}`}
         tabIndex={0}
         className="flex-1 overflow-y-auto p-3 outline-none"
       >
@@ -1032,8 +1093,10 @@ export function Inspector() {
             <ElementSection />
             <FiducialSection />
           </>
-        ) : (
+        ) : tab === 'machine' ? (
           <MachineSection />
+        ) : (
+          <PreferencesSection />
         )}
       </div>
     </aside>

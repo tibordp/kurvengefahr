@@ -9,6 +9,16 @@
       content="Browser CAM for pen plotters — turn handwriting (and vectors) into G-code."
     />
     <title>Kurvengefahr — pen-plotter CAM</title>
+    <!-- Apply the saved theme before first paint so dark mode never flashes light.
+         Mirrors store/theme.ts (key + resolution); that store is the source of truth at runtime. -->
+    <script>
+      try {
+        var t = localStorage.getItem('kg-theme') || 'system'
+        var dark = t === 'dark' || (t === 'system' && matchMedia('(prefers-color-scheme: dark)').matches)
+        document.documentElement.classList.toggle('dark', dark)
+        document.documentElement.style.colorScheme = dark ? 'dark' : 'light'
+      } catch (e) {}
+    </script>
   </head>
   <body>
     <div id="root"></div>
