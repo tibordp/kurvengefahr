@@ -1,8 +1,9 @@
 import { useState } from 'react'
-import { RotateCw, Play, Pencil, Download, PanelRight, CircleHelp } from 'lucide-react'
+import { RotateCw, Play, Pencil, Download, PanelRight, CircleHelp, Undo2, Redo2 } from 'lucide-react'
 import { useDoc } from '../store/document'
 import { usePreview } from '../store/preview'
 import { useUI } from '../store/ui'
+import { useHistory, undo, redo } from '../store/history'
 import { regenerateAll, isElementDirty } from '../core/generation'
 import { buildPlottableGeometry } from '../core/pipeline'
 import { optimizeGeometry } from '../core/pipeline/optimize'
@@ -40,6 +41,8 @@ export function Toolbar() {
   const previewActive = usePreview((s) => s.active)
   const toggleInspector = useUI((s) => s.toggleInspector)
   const toggleHelp = useUI((s) => s.toggleHelp)
+  const canUndo = useHistory((s) => s.past.length > 0)
+  const canRedo = useHistory((s) => s.future.length > 0)
   const [busy, setBusy] = useState(false)
   const [preparing, setPreparing] = useState(false)
 
@@ -90,6 +93,25 @@ export function Toolbar() {
 
       <span className="mx-1 hidden h-5 w-px bg-border sm:block" aria-hidden />
       <DocumentMenu />
+      <span className="mx-1 h-5 w-px bg-border" aria-hidden />
+
+      {/* Undo / redo */}
+      <IconButton
+        onClick={() => undo()}
+        disabled={!canUndo}
+        aria-label="Undo"
+        title={`Undo (${MOD_KEY}Z)`}
+      >
+        <Undo2 size={17} />
+      </IconButton>
+      <IconButton
+        onClick={() => redo()}
+        disabled={!canRedo}
+        aria-label="Redo"
+        title={`Redo (${MOD_KEY}⇧Z)`}
+      >
+        <Redo2 size={17} />
+      </IconButton>
       <span className="mx-1 h-5 w-px bg-border" aria-hidden />
 
       {/* Regenerate edited (dirty) elements */}

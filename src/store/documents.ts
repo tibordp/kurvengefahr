@@ -8,6 +8,7 @@
 import { create } from 'zustand'
 import { PRUSA_MK4 } from './profiles'
 import { useDoc } from './document'
+import { reset as resetHistory, wireHistory, leave as leaveHistory, enter as enterHistory } from './history'
 import { type DocSnapshot, type StoredDoc, CURRENT_DOC_SCHEMA, loadStoredDoc } from './persistence/schema'
 import * as storage from './persistence/storage'
 import type { DocMeta } from './persistence/storage'
@@ -41,20 +42,28 @@ export const useDocuments = create<DocsStore>((set, get) => ({
   activeName: '',
 
   newDocument: () => {
+    const prev = get().activeId
+    flushSave()
+    leaveHistory(prev) // stash the outgoing doc's undo stack before we replace the canvas
     const id = crypto.randomUUID()
     storage.setActiveId(id)
     useDoc.getState().loadDocument(emptySnapshot())
     set({ activeId: id, activeName: '' })
     lastContent = contentKey() // blank + not in index → autosave won't persist until first edit
+    enterHistory(id)
   },
 
   openDocument: (id) => {
     const doc = storage.readDoc(id)
     if (!doc) return
+    const prev = get().activeId
+    flushSave()
+    leaveHistory(prev)
     storage.setActiveId(id)
     useDoc.getState().loadDocument({ elements: doc.elements, profile: doc.profile, selectedIds: doc.selectedIds, fiducial: doc.fiducial })
     set({ activeId: id, activeName: doc.name })
     lastContent = contentKey() // matches storage → no redundant rewrite
+    enterHistory(id) // restore this doc's stack if it's still valid for the loaded content
   },
 
   deleteDocument: (id) => {
@@ -80,12 +89,16 @@ export const useDocuments = create<DocsStore>((set, get) => ({
   },
 
   loadImported: (name, snapshot) => {
+    const prev = get().activeId
+    flushSave()
+    leaveHistory(prev)
     const id = crypto.randomUUID()
     storage.setActiveId(id)
     useDoc.getState().loadDocument(snapshot)
     set({ activeId: id, activeName: name })
     lastContent = null
     persistActive({ force: true })
+    enterHistory(id)
   },
 
   _setIndex: (index) => set({ index }),
@@ -144,6 +157,14 @@ function persistActive(opts?: { force?: boolean }): void {
   useDocuments.getState()._setIndex(index)
 }
 
+/** Force any pending debounced autosave to flush synchronously. Called when leaving a document
+ *  state (switch / hide / close) so localStorage matches the in-memory doc — which is what the
+ *  persisted undo stack is fingerprinted against, and closes the 500 ms close-the-tab loss window. */
+function flushSave(): void {
+  clearTimeout(saveTimer)
+  persistActive()
+}
+
 function isEditingText(): boolean {
   const el = document.activeElement as HTMLElement | null
   return !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)
@@ -154,6 +175,7 @@ function applyRemote(doc: StoredDoc): void {
   useDocuments.setState({ activeName: doc.name })
   lastContent = contentKey() // echo guard: our own autosave now sees no change
   pendingRemote = null
+  resetHistory() // the remote state is the new baseline; don't let it be undone locally
 }
 
 let wired = false
@@ -166,6 +188,9 @@ function wire(): void {
     clearTimeout(saveTimer)
     saveTimer = setTimeout(() => persistActive(), 500)
   })
+
+  // Undo/redo: capture document changes into the history stack (+ the field-edit focus bracket).
+  wireHistory()
 
   window.addEventListener('storage', (e) => {
     if (e.key === storage.INDEX_KEY) {
@@ -189,6 +214,18 @@ function wire(): void {
   window.addEventListener('focusout', () => {
     if (pendingRemote && !isEditingText()) applyRemote(pendingRemote)
   })
+
+  // Leaving the tab (hide/close/refresh): flush the doc + stash its undo stack so a refresh or a
+  // bfcache back-navigation can restore both. `visibilitychange→hidden` is the reliable last
+  // callback on mobile; `pagehide` covers desktop close/refresh and is bfcache-friendly.
+  const onLeave = () => {
+    flushSave()
+    leaveHistory(useDocuments.getState().activeId)
+  }
+  window.addEventListener('pagehide', onLeave)
+  window.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') onLeave()
+  })
 }
 
 /** Boot persistence: reattach this tab to its document (or start a blank one) and start autosaving.
@@ -203,6 +240,7 @@ export function initDocuments(): void {
       useDocuments.setState({ index, activeId, activeName: doc.name })
       lastContent = contentKey()
       wire()
+      enterHistory(activeId) // restore this tab's undo stack across a refresh, if still valid
       return
     }
   }
@@ -213,4 +251,5 @@ export function initDocuments(): void {
   useDocuments.setState({ index, activeId: id, activeName: '' })
   lastContent = contentKey()
   wire()
+  enterHistory(id)
 }

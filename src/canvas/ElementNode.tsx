@@ -6,6 +6,7 @@ import type Konva from 'konva'
 import type { DocElement } from '../core/types'
 import { generateLocal, bakesScale, applyScale, isMultiPen } from '../elements/registry'
 import { useDoc } from '../store/document'
+import { beginGesture, endGesture } from '../store/history'
 import { useGeneration, isElementDirty } from '../core/generation'
 import { snap } from './snap'
 
@@ -94,6 +95,7 @@ export function ElementNode({ element, pxPerMm, interactive = true }: Props) {
       }}
       onTap={() => select(element.id)}
       onDragStart={() => {
+        beginGesture() // one undo step for the whole drag (idempotent across the multi-node burst)
         // The first node to start owns the gesture (the anchor). Konva will `startDrag` the rest of
         // the selection on the anchor's first move; they join this same gesture.
         if (dragGesture) return
@@ -137,8 +139,15 @@ export function ElementNode({ element, pxPerMm, interactive = true }: Props) {
       onDragEnd={(e) => {
         commit(e.target)
         dragGesture = null
+        endGesture()
       }}
-      onTransformEnd={(e) => commit(e.target)}
+      onTransformEnd={(e) => {
+        // Resize/rotate commits on end (one or two store writes via the scale-bake path); the burst
+        // wrapper makes a multi-node transform a single undo step.
+        beginGesture()
+        commit(e.target)
+        endGesture()
+      }}
     >
       {geom.map((stroke, i) => {
         const pts: number[] = []

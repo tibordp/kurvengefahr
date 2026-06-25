@@ -51,6 +51,8 @@ export const SHORTCUT_GROUPS: { title: string; items: ShortcutItem[] }[] = [
   {
     title: 'Edit',
     items: [
+      { keys: [MOD_KEY, 'Z'], label: 'Undo' },
+      { keys: [MOD_KEY, 'Shift', 'Z'], label: 'Redo' },
       { keys: [MOD_KEY, 'D'], label: 'Duplicate selection' },
       { keys: ['Del'], label: 'Delete selection' },
       { keys: ['↑ ↓ ← →'], label: 'Nudge 1 mm' },

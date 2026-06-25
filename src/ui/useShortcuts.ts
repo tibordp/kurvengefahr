@@ -7,6 +7,7 @@ import { useTools } from '../store/tools'
 import { useUI } from '../store/ui'
 import { usePreview } from '../store/preview'
 import { exportGcode } from '../output/export'
+import { undo, redo } from '../store/history'
 import { TOOL_KEYS } from './shortcuts'
 
 function isTyping(target: EventTarget | null): boolean {
@@ -38,6 +39,20 @@ export function useShortcuts(): void {
       }
 
       if (isTyping(e.target)) return
+
+      // Undo / redo. After the typing guard, so a focused text field keeps native text-undo (the
+      // field's own focus-session still coalesces into one app-level step on blur).
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'z' || e.key === 'Z')) {
+        e.preventDefault()
+        if (e.shiftKey) redo()
+        else undo()
+        return
+      }
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'y' || e.key === 'Y')) {
+        e.preventDefault()
+        redo()
+        return
+      }
 
       // Space toggles preview playback (only while the preview transport is active). If a button
       // has focus, let its native Space-activation handle it instead (avoids a double-toggle).

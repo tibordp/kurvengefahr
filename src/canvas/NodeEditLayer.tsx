@@ -7,6 +7,7 @@ import { Fragment } from 'react'
 import { Circle, Line } from 'react-konva'
 import type Konva from 'konva'
 import { useDoc } from '../store/document'
+import { beginGesture, endGesture } from '../store/history'
 import { localToPage, pageToLocal } from '../core/pipeline/place'
 import { snap } from './snap'
 import type { PathNode, PathParams } from '../elements/shapes'
@@ -59,6 +60,8 @@ export function NodeEditLayer({ pxPerMm }: { pxPerMm: number }) {
               radius={hr}
               fill="#6b7280"
               draggable
+              onDragStart={beginGesture}
+              onDragEnd={endGesture}
               onDragMove={(e) => {
                 const loc = dragLocal(e)
                 const ox = loc.x - n.x
@@ -89,6 +92,8 @@ export function NodeEditLayer({ pxPerMm }: { pxPerMm: number }) {
             stroke="#ffffff"
             strokeWidth={lw}
             draggable
+            onDragStart={beginGesture}
+            onDragEnd={endGesture}
             onDragMove={(e) => {
               const sp = snap({ x: e.target.x(), y: e.target.y() }, !!e.evt.altKey)
               e.target.position(sp)

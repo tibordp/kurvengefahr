@@ -200,6 +200,31 @@ soup, which rots as complexity grows.
 - Geometry/viewport/preview are **never persisted**; restored handwriting regenerates for free via
   the App's `syncGeneration` effect (no cached geometry → generate).
 
+## Undo / redo (`src/store/history.ts`)
+
+Snapshot history over `useDoc` (elements + profile + fiducial; selection is restored but not its own
+step). Snapshots are just the current references — `useDoc` is strictly immutable, so no deep clone.
+
+- A single `useDoc.subscribe` captures changes; a content fingerprint (`fp`, **excludes
+  selectedIds**) means selection-only changes and `notifyGeometry()` ref-bumps create **no** entry.
+- **Coalescing into one step:** continuous canvas gestures wrap with `beginGesture()`/`endGesture()`
+  (the end is microtask-deferred because Konva fires dragend/transformend **once per selected
+  node** — a burst that must collapse to one transaction). Inspector field/slider sessions need
+  **no** wrapping: a global `focusin`/`focusout` bracket coalesces them (the Konva canvas isn't
+  focusable, so the two never collide). **Any new continuous gesture must wrap with
+  `beginGesture`/`endGesture`.**
+- undo/redo go through `loadDocument`, so autosave persists the result; a `restoring` flag keeps
+  history from re-recording it.
+- **Per-tab persistence** (best-effort, **sessionStorage only — never long-term**): the stack
+  survives refresh / bfcache back-nav / switching docs and back. `documents.ts` orchestrates the
+  seams — on *leaving* a document state (switch, or `pagehide`/`visibilitychange:hidden`) it
+  **flushes the autosave AND `leave()`s the stack**, both stamped with the same content fingerprint;
+  on *entering* (boot, switch-to) it `enter()`s, restoring only if the saved fingerprint matches the
+  loaded doc (else fresh). The paired flush is load-bearing: without it localStorage lags the
+  in-memory doc and the fingerprint check would always drop the stack. A cross-tab remote replace
+  `reset()`s (drops history); on any sessionStorage write failure the whole key is nuked and
+  in-memory history continues.
+
 ## Deployment
 
 Push to **main** → `.github/workflows/deploy.yml` builds (wasm + tsc + vite) and publishes to GitHub

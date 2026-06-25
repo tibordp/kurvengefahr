@@ -4,6 +4,7 @@
 // fixed size at any zoom. Dragging moves it (grid-snapped); the inspector edits X/Y / removes it.
 import { Group, Circle, Line } from 'react-konva'
 import { useDoc } from '../store/document'
+import { beginGesture, endGesture } from '../store/history'
 import { snap } from './snap'
 
 const ACCENT = '#E5484D'
@@ -24,12 +25,16 @@ export function FiducialLayer({ pxPerMm, interactive }: { pxPerMm: number; inter
       draggable={interactive}
       listening={interactive}
       opacity={interactive ? 1 : 0.4}
+      onDragStart={beginGesture}
       onDragMove={(e) => {
         const sp = snap({ x: e.target.x(), y: e.target.y() }, !!e.evt.altKey)
         e.target.position(sp)
         setFiducial(sp)
       }}
-      onDragEnd={(e) => setFiducial({ x: e.target.x(), y: e.target.y() })}
+      onDragEnd={(e) => {
+        setFiducial({ x: e.target.x(), y: e.target.y() })
+        endGesture()
+      }}
     >
       {/* Invisible grab disc (thin strokes are hard to hit). */}
       <Circle radius={arm} fill="#000" opacity={0} />
