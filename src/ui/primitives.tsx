@@ -28,7 +28,7 @@ export const textareaClass =
 type Variant = 'default' | 'primary' | 'warn' | 'ghost' | 'danger'
 
 const base =
-  'inline-flex items-center justify-center gap-1.5 rounded-md text-sm font-medium ' +
+  'inline-flex shrink-0 items-center justify-center gap-1.5 rounded-md text-sm font-medium ' +
   'transition-colors cursor-pointer select-none outline-none ' +
   'focus-visible:ring-2 focus-visible:ring-accent/45 ' +
   'active:translate-y-px disabled:opacity-50 disabled:pointer-events-none'

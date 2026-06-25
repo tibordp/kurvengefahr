@@ -1,3 +1,4 @@
+import './core/randomUUID' // shim crypto.randomUUID for insecure (LAN-IP HTTP) origins — must be first
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { App } from './App'

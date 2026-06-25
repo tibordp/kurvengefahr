@@ -38,7 +38,7 @@ export function App() {
   }, [inspectorOpen, setInspectorOpen])
 
   return (
-    <div className="grid h-screen grid-rows-[auto_1fr] md:grid-cols-[auto_1fr_320px]">
+    <div className="grid h-dvh grid-cols-1 grid-rows-[auto_auto_1fr] overflow-hidden md:grid-cols-[auto_minmax(0,1fr)_320px] md:grid-rows-[auto_1fr]">
       <Toolbar />
       <ToolSidebar />
       <main className="relative flex min-h-0 min-w-0 flex-col">

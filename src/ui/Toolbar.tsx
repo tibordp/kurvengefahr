@@ -82,9 +82,21 @@ export function Toolbar() {
     <header
       role="toolbar"
       aria-label="Main toolbar"
-      className="col-span-full flex items-center gap-2 border-b border-border bg-surface px-3 py-2"
+      className="col-span-full flex min-w-0 items-center gap-2 border-b border-border bg-surface px-3 py-2"
     >
-      <div className="flex items-center gap-2">
+      {/* Inspector drawer toggle — mobile only, pinned far left (the panel/hamburger). Desktop has
+          the static inspector, so it's hidden there. */}
+      <IconButton
+        className="md:hidden"
+        onClick={toggleInspector}
+        aria-label="Toggle inspector"
+        title="Toggle inspector"
+      >
+        <PanelRight size={17} />
+      </IconButton>
+
+      {/* Logo — hidden on the narrowest phones to give the doc name room. */}
+      <div className="hidden items-center gap-2 sm:flex">
         <LogoMark className="text-accent" />
         <span className="hidden text-[15px] font-semibold tracking-tight lg:inline">
           Kurvengefahr
@@ -93,7 +105,7 @@ export function Toolbar() {
 
       <span className="mx-1 hidden h-5 w-px bg-border sm:block" aria-hidden />
       <DocumentMenu />
-      <span className="mx-1 h-5 w-px bg-border" aria-hidden />
+      <span className="mx-1 hidden h-5 w-px bg-border sm:block" aria-hidden />
 
       {/* Undo / redo */}
       <IconButton
@@ -112,7 +124,7 @@ export function Toolbar() {
       >
         <Redo2 size={17} />
       </IconButton>
-      <span className="mx-1 h-5 w-px bg-border" aria-hidden />
+      <span className="mx-1 hidden h-5 w-px bg-border sm:block" aria-hidden />
 
       {/* Regenerate edited (dirty) elements */}
       {dirtyCount > 0 && !previewActive && (
@@ -160,16 +172,6 @@ export function Toolbar() {
         title="Shortcuts & about (?)"
       >
         <CircleHelp size={17} />
-      </IconButton>
-
-      {/* Inspector toggle — mobile only (drawer). */}
-      <IconButton
-        className="md:hidden"
-        onClick={toggleInspector}
-        aria-label="Toggle inspector"
-        title="Toggle inspector"
-      >
-        <PanelRight size={17} />
       </IconButton>
     </header>
   )

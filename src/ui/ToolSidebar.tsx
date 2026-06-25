@@ -9,7 +9,7 @@ import { TOOLS } from './shortcuts'
 import { cx } from './primitives'
 
 const buttonClass =
-  'flex h-9 w-9 items-center justify-center rounded-md outline-none transition-colors focus-visible:ring-2 focus-visible:ring-accent/45'
+  'flex h-9 w-9 shrink-0 items-center justify-center rounded-md outline-none transition-colors focus-visible:ring-2 focus-visible:ring-accent/45'
 
 export function ToolSidebar() {
   const tool = useTools((s) => s.tool)
@@ -17,7 +17,7 @@ export function ToolSidebar() {
   return (
     <nav
       aria-label="Tools"
-      className="flex shrink-0 gap-1 border-b border-border bg-surface p-1.5 md:flex-col md:border-b-0 md:border-r"
+      className="flex min-w-0 shrink-0 gap-1 overflow-x-auto border-b border-border bg-surface p-1.5 md:min-h-0 md:flex-col md:overflow-x-visible md:overflow-y-auto md:border-b-0 md:border-r"
     >
       {TOOLS.map(({ tool: t, icon: Icon, label, key }) => (
         <button
@@ -34,7 +34,7 @@ export function ToolSidebar() {
 
       {/* Separator between drawing modes and one-shot insert actions: a vertical divider in the
           mobile row, a horizontal rule in the desktop column. */}
-      <span className="w-px self-stretch bg-border md:h-px md:w-full" aria-hidden />
+      <span className="w-px shrink-0 self-stretch bg-border md:h-px md:w-full" aria-hidden />
 
       <button
         onClick={() => void importImageElement()}

@@ -58,6 +58,9 @@ export function Canvas() {
   const hostRef = useRef<HTMLDivElement>(null)
   const trRef = useRef<Konva.Transformer>(null)
   const pan = useRef({ active: false, lastX: 0, lastY: 0 })
+  // Active pointers (by pointerId, client coords) — two of them drive a pinch zoom/pan gesture.
+  const pointers = useRef<Map<number, { x: number; y: number }>>(new Map())
+  const pinch = useRef<{ startDist: number; startScale: number; mx: number; my: number } | null>(null)
   const fittedFor = useRef('')
   const [size, setSize] = useState({ w: 0, h: 0 })
   const [spaceHeld, setSpaceHeld] = useState(false)
@@ -151,11 +154,20 @@ export function Canvas() {
     cancelDraft()
   }, [tool])
 
-  // Finalize an in-progress drag even if the mouse is released outside the stage (e.g. freehand).
+  // Finalize an in-progress drag even if the pointer is released outside the stage (e.g. freehand),
+  // and keep the pointer/pinch bookkeeping clean when a release/cancel misses the stage.
   useEffect(() => {
-    const up = () => drawPointerUp()
-    window.addEventListener('mouseup', up)
-    return () => window.removeEventListener('mouseup', up)
+    const up = (e: PointerEvent) => {
+      pointers.current.delete(e.pointerId)
+      if (pointers.current.size < 2) pinch.current = null
+      drawPointerUp()
+    }
+    window.addEventListener('pointerup', up)
+    window.addEventListener('pointercancel', up)
+    return () => {
+      window.removeEventListener('pointerup', up)
+      window.removeEventListener('pointercancel', up)
+    }
   }, [])
 
   const onWheel = (e: KonvaEventObject<WheelEvent>) => {
@@ -187,6 +199,47 @@ export function Canvas() {
     return { x: (pointer.x - cur.x) / cur.scale, y: (pointer.y - cur.y) / cur.scale }
   }
 
+  // --- Two-finger pinch: zoom toward the gesture midpoint while panning with it (touch's wheel +
+  // space-drag). Coordinates are stage-relative px (client minus the host's top-left).
+  const stageRel = (clientX: number, clientY: number) => {
+    const r = hostRef.current?.getBoundingClientRect()
+    return { x: clientX - (r?.left ?? 0), y: clientY - (r?.top ?? 0) }
+  }
+  const twoPointers = () => {
+    const pts = [...pointers.current.values()]
+    return pts.length >= 2 ? ([pts[0], pts[1]] as const) : null
+  }
+  const beginPinch = () => {
+    const two = twoPointers()
+    if (!two) return
+    const [a, b] = two
+    const mid = stageRel((a.x + b.x) / 2, (a.y + b.y) / 2)
+    const cur = useViewport.getState()
+    pinch.current = {
+      startDist: Math.hypot(a.x - b.x, a.y - b.y) || 1,
+      startScale: cur.scale,
+      mx: (mid.x - cur.x) / cur.scale, // page-mm point anchored under the start midpoint
+      my: (mid.y - cur.y) / cur.scale,
+    }
+  }
+  const updatePinch = () => {
+    const two = twoPointers()
+    const pc = pinch.current
+    if (!two || !pc) return
+    const [a, b] = two
+    const mid = stageRel((a.x + b.x) / 2, (a.y + b.y) / 2)
+    const next = clamp((pc.startScale * Math.hypot(a.x - b.x, a.y - b.y)) / pc.startDist, MIN_SCALE, MAX_SCALE)
+    setViewport(
+      clampViewport(
+        { scale: next, x: mid.x - pc.mx * next, y: mid.y - pc.my * next },
+        size.w,
+        size.h,
+        bed.width,
+        bed.height,
+      ),
+    )
+  }
+
   // Right-click: open the context menu (acting on the element under the cursor, or the background).
   // The element's own mousedown has already resolved selection, so we just read it.
   const onContextMenu = (e: KonvaEventObject<MouseEvent>) => {
@@ -212,7 +265,17 @@ export function Canvas() {
     setMenu({ x: e.evt.clientX, y: e.evt.clientY, page: p, targetId })
   }
 
-  const onMouseDown = (e: KonvaEventObject<MouseEvent>) => {
+  const onPointerDown = (e: KonvaEventObject<PointerEvent>) => {
+    pointers.current.set(e.evt.pointerId, { x: e.evt.clientX, y: e.evt.clientY })
+    // Second finger down → switch to a pinch gesture, abandoning any single-pointer interaction.
+    if (pointers.current.size >= 2) {
+      pan.current.active = false
+      marqueeStart.current = null
+      setMarquee(null)
+      cancelDraft()
+      beginPinch()
+      return
+    }
     if (e.evt.button === 2) return // right-click → handled by onContextMenu (no marquee/pan)
     if (spaceHeld || e.evt.button === 1) {
       pan.current = { active: true, lastX: e.evt.clientX, lastY: e.evt.clientY }
@@ -234,8 +297,14 @@ export function Canvas() {
     }
   }
 
-  const onMouseMove = (e: KonvaEventObject<MouseEvent>) => {
+  const onPointerMove = (e: KonvaEventObject<PointerEvent>) => {
     const stage = e.target.getStage()
+    if (pointers.current.has(e.evt.pointerId))
+      pointers.current.set(e.evt.pointerId, { x: e.evt.clientX, y: e.evt.clientY })
+    if (pinch.current && pointers.current.size >= 2) {
+      updatePinch()
+      return
+    }
     if (pan.current.active) {
       const dx = e.evt.clientX - pan.current.lastX
       const dy = e.evt.clientY - pan.current.lastY
@@ -278,7 +347,13 @@ export function Canvas() {
     if (over !== hoverElement) setHoverElement(over)
   }
 
-  const onMouseUp = () => {
+  const onPointerUp = (e: KonvaEventObject<PointerEvent>) => {
+    pointers.current.delete(e.evt.pointerId)
+    // Ending (or stepping down out of) a pinch: don't fall through to marquee/draw resolution.
+    if (pinch.current) {
+      if (pointers.current.size < 2) pinch.current = null
+      return
+    }
     pan.current.active = false
     if (drawing) {
       drawPointerUp()
@@ -341,18 +416,20 @@ export function Canvas() {
       className="relative min-h-0 flex-1 overflow-hidden bg-canvas"
       // Base cursor (Konva overrides this on its own resize/rotate anchors). Space → pan grab;
       // over a draggable element → move; otherwise crosshair for placement.
-      style={{ cursor: spaceHeld ? 'grab' : hoverElement ? 'move' : 'crosshair' }}
+      // touch-action: none so the browser yields all touch gestures to us (draw + pinch zoom/pan).
+      style={{ cursor: spaceHeld ? 'grab' : hoverElement ? 'move' : 'crosshair', touchAction: 'none' }}
     >
       {size.w > 0 && size.h > 0 && (
       <Stage
         width={size.w}
         height={size.h}
         onWheel={onWheel}
-        onMouseDown={onMouseDown}
-        onMouseMove={onMouseMove}
-        onMouseUp={onMouseUp}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
         onContextMenu={onContextMenu}
         onDblClick={() => drawing && drawDblClick()}
+        onDblTap={() => drawing && drawDblClick()}
         onMouseLeave={() => {
           endPan()
           clearCursor()

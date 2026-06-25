@@ -24,7 +24,7 @@ export function StatusBar() {
     inside ? `X ${fmt(cx)}  Y ${fmt(cy)} mm` : 'X —  Y —'
 
   return (
-    <div className="flex shrink-0 items-center gap-3 border-t border-border bg-surface px-3 py-1 text-xs text-muted">
+    <div className="flex min-w-0 shrink-0 items-center gap-3 border-t border-border bg-surface px-3 py-1 text-xs text-muted">
       <span>
         <strong className="mr-1.5 font-semibold text-text">Pen</strong>
         <span className="font-mono tabular-nums">{coords(pen.x, pen.y)}</span>

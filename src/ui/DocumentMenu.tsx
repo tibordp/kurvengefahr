@@ -52,7 +52,7 @@ function DocName() {
           ;(e.target as HTMLInputElement).blur()
         }
       }}
-      className="w-28 truncate rounded bg-transparent px-1.5 py-1 text-sm font-medium text-text outline-none placeholder:text-faint hover:bg-bg focus:bg-surface focus-visible:ring-2 focus-visible:ring-accent/35 sm:w-40"
+      className="w-28 min-w-0 truncate rounded bg-transparent px-1.5 py-1 text-sm font-medium text-text outline-none placeholder:text-faint hover:bg-bg focus:bg-surface focus-visible:ring-2 focus-visible:ring-accent/35 sm:w-40"
     />
   )
 }
