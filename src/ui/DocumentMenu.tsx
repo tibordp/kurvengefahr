@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react'
 import { ChevronDown, FilePlus, Copy, Trash2, Upload, Download, FileText } from 'lucide-react'
 import { useDocuments } from '../store/documents'
 import { useDoc } from '../store/document'
+import { useSaveStatus } from '../store/saveStatus'
 import { documentFile, CURRENT_DOC_SCHEMA, type DocSnapshot, type StoredDoc } from '../store/persistence/schema'
 import { downloadBlob, pickFile, safeFilename } from '../output/download'
 import { exportDocumentContainer, parseDocumentContainer, type ContainerImage } from '../output/container'
@@ -53,6 +54,22 @@ function DocName() {
         }
       }}
       className="w-28 min-w-0 truncate rounded bg-transparent px-1.5 py-1 text-sm font-medium text-text outline-none placeholder:text-faint hover:bg-bg focus:bg-surface focus-visible:ring-2 focus-visible:ring-accent/35 sm:w-40"
+    />
+  )
+}
+
+/** A subtle dot that fades in while the active doc has changes not yet autosaved. Occupies a fixed
+ *  slot (toggles opacity, not display) so the title never shifts. */
+function SaveDot() {
+  const dirty = useSaveStatus((s) => s.dirty)
+  return (
+    <span
+      aria-hidden
+      title={dirty ? 'Unsaved changes — autosaves continuously' : undefined}
+      className={cx(
+        'mr-1 h-1.5 w-1.5 shrink-0 rounded-full bg-muted transition-opacity duration-300',
+        dirty ? 'opacity-100' : 'opacity-0',
+      )}
     />
   )
 }
@@ -123,6 +140,7 @@ export function DocumentMenu() {
   return (
     <div className="flex min-w-0 items-center">
       <FileText size={15} className="mr-1 hidden shrink-0 text-faint sm:block" />
+      <SaveDot />
       <DocName />
       <Menu
         align="left"

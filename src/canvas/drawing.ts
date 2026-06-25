@@ -194,9 +194,20 @@ export function drawPointerUp(): void {
   else if (d.kind === 'freehand') finishFreehand(d)
 }
 
-export function drawDblClick(): void {
+/** Finish the in-progress pen path open (committing the nodes placed so far, no extra node added) —
+ *  the shared action behind double-click and right-click, so a two-node curved segment is possible.
+ *  Returns true if a pen draft was finished. */
+export function finishPenPath(): boolean {
   const d = getDraft()
-  if (d && d.kind === 'pen') finishPen(d, false)
+  if (d && d.kind === 'pen') {
+    finishPen(d, false)
+    return true
+  }
+  return false
+}
+
+export function drawDblClick(): void {
+  finishPenPath()
 }
 
 /** Returns true if it consumed the key (Enter finishes a pen path, Esc cancels / returns to Select). */

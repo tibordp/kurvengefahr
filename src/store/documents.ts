@@ -18,6 +18,8 @@ import {
 import { type DocSnapshot, type StoredDoc, CURRENT_DOC_SCHEMA, loadStoredDoc } from './persistence/schema'
 import * as storage from './persistence/storage'
 import type { DocMeta } from './persistence/storage'
+import { randomDocName } from './randomName'
+import { setDirty } from './saveStatus'
 import { deleteImage, listImageIds, referencedImageIds } from './images'
 
 const emptySnapshot = (): DocSnapshot => ({
@@ -55,8 +57,11 @@ export const useDocuments = create<DocsStore>((set, get) => ({
     const id = crypto.randomUUID()
     storage.setActiveId(id)
     useDoc.getState().loadDocument(emptySnapshot())
-    set({ activeId: id, activeName: '' })
+    const name = randomDocName()
+    autoName = name // an auto-assigned name doesn't itself make the blank doc worth persisting
+    set({ activeId: id, activeName: name })
     lastContent = contentKey() // blank + not in index → autosave won't persist until first edit
+    setDirty(false)
     enterHistory(id)
   },
 
@@ -68,8 +73,10 @@ export const useDocuments = create<DocsStore>((set, get) => ({
     leaveHistory(prev)
     storage.setActiveId(id)
     useDoc.getState().loadDocument({ elements: doc.elements, profile: doc.profile, selectedIds: doc.selectedIds, fiducial: doc.fiducial })
+    autoName = null // a real, saved name
     set({ activeId: id, activeName: doc.name })
     lastContent = contentKey() // matches storage → no redundant rewrite
+    setDirty(false)
     enterHistory(id) // restore this doc's stack if it's still valid for the loaded content
   },
 
@@ -82,6 +89,7 @@ export const useDocuments = create<DocsStore>((set, get) => ({
   },
 
   renameActive: (name) => {
+    autoName = null // the user named it on purpose; the name now counts
     set({ activeName: name })
     persistActive()
   },
@@ -89,6 +97,7 @@ export const useDocuments = create<DocsStore>((set, get) => ({
   duplicateActive: () => {
     const id = crypto.randomUUID()
     const name = `${get().activeName.trim() || 'Untitled'} copy`
+    autoName = null
     storage.setActiveId(id)
     set({ activeId: id, activeName: name }) // working canvas (useDoc) is unchanged — just a new identity
     lastContent = null
@@ -102,6 +111,7 @@ export const useDocuments = create<DocsStore>((set, get) => ({
     const id = crypto.randomUUID()
     storage.setActiveId(id)
     useDoc.getState().loadDocument(snapshot)
+    autoName = null // an imported file's name is real
     set({ activeId: id, activeName: name })
     lastContent = null
     persistActive({ force: true })
@@ -124,13 +134,19 @@ function contentKey(): string {
 let lastContent: string | null = null
 let saveTimer: ReturnType<typeof setTimeout> | undefined
 let pendingRemote: StoredDoc | null = null
+// The active doc's auto-assigned default name (or null for a real/named doc). A fresh tab shows a
+// friendly random name immediately, but — unlike a name the user typed — that default must NOT make
+// the blank doc worth persisting, or every new tab would litter the document list. Cleared the
+// moment the doc gets a real name (rename / open / import / duplicate).
+let autoName: string | null = null
 
 /** A blank, never-saved doc isn't worth a storage entry until it has real content (no litter). */
 function worthPersisting(): boolean {
   const { activeId, activeName, index } = useDocuments.getState()
+  const name = activeName.trim()
   return (
     useDoc.getState().elements.length > 0 ||
-    activeName.trim() !== '' ||
+    (name !== '' && activeName !== autoName) ||
     index.some((m) => m.id === activeId)
   )
 }
@@ -141,10 +157,17 @@ function upsert(index: DocMeta[], meta: DocMeta): DocMeta[] {
 }
 
 function persistActive(opts?: { force?: boolean }): void {
-  if (!opts?.force && !worthPersisting()) return
+  if (!opts?.force && !worthPersisting()) {
+    setDirty(false) // nothing to persist (blank scratch tab) → clean, not "unsaved"
+    return
+  }
   const key = contentKey()
-  if (key === lastContent) return // nothing actually changed (e.g. a geometry-only re-render)
+  if (key === lastContent) {
+    setDirty(false) // already in sync (e.g. a geometry-only re-render)
+    return
+  }
   lastContent = key
+  setDirty(false) // about to write the current content → clean
 
   const { activeId, activeName } = useDocuments.getState()
   const { elements, profile, selectedIds, fiducial } = useDoc.getState()
@@ -179,8 +202,10 @@ function isEditingText(): boolean {
 
 function applyRemote(doc: StoredDoc): void {
   useDoc.getState().loadDocument({ elements: doc.elements, profile: doc.profile, selectedIds: doc.selectedIds, fiducial: doc.fiducial })
+  autoName = null // the remote doc has a real, saved name
   useDocuments.setState({ activeName: doc.name })
   lastContent = contentKey() // echo guard: our own autosave now sees no change
+  setDirty(false)
   pendingRemote = null
   resetHistory() // the remote state is the new baseline; don't let it be undone locally
 }
@@ -215,8 +240,11 @@ function wire(): void {
 
   void sweepImages() // reclaim image blobs orphaned by deletes/undo in a prior session
 
-  // Autosave: any change to the working document schedules a debounced, content-diffed save.
+  // Autosave: any change to the working document schedules a debounced, content-diffed save. The
+  // content fingerprint also drives the "unsaved changes" dot — comparing against `lastContent`
+  // means a no-op `notifyGeometry()` ref-bump (identical fingerprint) never lights it up.
   useDoc.subscribe(() => {
+    setDirty(worthPersisting() && contentKey() !== lastContent)
     clearTimeout(saveTimer)
     saveTimer = setTimeout(() => persistActive(), 500)
   })
@@ -269,6 +297,7 @@ export function initDocuments(): void {
     const doc = storage.readDoc(activeId)
     if (doc) {
       useDoc.getState().loadDocument({ elements: doc.elements, profile: doc.profile, selectedIds: doc.selectedIds, fiducial: doc.fiducial })
+      autoName = null // restoring a real, saved doc
       useDocuments.setState({ index, activeId, activeName: doc.name })
       lastContent = contentKey()
       wire()
@@ -280,7 +309,9 @@ export function initDocuments(): void {
   const id = crypto.randomUUID()
   storage.setActiveId(id)
   useDoc.getState().loadDocument(emptySnapshot())
-  useDocuments.setState({ index, activeId: id, activeName: '' })
+  const name = randomDocName()
+  autoName = name
+  useDocuments.setState({ index, activeId: id, activeName: name })
   lastContent = contentKey()
   wire()
   enterHistory(id)

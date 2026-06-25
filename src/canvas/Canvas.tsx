@@ -31,6 +31,7 @@ import {
   drawDblClick,
   drawKey,
   cancelDraft,
+  finishPenPath,
   type Pt,
 } from './drawing'
 import { place } from '../core/pipeline/place'
@@ -244,7 +245,13 @@ export function Canvas() {
   // The element's own mousedown has already resolved selection, so we just read it.
   const onContextMenu = (e: KonvaEventObject<MouseEvent>) => {
     e.evt.preventDefault()
-    if (previewActive || drawing) return
+    // Mid-pen-path, right-click finishes it open (no extra node) — the only way to get a two-node
+    // curved segment. (The right-click's pointerdown is already ignored, so no node was added.)
+    if (drawing) {
+      finishPenPath()
+      return
+    }
+    if (previewActive) return
     const stage = e.target.getStage()
     // Walk up from the hit node to the owning element Group (its id is the element id).
     const ids = new Set(useDoc.getState().elements.map((el) => el.id))

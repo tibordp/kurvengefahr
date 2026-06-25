@@ -61,6 +61,17 @@ export const SHORTCUT_GROUPS: { title: string; items: ShortcutItem[] }[] = [
     ],
   },
   {
+    title: 'Pen tool',
+    items: [
+      { keys: ['Click'], label: 'Add a corner node' },
+      { keys: ['Click', 'drag'], label: 'Add a node with a curve handle' },
+      { keys: ['Right-click'], label: 'Finish path (no extra node)' },
+      { keys: ['Double-click'], label: 'Finish path' },
+      { keys: ['Click', 'first node'], label: 'Close path' },
+      { keys: ['Esc'], label: 'Cancel path' },
+    ],
+  },
+  {
     title: 'Output',
     items: [
       { keys: [MOD_KEY, 'S'], label: 'Generate & download G-code' },
