@@ -39,6 +39,42 @@ export function pickJsonFile(): Promise<unknown | null> {
   })
 }
 
+/** Download an already-built Blob under `filename` (e.g. a `.kgz` container). */
+export function downloadBlob(filename: string, blob: Blob): void {
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  URL.revokeObjectURL(url)
+}
+
+/** Prompt for a file matching `accept` and resolve the raw `File` (so the caller can sniff bytes —
+ *  e.g. a zip container). Resolves `null` if the user cancels. */
+export function pickFile(accept: string): Promise<File | null> {
+  return new Promise((resolve) => {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = accept
+    input.style.display = 'none'
+    input.addEventListener('cancel', () => resolve(null))
+    input.addEventListener('change', () => {
+      const file = input.files?.[0] ?? null
+      input.remove()
+      resolve(file)
+    })
+    document.body.appendChild(input)
+    input.click()
+  })
+}
+
+/** Prompt for an image file. */
+export function pickImageFile(): Promise<File | null> {
+  return pickFile('image/*')
+}
+
 /** Turn an arbitrary document name into a safe-ish filename stem. */
 export function safeFilename(name: string, fallback = 'untitled'): string {
   const stem = name.trim().replace(/[^\w.-]+/g, '-').replace(/^-+|-+$/g, '')

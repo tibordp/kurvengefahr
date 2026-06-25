@@ -1,13 +1,15 @@
 // One element on the canvas: a Konva Group at the element's transform, containing its
 // local-mm strokes as Lines. The Group transform is the *view* of the element transform;
 // on drag/transform end we read the affine back into the store (the authority).
-import { Group, Line } from 'react-konva'
+import { Group, Image as KonvaImage, Line, Rect } from 'react-konva'
 import type Konva from 'konva'
 import type { DocElement } from '../core/types'
 import { generateLocal, bakesScale, applyScale, isMultiPen } from '../elements/registry'
 import { useDoc } from '../store/document'
 import { beginGesture, endGesture } from '../store/history'
-import { useGeneration, isElementDirty } from '../core/generation'
+import { useGeneration, needsManualRegen, provisionalScale } from '../core/generation'
+import { useRasterImage } from './useRasterImage'
+import type { RasterParams } from '../elements/raster'
 import { snap } from './snap'
 
 interface Props {
@@ -49,11 +51,16 @@ export function ElementNode({ element, pxPerMm, interactive = true }: Props) {
   const multiPen = isMultiPen(element.type)
   const elementColor = colorFor(element.pen)
 
+  // After a resize bakes a new box into params, the cached ink is still fit to the OLD box until the
+  // re-trace lands. Rescale just the strokes (not the underlay, which is already at the new size) so
+  // they track the handles instead of flashing the old size. 1×1 for everything else.
+  const prov = provisionalScale(element.id, element.type, element.params)
+
   // Dim the ink when it's stale (params edited but not regenerated yet) — a conspicuous "this isn't
   // current" cue right on the canvas. While generating (status present) we keep full opacity so the
   // lines streaming in read clearly.
   const generating = useGeneration((s) => !!s.status[element.id])
-  const dirty = !generating && isElementDirty(element.id, element.type, element.params)
+  const dirty = !generating && needsManualRegen(element.id, element.type, element.params)
 
   const commit = (node: Konva.Node) => {
     const sx = node.scaleX()
@@ -149,27 +156,62 @@ export function ElementNode({ element, pxPerMm, interactive = true }: Props) {
         endGesture()
       }}
     >
-      {geom.map((stroke, i) => {
-        const pts: number[] = []
-        for (const p of stroke.points) pts.push(p.x, p.y)
-        return (
-          <Line
-            key={i}
-            points={pts}
-            stroke={multiPen ? colorFor(stroke.pen) : elementColor}
-            // Pen width is a property of the pen, not the element: keep it constant in
-            // physical mm at the current zoom, unaffected by the element's scale. With
-            // strokeScaleEnabled false, strokeWidth is in screen px → use mm × pxPerMm.
-            strokeWidth={PEN_WIDTH_MM * pxPerMm}
-            strokeScaleEnabled={false}
-            lineCap="round"
-            lineJoin="round"
-            // Generous screen-space hit area so thin ink is easy to click (clicks bubble to
-            // the Group). Selection is per-element, not per-stroke.
-            hitStrokeWidth={12}
-          />
-        )
-      })}
+      {element.type === 'raster' && <RasterBounds element={element} />}
+      {element.type === 'raster' && <RasterUnderlay element={element} />}
+      {/* Inner group carries the provisional resize scale for stale ink (1×1 normally). With
+          strokeScaleEnabled false on the Lines, this scales positions but never pen width. */}
+      <Group scaleX={prov.sx} scaleY={prov.sy}>
+        {geom.map((stroke, i) => {
+          const pts: number[] = []
+          for (const p of stroke.points) pts.push(p.x, p.y)
+          return (
+            <Line
+              key={i}
+              points={pts}
+              stroke={multiPen ? colorFor(stroke.pen) : elementColor}
+              // Pen width is a property of the pen, not the element: keep it constant in
+              // physical mm at the current zoom, unaffected by the element's scale. With
+              // strokeScaleEnabled false, strokeWidth is in screen px → use mm × pxPerMm.
+              strokeWidth={PEN_WIDTH_MM * pxPerMm}
+              strokeScaleEnabled={false}
+              lineCap="round"
+              lineJoin="round"
+              // Generous screen-space hit area so thin ink is easy to click (clicks bubble to
+              // the Group). Selection is per-element, not per-stroke.
+              hitStrokeWidth={12}
+            />
+          )
+        })}
+      </Group>
     </Group>
+  )
+}
+
+/** An invisible rect at the raster's physical box, so the element's bounds (and thus the selection
+ *  Transformer) stay consistent even when it has no strokes and the source image is hidden — without
+ *  it the Group would collapse to 0×0 and become un-resizable. `listening={false}` keeps click
+ *  selection strokes-only (no new hit area). */
+function RasterBounds({ element }: { element: DocElement }) {
+  const p = element.params as RasterParams
+  if (p.targetWidthMm <= 0 || p.targetHeightMm <= 0) return null
+  return <Rect x={0} y={0} width={p.targetWidthMm} height={p.targetHeightMm} listening={false} />
+}
+
+/** The raster element's source image, drawn faintly under its traced strokes as a registration
+ *  reference (it makes no marks — only the strokes plot). Null until the bitmap loads / if missing. */
+function RasterUnderlay({ element }: { element: DocElement }) {
+  const p = element.params as RasterParams
+  const bitmap = useRasterImage(p.showUnderlay ? p.imageId : '')
+  if (!p.showUnderlay || !bitmap || p.targetWidthMm <= 0 || p.targetHeightMm <= 0) return null
+  return (
+    <KonvaImage
+      image={bitmap}
+      x={0}
+      y={0}
+      width={p.targetWidthMm}
+      height={p.targetHeightMm}
+      opacity={0.2}
+      listening={false}
+    />
   )
 }

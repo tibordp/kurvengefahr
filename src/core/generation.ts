@@ -13,7 +13,7 @@
 // the cache and bump the document, so lines appear on the canvas as they're synthesized.
 import { create } from 'zustand'
 import type { DocElement, Geometry } from './types'
-import { getCached, hashParams, markGenerated, isAsyncType } from '../elements/registry'
+import { getCached, geometryHash, markGenerated, isAsyncType, isAutoRegenerate, getProvisionalExtent } from '../elements/registry'
 import { unflatten } from './wasm/serde'
 import { useDoc } from '../store/document'
 
@@ -56,7 +56,14 @@ const clearStatus = (id: string) => useGeneration.getState()._clear(id)
 export function isElementDirty(id: string, type: string, params: unknown): boolean {
   if (!isAsyncType(type)) return false
   const cached = getCached(id)
-  return !!cached && cached.hash !== hashParams(params)
+  return !!cached && cached.hash !== geometryHash(type, params)
+}
+
+/** Stale AND the user must act: a dirty element that does NOT auto-regenerate. Drives the manual
+ *  affordances (dirty badge, dimmed ink, "Regenerate" button) — live types update on their own, so
+ *  they never surface these. */
+export function needsManualRegen(id: string, type: string, params: unknown): boolean {
+  return isElementDirty(id, type, params) && !isAutoRegenerate(type, params)
 }
 
 // ---- worker plumbing ----
@@ -86,20 +93,77 @@ type WorkerOut =
 interface Job {
   jobId: number
   hash: string
+  /** Element type — selects which worker owns the job (for routing `cancel`). */
+  type: string
+  /** The local-mm box these params trace into (for provisional rescale of stale ink), or null. */
+  extent: { w: number; h: number } | null
 }
 
-let worker: Worker | null = null
 let jobSeq = 0
 const inflight = new Map<string, Job>()
 /** Hashes that failed to generate — surfaced as an error until retry/params change. */
 const failed = new Map<string, string>()
+/** The box the *currently cached* geometry was fit into, per element. Set when a trace lands; read
+ *  to provisionally rescale stale ink while a resize's re-trace is pending. */
+const generatedExtent = new Map<string, { w: number; h: number }>()
 
-function getWorker(): Worker {
-  if (!worker) {
-    worker = new Worker(new URL('./wasm/genWorker.ts', import.meta.url), { type: 'module' })
-    worker.onmessage = (e: MessageEvent<WorkerOut>) => handleMessage(e.data)
+/** Scale factor to apply to an element's stale cached ink so it matches its current (possibly
+ *  just-resized) box: current-box / generated-box. 1 when sizes agree or no extent is tracked. */
+export function provisionalScale(id: string, type: string, params: unknown): { sx: number; sy: number } {
+  const gen = generatedExtent.get(id)
+  if (!gen || gen.w <= 0 || gen.h <= 0) return { sx: 1, sy: 1 }
+  const cur = getProvisionalExtent(type, params)
+  if (!cur) return { sx: 1, sy: 1 }
+  return { sx: cur.w / gen.w, sy: cur.h / gen.h }
+}
+
+// Live (auto-regenerate) types coalesce rapid param edits — slider drags, typed values — into one
+// trace, fired this long after the last change. Short enough to feel immediate, long enough not to
+// trace on every intermediate tick.
+const AUTO_REGEN_DEBOUNCE_MS = 150
+const autoTimers = new Map<string, ReturnType<typeof setTimeout>>()
+
+function clearAutoTimer(id: string): void {
+  const t = autoTimers.get(id)
+  if (t !== undefined) {
+    clearTimeout(t)
+    autoTimers.delete(id)
   }
-  return worker
+}
+
+/** (Re)arm the debounced auto-regenerate for a live element. Re-reads the element at fire time so it
+ *  always traces the latest params (and skips if it's no longer dirty). */
+function scheduleAutoRegen(id: string): void {
+  clearAutoTimer(id)
+  autoTimers.set(
+    id,
+    setTimeout(() => {
+      autoTimers.delete(id)
+      const el = useDoc.getState().elements.find((e) => e.id === id)
+      if (el && isElementDirty(el.id, el.type, el.params)) postGenerate(el)
+    }, AUTO_REGEN_DEBOUNCE_MS),
+  )
+}
+
+// Two worker-backed types, each with its own WASM instance: handwriting (carries the ~7 MB model)
+// and raster vectorization. Both speak the same message protocol, so one `handleMessage` serves
+// both; only the worker handle differs by element type.
+let hwWorker: Worker | null = null
+let vecWorker: Worker | null = null
+
+function workerFor(type: string): Worker {
+  if (type === 'raster') {
+    if (!vecWorker) {
+      vecWorker = new Worker(new URL('./wasm/vectorizeWorker.ts', import.meta.url), { type: 'module' })
+      vecWorker.onmessage = (e: MessageEvent<WorkerOut>) => handleMessage(e.data)
+    }
+    return vecWorker
+  }
+  if (!hwWorker) {
+    hwWorker = new Worker(new URL('./wasm/genWorker.ts', import.meta.url), { type: 'module' })
+    hwWorker.onmessage = (e: MessageEvent<WorkerOut>) => handleMessage(e.data)
+  }
+  return hwWorker
 }
 
 function handleMessage(msg: WorkerOut) {
@@ -128,6 +192,8 @@ function handleMessage(msg: WorkerOut) {
       group: msg.group,
     })
     markGenerated(msg.elementId, job.hash, geom)
+    // This geometry is now fit to the job's box; clear any provisional rescale (sizes agree again).
+    if (job.extent) generatedExtent.set(msg.elementId, job.extent)
     setStatus(msg.elementId, { phase: 'generating', done: msg.done, total: msg.total })
     useDoc.getState().notifyGeometry()
     return
@@ -140,22 +206,25 @@ function handleMessage(msg: WorkerOut) {
 }
 
 function postGenerate(el: DocElement) {
-  const hash = hashParams(el.params)
+  const worker = workerFor(el.type)
+  const hash = geometryHash(el.type, el.params)
   const prev = inflight.get(el.id)
-  if (prev) getWorker().postMessage({ type: 'cancel', jobId: prev.jobId })
+  if (prev) worker.postMessage({ type: 'cancel', jobId: prev.jobId })
   const jobId = ++jobSeq
-  inflight.set(el.id, { jobId, hash })
+  inflight.set(el.id, { jobId, hash, type: el.type, extent: getProvisionalExtent(el.type, el.params) })
   failed.delete(el.id)
   setStatus(el.id, { phase: 'generating', done: 0, total: 0 })
-  getWorker().postMessage({ type: 'generate', jobId, elementId: el.id, hash, params: el.params })
+  worker.postMessage({ type: 'generate', jobId, elementId: el.id, hash, params: el.params })
 }
 
 function cleanup(id: string) {
   const cur = inflight.get(id)
   if (cur) {
-    getWorker().postMessage({ type: 'cancel', jobId: cur.jobId })
+    workerFor(cur.type).postMessage({ type: 'cancel', jobId: cur.jobId })
     inflight.delete(id)
   }
+  clearAutoTimer(id)
+  generatedExtent.delete(id)
   failed.delete(id)
   clearStatus(id)
 }
@@ -171,10 +240,17 @@ export function syncGeneration(elements: DocElement[]): void {
     // Never generated and not already running → initial generation.
     if (!getCached(el.id) && !inflight.has(el.id) && !failed.has(el.id)) {
       postGenerate(el)
+    } else if (isAutoRegenerate(el.type, el.params) && isElementDirty(el.id, el.type, el.params)) {
+      // Live type with edited params → debounced re-trace (coalesces a burst of edits into one run).
+      scheduleAutoRegen(el.id)
     }
   }
   for (const id of inflight.keys()) {
     if (!present.has(id)) cleanup(id)
+  }
+  // Drop pending auto-regens for elements that have gone away (e.g. deleted mid-debounce).
+  for (const id of autoTimers.keys()) {
+    if (!present.has(id)) clearAutoTimer(id)
   }
 }
 

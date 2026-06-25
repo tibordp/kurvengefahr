@@ -8,10 +8,17 @@
 import { create } from 'zustand'
 import { PRUSA_MK4 } from './profiles'
 import { useDoc } from './document'
-import { reset as resetHistory, wireHistory, leave as leaveHistory, enter as enterHistory } from './history'
+import {
+  reset as resetHistory,
+  wireHistory,
+  leave as leaveHistory,
+  enter as enterHistory,
+  undoReachableImageIds,
+} from './history'
 import { type DocSnapshot, type StoredDoc, CURRENT_DOC_SCHEMA, loadStoredDoc } from './persistence/schema'
 import * as storage from './persistence/storage'
 import type { DocMeta } from './persistence/storage'
+import { deleteImage, listImageIds, referencedImageIds } from './images'
 
 const emptySnapshot = (): DocSnapshot => ({
   elements: [],
@@ -178,10 +185,35 @@ function applyRemote(doc: StoredDoc): void {
   resetHistory() // the remote state is the new baseline; don't let it be undone locally
 }
 
+/** Boot-time orphan GC: delete IndexedDB image blobs that no stored (or active in-memory) document
+ *  references. Safe by construction — we only ever delete ids referenced by NO document, reading all
+ *  `kg-doc:*` keys so another tab's images are honoured. Best-effort; never blocks boot. Reference
+ *  counting would be fragile under undo/redo and multi-tab, so we sweep once per tab load instead. */
+async function sweepImages(): Promise<void> {
+  try {
+    const live = new Set<string>()
+    for (const meta of storage.readIndex()) {
+      const doc = storage.readDoc(meta.id)
+      if (doc) for (const id of referencedImageIds(doc.elements)) live.add(id)
+    }
+    for (const id of referencedImageIds(useDoc.getState().elements)) live.add(id)
+    // Blobs reachable only through Undo (in-memory + the persisted per-tab stacks boot restores)
+    // are still live — reclaiming them would break a subsequent Undo.
+    for (const id of undoReachableImageIds()) live.add(id)
+    for (const id of await listImageIds()) {
+      if (!live.has(id)) await deleteImage(id)
+    }
+  } catch {
+    /* GC is best-effort */
+  }
+}
+
 let wired = false
 function wire(): void {
   if (wired) return
   wired = true
+
+  void sweepImages() // reclaim image blobs orphaned by deletes/undo in a prior session
 
   // Autosave: any change to the working document schedules a debounced, content-diffed save.
   useDoc.subscribe(() => {

@@ -9,6 +9,7 @@
 // fingerprint ignores it for free.
 import { create } from 'zustand'
 import { useDoc } from './document'
+import { referencedImageIds } from './images'
 import type { DocSnapshot } from './persistence/schema'
 
 type Snapshot = DocSnapshot
@@ -180,6 +181,27 @@ export function enter(docId: string): void {
   } else {
     useHistory.setState({ past: [], future: [] })
   }
+}
+
+/** Image ids referenced by any *undo-reachable* snapshot: the in-memory stacks (+ the present), and
+ *  the per-tab persisted stacks in sessionStorage (which boot will restore). Image GC must treat
+ *  these as live — otherwise deleting an image and refreshing reclaims its blob, and a later Undo
+ *  brings back an element whose image is gone. Conservative (prefers leaking over a broken Undo):
+ *  it includes even stale persisted entries that re-entry might not restore. */
+export function undoReachableImageIds(): Set<string> {
+  const ids = new Set<string>()
+  const add = (snaps: Snapshot[]) => {
+    for (const s of snaps) for (const id of referencedImageIds(s.elements)) ids.add(id)
+  }
+  const { past, future } = useHistory.getState()
+  add(past)
+  add(future)
+  if (present) add([present])
+  for (const entry of Object.values(readMap())) {
+    if (Array.isArray(entry?.past)) add(entry.past)
+    if (Array.isArray(entry?.future)) add(entry.future)
+  }
+  return ids
 }
 
 /** Attach the capture subscription + the global field-edit focus bracket. Call once at boot. */

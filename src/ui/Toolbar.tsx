@@ -4,7 +4,7 @@ import { useDoc } from '../store/document'
 import { usePreview } from '../store/preview'
 import { useUI } from '../store/ui'
 import { useHistory, undo, redo } from '../store/history'
-import { regenerateAll, isElementDirty } from '../core/generation'
+import { regenerateAll, needsManualRegen } from '../core/generation'
 import { buildPlottableGeometry } from '../core/pipeline'
 import { optimizeGeometry } from '../core/pipeline/optimize'
 import { penParkInPage } from '../core/pipeline/toMachine'
@@ -46,7 +46,7 @@ export function Toolbar() {
   const [busy, setBusy] = useState(false)
   const [preparing, setPreparing] = useState(false)
 
-  const dirtyCount = elements.filter((e) => isElementDirty(e.id, e.type, e.params)).length
+  const dirtyCount = elements.filter((e) => needsManualRegen(e.id, e.type, e.params)).length
 
   const togglePreview = async () => {
     if (previewActive) {

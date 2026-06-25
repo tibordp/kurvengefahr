@@ -11,8 +11,9 @@ import { useDoc } from './store/document'
 import { useUI } from './store/ui'
 import { syncGeneration } from './core/generation'
 
-/** Drive worker-backed (handwriting) generation: whenever the document changes, reconcile what
- *  needs (re)generating off the main thread. */
+/** Drive worker-backed generation (handwriting + raster): whenever the document changes, reconcile
+ *  what needs (re)generating off the main thread — initial generation for new elements, and a
+ *  debounced re-trace for edited "live" (auto-regenerate) elements. */
 function useGenerationManager() {
   const elements = useDoc((s) => s.elements)
   useEffect(() => {

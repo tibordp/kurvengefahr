@@ -31,6 +31,20 @@ interface ElementType {
    *  NOT stamp the element's single `pen` over them. None today; the seam is here so adding such a
    *  type (e.g. a multi-layer SVG import) needs no pipeline change. */
   multiPen?: boolean
+  /** Async types only: when this returns true, param edits trigger a **debounced auto-regenerate**
+   *  (live preview) instead of waiting for a manual "Regenerate". Decided per-params so a type can
+   *  be live in a cheap mode and manual in a heavy one. Absent / false = manual (the default, e.g.
+   *  handwriting — its model run is too slow to fire on every keystroke). */
+  autoRegenerate?: (params: any) => boolean
+  /** Async + bakes-scale types: the local-mm box the geometry is fit into. After a resize bakes a
+   *  new box into params, the stale (still-old-sized) ink is provisionally rescaled by
+   *  new-box / generated-box until the re-trace lands — so it tracks the handles instead of
+   *  flashing the old size. Absent → no provisional rescale. */
+  provisionalExtent?: (params: any) => { w: number; h: number } | null
+  /** Param keys that are display-only (don't affect the generated geometry), e.g. a per-element
+   *  "show source image" toggle. Excluded from the geometry hash so flipping them never marks the
+   *  element dirty or triggers a regenerate. */
+  viewParams?: string[]
 }
 
 const types = new Map<string, ElementType>()
@@ -59,6 +73,18 @@ export function bakesScale(type: string): boolean {
 /** Whether this type assigns per-stroke pens itself (so concatenation leaves its pens untouched). */
 export function isMultiPen(type: string): boolean {
   return !!types.get(type)?.multiPen
+}
+
+/** Whether edits to this element should auto-regenerate (debounced) rather than wait for a manual
+ *  "Regenerate". Params-dependent so a type can be live in a cheap mode and manual in a heavy one. */
+export function isAutoRegenerate(type: string, params: unknown): boolean {
+  return !!types.get(type)?.autoRegenerate?.(params)
+}
+
+/** The local-mm box geometry is fit into for these params (for provisional rescale of stale ink
+ *  after a resize), or null if the type doesn't bake size into a box. */
+export function getProvisionalExtent(type: string, params: unknown): { w: number; h: number } | null {
+  return types.get(type)?.provisionalExtent?.(params) ?? null
 }
 
 /** Bake a scale into a type's params (no-op if the type doesn't support it). */
@@ -95,10 +121,23 @@ export function hashParams(value: unknown): string {
   return `{${body}}`
 }
 
+/** Hash of only the geometry-affecting params (display-only `viewParams` stripped), so toggling a
+ *  view param doesn't invalidate the memo or mark the element dirty. The single source of truth for
+ *  "did the geometry inputs change". */
+export function geometryHash(type: string, params: unknown): string {
+  const viewKeys = types.get(type)?.viewParams
+  if (viewKeys && viewKeys.length && params && typeof params === 'object' && !Array.isArray(params)) {
+    const stripped = { ...(params as Record<string, unknown>) }
+    for (const k of viewKeys) delete stripped[k]
+    return hashParams(stripped)
+  }
+  return hashParams(params)
+}
+
 /** Memoized local-mm geometry for an element. Sync types compute on miss; async types return the
  *  cached/stale/empty geometry and rely on the generation controller to fill the cache. */
 export function generateLocal(el: DocElement): Geometry {
-  const hash = hashParams(el.params)
+  const hash = geometryHash(el.type, el.params)
   const hit = cache.get(el.id)
   if (hit && hit.hash === hash) return hit.geom
 

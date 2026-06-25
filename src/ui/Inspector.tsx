@@ -19,7 +19,7 @@ import {
 import { useDoc, type AlignEdge } from '../store/document'
 import { useUI } from '../store/ui'
 import { useLibrary } from '../store/library'
-import { useGeneration, regenerate, isElementDirty } from '../core/generation'
+import { useGeneration, regenerate, needsManualRegen } from '../core/generation'
 import { PROFILE_PRESETS, findBuiltinProfile } from '../store/profiles'
 import { hashParams, isMultiPen } from '../elements/registry'
 import { profilesFile, parseProfilesFile } from '../store/persistence/schema'
@@ -28,6 +28,7 @@ import { downloadJson, pickJsonFile } from '../output/download'
 import { substitution_note } from '../core/wasm'
 import type { DocElement, Pen } from '../core/types'
 import type { HandwritingParams } from '../elements/handwriting'
+import type { RasterParams } from '../elements/raster'
 import type { RectParams, EllipseParams, PathParams, Hatch, HatchPattern } from '../elements/shapes'
 import { Button, IconButton, Field, SectionTitle, Banner, controlClass, textareaClass, cx } from './primitives'
 import { MOD_KEY } from './shortcuts'
@@ -44,6 +45,7 @@ function elementName(el: DocElement): string {
     const p = el.params as PathParams
     return `${p.closed ? 'Shape' : 'Path'} (${p.nodes.length})`
   }
+  if (el.type === 'raster') return 'Image'
   return el.type
 }
 
@@ -63,7 +65,7 @@ function ElementList() {
       <ul className="flex flex-col gap-1">
         {elements.map((el) => {
           const g = genStatus[el.id]
-          const rowDirty = !g && isElementDirty(el.id, el.type, el.params)
+          const rowDirty = !g && needsManualRegen(el.id, el.type, el.params)
           const badge =
             g?.phase === 'loading-model'
               ? '⏳'
@@ -131,11 +133,13 @@ function Num({
   value,
   step = 1,
   onChange,
+  title,
 }: {
   label: string
   value: number
   step?: number
   onChange: (v: number) => void
+  title?: string
 }) {
   const [text, setText] = useState(() => display(value))
   const [focused, setFocused] = useState(false)
@@ -153,7 +157,7 @@ function Num({
   }
 
   return (
-    <Field label={label}>
+    <Field label={label} title={title}>
       <input
         type="text"
         inputMode="decimal"
@@ -184,34 +188,36 @@ function Num({
  *  retry. Generation runs in a worker; the element keeps showing its previous ink meanwhile. */
 function GenerationNote({ id }: { id: string }) {
   const status = useGeneration((s) => s.status[id])
-  if (!status) return null
-  if (status.phase === 'loading-model') {
+  // A failure is a persistent, actionable state → a normal banner (it doesn't flash in and out).
+  if (status?.phase === 'error') {
     return (
-      <p className="mb-2 animate-pulse text-xs text-muted">⏳ Loading handwriting model… (first use only)</p>
+      <Banner
+        variant="warn"
+        action={
+          <button
+            className="shrink-0 font-medium underline underline-offset-2 hover:no-underline"
+            onClick={() => regenerate(id)}
+          >
+            Retry
+          </button>
+        }
+      >
+        ⚠ Generation failed{status.message ? `: ${status.message}` : ''}
+      </Banner>
     )
   }
-  if (status.phase === 'generating') {
-    const { done = 0, total = 0 } = status
-    return (
-      <p className="mb-2 animate-pulse text-xs text-muted">
-        ✎ Generating… {total > 0 ? `${done}/${total} lines` : ''}
-      </p>
-    )
-  }
+  // Loading / generating flash in and out — a live re-trace fires on every edit. Keep this a
+  // fixed-height, single-line slot so showing or clearing the label never reflows the inspector.
+  const text =
+    status?.phase === 'loading-model'
+      ? '⏳ Loading handwriting model… (first use only)'
+      : status?.phase === 'generating'
+        ? `✎ Generating…${status.total && status.total > 1 ? ` ${status.done ?? 0}/${status.total} lines` : ''}`
+        : ''
   return (
-    <Banner
-      variant="warn"
-      action={
-        <button
-          className="shrink-0 font-medium underline underline-offset-2 hover:no-underline"
-          onClick={() => regenerate(id)}
-        >
-          Retry
-        </button>
-      }
-    >
-      ⚠ Generation failed{status.message ? `: ${status.message}` : ''}
-    </Banner>
+    <p className="mb-2 h-4 truncate text-xs text-muted" aria-live="polite">
+      {text && <span className="animate-pulse">{text}</span>}
+    </p>
   )
 }
 
@@ -227,7 +233,7 @@ function HandwritingInspector({ id, params }: { id: string; params: HandwritingP
   const subs = substitution_note(params.text)
   // Dirty = params edited since the last generation (and nothing currently running).
   const busy = useGeneration((s) => !!s.status[id])
-  const dirty = !busy && isElementDirty(id, 'handwriting', params)
+  const dirty = !busy && needsManualRegen(id, 'handwriting', params)
 
   return (
     <>
@@ -400,6 +406,86 @@ function PathInspector({ id, params }: { id: string; params: PathParams }) {
   )
 }
 
+function RasterInspector({ id, params }: { id: string; params: RasterParams }) {
+  const setParams = useDoc((s) => s.setParams)
+  const up = (patch: Partial<RasterParams>) => setParams(id, { ...params, ...patch })
+  const busy = useGeneration((s) => !!s.status[id])
+  const dirty = !busy && needsManualRegen(id, 'raster', params)
+  return (
+    <>
+      <SectionTitle>Image</SectionTitle>
+      <GenerationNote id={id} />
+      {dirty && (
+        <Banner
+          action={
+            <Button variant="primary" className="h-7 px-2.5 text-xs" onClick={() => regenerate(id)}>
+              Regenerate
+            </Button>
+          }
+        >
+          ● Edited — preview is out of date
+        </Banner>
+      )}
+      {!params.imageId && (
+        <Banner variant="warn">⚠ Image data missing — re-import this image.</Banner>
+      )}
+      <Field label="Method">
+        <select
+          className={controlClass}
+          value={params.method}
+          onChange={(e) => up({ method: e.target.value as RasterParams['method'] })}
+        >
+          <option value="contours">Outline tracing</option>
+        </select>
+      </Field>
+      <Field
+        label="Threshold"
+        title="Luma cutoff: pixels darker than this become ink. Lower = less ink, higher = more."
+      >
+        <div className="flex items-center gap-2">
+          <input
+            type="range"
+            className="min-w-0 flex-1"
+            min={0}
+            max={255}
+            step={1}
+            value={params.threshold}
+            onChange={(e) => up({ threshold: parseInt(e.target.value, 10) })}
+          />
+          <span className="min-w-[2.6em] text-right text-xs tabular-nums text-muted">
+            {params.threshold}
+          </span>
+        </div>
+      </Field>
+      <Field label="Invert" title="Swap ink and paper (trace the light areas instead of the dark).">
+        <input
+          type="checkbox"
+          className="h-4 w-4 justify-self-start"
+          checked={params.invert}
+          onChange={(e) => up({ invert: e.target.checked })}
+        />
+      </Field>
+      <Num label="Smoothing (mm)" value={params.simplifyTol} step={0.1}
+        title="Elastic-band smoothing strength: how far (mm) the traced line may be pulled taut from the pixel edge. 0 = faithful/jagged; higher = smoother and simpler. Sharp corners are kept."
+        onChange={(v) => up({ simplifyTol: Math.max(0, v) })} />
+      <Num label="Despeckle (px²)" value={params.minArea} step={1}
+        onChange={(v) => up({ minArea: Math.max(0, v) })} />
+      <Num label="Width (mm)" value={params.targetWidthMm} step={1}
+        onChange={(v) => up({ targetWidthMm: Math.max(0, v) })} />
+      <Num label="Height (mm)" value={params.targetHeightMm} step={1}
+        onChange={(v) => up({ targetHeightMm: Math.max(0, v) })} />
+      <Field label="Show source" title="Draw the faint source image under the traced strokes (display only — doesn't affect the plot).">
+        <input
+          type="checkbox"
+          className="h-4 w-4 justify-self-start"
+          checked={params.showUnderlay}
+          onChange={(e) => up({ showUnderlay: e.target.checked })}
+        />
+      </Field>
+    </>
+  )
+}
+
 /** Default colours offered when adding a pen — a readable, distinct cycle. */
 const PEN_PALETTE = ['#1a1a1a', '#E5484D', '#2563EB', '#16A34A', '#D97706', '#7C3AED', '#0891B2', '#DB2777']
 
@@ -546,6 +632,7 @@ function ElementSection() {
         <EllipseInspector id={element.id} params={element.params as EllipseParams} />
       )}
       {element.type === 'path' && <PathInspector id={element.id} params={element.params as PathParams} />}
+      {element.type === 'raster' && <RasterInspector id={element.id} params={element.params as RasterParams} />}
 
       {!isMultiPen(element.type) && (
         <>

@@ -12,6 +12,7 @@ mod compose;
 mod geom;
 mod hatch;
 mod model;
+mod raster;
 mod shapes;
 mod typeset;
 
@@ -161,6 +162,39 @@ pub fn hatch(xy: &[f32], pattern: u32, spacing: f32, angle_deg: f32) -> Geometry
 #[wasm_bindgen]
 pub fn concentric(kind: u32, a: f32, b: f32, spacing: f32) -> GeometryBuffers {
     GeometryBuffers::from_strokes(&hatch::concentric(kind, a, b, spacing))
+}
+
+/// Vectorize an RGBA image (JS-decoded, row-major `width*height*4` bytes) into pen strokes, fit to
+/// the element's physical box (`target_w_mm × target_h_mm`). `method 0` = outline tracing
+/// (grayscale → threshold → traced closed contours → RDP-simplified). `threshold` 0..255 on luma
+/// (ink = darker), `invert` flips ink/paper, `simplify_tol` is the RDP tolerance in mm, `min_area`
+/// despeckles contours under that many px².
+#[wasm_bindgen]
+#[allow(clippy::too_many_arguments)]
+pub fn vectorize_image(
+    rgba: &[u8],
+    width: u32,
+    height: u32,
+    target_w_mm: f32,
+    target_h_mm: f32,
+    method: u32,
+    threshold: u32,
+    invert: bool,
+    simplify_tol: f32,
+    min_area: f32,
+) -> GeometryBuffers {
+    GeometryBuffers::from_strokes(&raster::vectorize(
+        rgba,
+        width,
+        height,
+        target_w_mm,
+        target_h_mm,
+        method,
+        threshold,
+        invert,
+        simplify_tol,
+        min_area,
+    ))
 }
 
 /// Clip geometry to the reachable rectangle (computed JS-side). Strokes that leave and re-enter
