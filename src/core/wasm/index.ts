@@ -17,6 +17,8 @@ import init, {
   hatch,
   concentric,
   boolean,
+  import_svg,
+  SvgImport,
   GeometryBuffers,
 } from '@wasm/kg_toolpath.js'
 import wasmUrl from '@wasm/kg_toolpath_bg.wasm?url'
@@ -42,5 +44,7 @@ export {
   hatch,
   concentric,
   boolean,
+  import_svg,
+  SvgImport,
   GeometryBuffers,
 }

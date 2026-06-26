@@ -15,6 +15,7 @@ mod hatch;
 mod model;
 mod raster;
 mod shapes;
+mod svg;
 mod typeset;
 
 use std::cell::RefCell;
@@ -214,6 +215,15 @@ pub fn boolean(
     clip_starts: &[u32],
 ) -> GeometryBuffers {
     GeometryBuffers::from_strokes(&boolean::combine(op, subj_xy, subj_starts, clip_xy, clip_starts))
+}
+
+/// Import an SVG (raw bytes) into native multi-contour geometry. `params` is JSON
+/// (`{ occlude, target_size }`); occlusion subtracts upper filled shapes from those beneath so only
+/// visible parts become geometry. Returns CSR rings grouped per output shape, each with its source
+/// colour + fill darkness, for the TS side to build `path` elements. usvg parses (no text/fonts).
+#[wasm_bindgen]
+pub fn import_svg(bytes: &[u8], params: &str) -> svg::SvgImport {
+    svg::import(bytes, params)
 }
 
 /// Vectorize an RGBA image (JS-decoded, row-major `width*height*4` bytes) into pen strokes, fit to

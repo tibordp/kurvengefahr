@@ -2,9 +2,10 @@
 // New / Duplicate / Delete / Import / Export / Open-recent. Deliberately compact — a fresh tab just
 // shows "Untitled" on a blank canvas; nothing here is modal.
 import { useEffect, useState } from 'react'
-import { ChevronDown, FilePlus, Copy, Trash2, Upload, Download, FileText } from 'lucide-react'
+import { ChevronDown, FilePlus, Copy, Trash2, Upload, Download, FileText, Shapes } from 'lucide-react'
 import { useDocuments } from '../store/documents'
 import { useDoc } from '../store/document'
+import { useSvgImport } from '../store/svgImport'
 import { useSaveStatus } from '../store/saveStatus'
 import { documentFile, CURRENT_DOC_SCHEMA, type DocSnapshot, type StoredDoc } from '../store/persistence/schema'
 import { downloadBlob, pickFile, safeFilename } from '../output/download'
@@ -130,6 +131,17 @@ export function DocumentMenu() {
     }
   }
 
+  const onImportSvg = async () => {
+    try {
+      const file = await pickFile('.svg,image/svg+xml')
+      if (!file) return
+      const bytes = new Uint8Array(await file.arrayBuffer())
+      useSvgImport.getState().open({ bytes, name: file.name })
+    } catch {
+      alert('Could not read that file.')
+    }
+  }
+
   const onDelete = () => {
     if (!confirm('Delete this document? This cannot be undone.')) return
     useDocuments.getState().deleteDocument(activeId)
@@ -161,7 +173,10 @@ export function DocumentMenu() {
         </MenuItem>
         <MenuSeparator />
         <MenuItem onClick={onImport}>
-          <Upload size={15} /> Import…
+          <Upload size={15} /> Import document…
+        </MenuItem>
+        <MenuItem onClick={onImportSvg}>
+          <Shapes size={15} /> Import SVG…
         </MenuItem>
         <MenuItem onClick={onExport}>
           <Download size={15} /> Export

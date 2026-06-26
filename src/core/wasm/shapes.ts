@@ -10,10 +10,11 @@ import {
   hatch,
   concentric,
   boolean,
+  import_svg,
   GeometryBuffers,
 } from './index'
 import { unflatten } from './serde'
-import type { Geometry } from '../types'
+import type { Geometry, Point } from '../types'
 
 function decode(res: GeometryBuffers): Geometry {
   const out = unflatten({
@@ -93,4 +94,44 @@ export interface Rings {
  *  Returns one stroke per result ring (each a closed contour; outer rings and holes both appear). */
 export function booleanGeometry(op: number, subj: Rings, clip: Rings): Geometry {
   return decode(boolean(op, subj.xy, subj.starts, clip.xy, clip.starts))
+}
+
+export interface SvgImportRing {
+  points: Point[]
+  closed: boolean
+}
+export interface SvgImportShape {
+  rings: SvgImportRing[]
+  /** Source paint as packed 0xRRGGBB. */
+  rgb: number
+  /** Fill darkness 0..1 (1 = black); 0 for stroke shapes. */
+  darkness: number
+  /** 0 = filled region, 1 = stroke centreline. */
+  kind: number
+}
+
+/** Parse + flatten + (optionally) occlude an SVG into per-shape multi-contour geometry (in mm,
+ *  scaled so the longest side is `targetSize`). Geometry only — pen/hatch mapping is done by the
+ *  caller. `occlude` subtracts upper filled shapes from those beneath. */
+export function importSvgRaw(bytes: Uint8Array, occlude: boolean, targetSize: number): SvgImportShape[] {
+  const res = import_svg(bytes, JSON.stringify({ occlude, target_size: targetSize }))
+  const xy = res.xy
+  const ringStarts = res.ring_starts
+  const ringClosed = res.ring_closed
+  const shapeStarts = res.shape_starts
+  const colors = res.colors
+  const darkness = res.darkness
+  const kind = res.kind
+  const out: SvgImportShape[] = []
+  for (let s = 0; s < colors.length; s++) {
+    const rings: SvgImportRing[] = []
+    for (let r = shapeStarts[s]; r < shapeStarts[s + 1]; r++) {
+      const points: Point[] = []
+      for (let i = ringStarts[r]; i < ringStarts[r + 1]; i++) points.push({ x: xy[i * 2], y: xy[i * 2 + 1] })
+      rings.push({ points, closed: ringClosed[r] !== 0 })
+    }
+    out.push({ rings, rgb: colors[s], darkness: darkness[s], kind: kind[s] })
+  }
+  res.free()
+  return out
 }

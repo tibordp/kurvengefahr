@@ -3,6 +3,7 @@ import { Toolbar } from './ui/Toolbar'
 import { ToolSidebar } from './ui/ToolSidebar'
 import { Inspector } from './ui/Inspector'
 import { HelpDialog } from './ui/HelpDialog'
+import { SvgImportDialog } from './ui/SvgImportDialog'
 import { Canvas } from './canvas/Canvas'
 import { PreviewControls } from './ui/PreviewControls'
 import { StatusBar } from './ui/StatusBar'
@@ -81,6 +82,7 @@ export function App() {
 
       <Inspector />
       <HelpDialog />
+      <SvgImportDialog />
     </div>
   )
 }

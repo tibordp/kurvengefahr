@@ -15,6 +15,7 @@ serde_json = "1"
 # Robust polygon boolean ops (union/intersect/difference/xor) for shape combining; pure Rust,
 # default features only (no rayon) so it stays WASM-friendly.
 i_overlay = { version = "7", default-features = false }
+usvg = { version = "0.47.0", default-features = false }
 
 [profile.release]
 opt-level = "s"

@@ -104,6 +104,10 @@ interface DocStore {
   addHandwriting: (text?: string, at?: { x: number; y: number }) => void
   /** Add an element of any registered type at a page-space transform; selects it. Returns its id. */
   addElement: (type: string, params: unknown, transform?: Partial<Transform>) => string
+  /** Add many elements at once (one history step); selects them all. Returns their ids. */
+  addElements: (
+    specs: { type: string; params: unknown; pen?: PenId; transform?: Partial<Transform> }[],
+  ) => string[]
   removeElement: (id: string) => void
   /** Remove every selected element. */
   removeSelected: () => void
@@ -171,6 +175,21 @@ export const useDoc = create<DocStore>((set) => ({
       selectedIds: [id],
     }))
     return id
+  },
+
+  addElements: (specs) => {
+    const created: DocElement[] = specs.map((s) => ({
+      id: crypto.randomUUID(),
+      type: s.type,
+      transform: { ...IDENTITY_TRANSFORM, ...s.transform },
+      params: s.params,
+      pen: s.pen ?? 0,
+    }))
+    set((state) => ({
+      elements: [...state.elements, ...created],
+      selectedIds: created.map((c) => c.id),
+    }))
+    return created.map((c) => c.id)
   },
 
   removeElement: (id) =>
