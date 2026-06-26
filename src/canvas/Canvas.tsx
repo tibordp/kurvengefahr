@@ -539,10 +539,40 @@ export function Canvas() {
               const s = useSnap.getState()
               if (!s.grid || s.gridSize <= 0 || Math.abs(newBox.rotation) > 1e-3) return newBox
               const g = s.gridSize
-              const mm = (px: number, off: number) => (px - off) / scale
-              const px = (v: number, off: number) => v * scale + off
               const snapMM = (v: number) => Math.round(v / g) * g
               const eps = 0.01
+
+              // Aspect-locked resize (Shift on a corner → Konva scales both dimensions together):
+              // snapping each edge independently breaks the ratio. Instead snap whichever dimension
+              // sits closer to the grid and derive the other from the ratio, keeping the dragged
+              // corner's opposite corner fixed. Only when both dims actually changed (i.e. a corner).
+              const wChanged = Math.abs(newBox.width - oldBox.width) > eps
+              const hChanged = Math.abs(newBox.height - oldBox.height) > eps
+              if (shiftHeld && wChanged && hChanged) {
+                const wmm = newBox.width / scale
+                const hmm = newBox.height / scale
+                const sw = Math.max(snapMM(wmm), g)
+                const sh = Math.max(snapMM(hmm), g)
+                // Snap the dimension with the smaller relative adjustment; derive the other.
+                let nw: number, nh: number
+                if (Math.abs(sw - wmm) / wmm <= Math.abs(sh - hmm) / hmm) {
+                  nw = sw
+                  nh = sw * (hmm / wmm)
+                } else {
+                  nh = sh
+                  nw = sh * (wmm / hmm)
+                }
+                const pw = nw * scale
+                const ph = nh * scale
+                const movedLeft = Math.abs(newBox.x - oldBox.x) > eps
+                const movedTop = Math.abs(newBox.y - oldBox.y) > eps
+                const x = movedLeft ? newBox.x + newBox.width - pw : newBox.x
+                const y = movedTop ? newBox.y + newBox.height - ph : newBox.y
+                return { ...newBox, x, y, width: pw, height: ph }
+              }
+
+              const mm = (px: number, off: number) => (px - off) / scale
+              const px = (v: number, off: number) => v * scale + off
               let left = newBox.x
               let top = newBox.y
               let right = newBox.x + newBox.width

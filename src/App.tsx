@@ -10,6 +10,28 @@ import { useShortcuts } from './ui/useShortcuts'
 import { useDoc } from './store/document'
 import { useUI } from './store/ui'
 import { syncGeneration } from './core/generation'
+import { addImageElement } from './canvas/importImage'
+
+/** Paste an image from the clipboard → a new raster element. Ignored while a text field is focused
+ *  (the field gets the paste). `getAsFile()` + `preventDefault()` run synchronously in the handler;
+ *  the actual import is async. */
+function usePasteImage() {
+  useEffect(() => {
+    const onPaste = (e: ClipboardEvent) => {
+      const t = document.activeElement as HTMLElement | null
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return
+      const item = Array.from(e.clipboardData?.items ?? []).find(
+        (it) => it.kind === 'file' && it.type.startsWith('image/'),
+      )
+      const file = item?.getAsFile()
+      if (!file) return
+      e.preventDefault()
+      void addImageElement(file)
+    }
+    window.addEventListener('paste', onPaste)
+    return () => window.removeEventListener('paste', onPaste)
+  }, [])
+}
 
 /** Drive worker-backed generation (handwriting + raster): whenever the document changes, reconcile
  *  what needs (re)generating off the main thread — initial generation for new elements, and a
@@ -24,6 +46,7 @@ function useGenerationManager() {
 export function App() {
   useShortcuts()
   useGenerationManager()
+  usePasteImage()
   const inspectorOpen = useUI((s) => s.inspectorOpen)
   const setInspectorOpen = useUI((s) => s.setInspectorOpen)
 
