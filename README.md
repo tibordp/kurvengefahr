@@ -7,7 +7,7 @@ client-side; nothing is uploaded.
 **[Live app](https://kurven.ojdip.net)** -- installable PWA, works offline. Built for a Prusa MK4
 with a spring-loaded pen holder; the machine profile is editable.
 
-<!-- Screenshots go here -- e.g. ![Kurvengefahr](docs/overview.png). -->
+![Kurvengefahr with an imported SVG, one shape selected](docs/overview.png)
 
 ## Features
 
@@ -38,6 +38,8 @@ with a spring-loaded pen holder; the machine profile is editable.
   a refresh, and `.kgz` export.
 - Light/dark themes, grid snapping, clipboard image paste, and a responsive layout that collapses to
   a drawer on small screens.
+
+![An imported pelican-on-a-bicycle SVG, occluded and hatched by fill darkness](docs/detail.png)
 
 ## How it works
 
