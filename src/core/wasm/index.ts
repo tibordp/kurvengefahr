@@ -13,8 +13,10 @@ import init, {
   tessellate_ellipse,
   tessellate_path,
   simplify_polyline,
+  split_cubic,
   hatch,
   concentric,
+  boolean,
   GeometryBuffers,
 } from '@wasm/kg_toolpath.js'
 import wasmUrl from '@wasm/kg_toolpath_bg.wasm?url'
@@ -36,7 +38,9 @@ export {
   tessellate_ellipse,
   tessellate_path,
   simplify_polyline,
+  split_cubic,
   hatch,
   concentric,
+  boolean,
   GeometryBuffers,
 }

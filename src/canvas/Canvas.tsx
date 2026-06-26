@@ -34,8 +34,10 @@ import {
   finishPenPath,
   type Pt,
 } from './drawing'
-import { place } from '../core/pipeline/place'
+import { place, localToPage } from '../core/pipeline/place'
 import { generateLocal } from '../elements/registry'
+import { useNodeSelection, isNodeSelected, type NodeSel } from './nodeSelection'
+import type { PathParams } from '../elements/shapes'
 
 const clamp = (v: number, lo: number, hi: number) => (v < lo ? lo : v > hi ? hi : v)
 
@@ -372,11 +374,39 @@ export function Canvas() {
       const x1 = Math.max(marquee.a.x, marquee.b.x)
       const y0 = Math.min(marquee.a.y, marquee.b.y)
       const y1 = Math.max(marquee.a.y, marquee.b.y)
-      if (x1 - x0 < 2 / scale && y1 - y0 < 2 / scale) {
-        useDoc.getState().clearSelection() // a click on empty space → deselect
+      const tiny = x1 - x0 < 2 / scale && y1 - y0 < 2 / scale
+      const doc = useDoc.getState()
+      const editEl = solePath ? doc.elements.find((el) => el.id === doc.selectedIds[0]) : undefined
+
+      if (editEl && editEl.type === 'path') {
+        // Node-edit mode: the marquee rubber-bands this path's control points, not elements.
+        if (tiny) {
+          // Click on empty: clear the node selection if any, else exit node editing.
+          if (useNodeSelection.getState().sels.length) useNodeSelection.getState().set([])
+          else doc.clearSelection()
+        } else {
+          const picks: NodeSel[] = []
+          ;(editEl.params as PathParams).contours.forEach((c, ci) =>
+            c.nodes.forEach((n, ni) => {
+              const pg = localToPage(editEl.transform, n.x, n.y)
+              if (pg.x >= x0 && pg.x <= x1 && pg.y >= y0 && pg.y <= y1)
+                picks.push({ elementId: editEl.id, ci, ni })
+            }),
+          )
+          if (e.evt.shiftKey) {
+            const merged = [...useNodeSelection.getState().sels]
+            for (const pk of picks)
+              if (!isNodeSelected(merged, pk.elementId, pk.ci, pk.ni)) merged.push(pk)
+            useNodeSelection.getState().set(merged)
+          } else {
+            useNodeSelection.getState().set(picks)
+          }
+        }
+      } else if (tiny) {
+        doc.clearSelection() // a click on empty space → deselect
       } else {
         const ids: string[] = []
-        for (const el of useDoc.getState().elements) {
+        for (const el of doc.elements) {
           let bx0 = Infinity
           let by0 = Infinity
           let bx1 = -Infinity
@@ -390,7 +420,7 @@ export function Canvas() {
             }
           if (Number.isFinite(bx0) && bx0 <= x1 && bx1 >= x0 && by0 <= y1 && by1 >= y0) ids.push(el.id)
         }
-        useDoc.getState().selectMany(ids)
+        doc.selectMany(ids)
       }
       marqueeStart.current = null
       setMarquee(null)
@@ -435,8 +465,8 @@ export function Canvas() {
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onContextMenu={onContextMenu}
-        onDblClick={() => drawing && drawDblClick()}
-        onDblTap={() => drawing && drawDblClick()}
+        onDblClick={() => drawing && drawDblClick(6 / scale)}
+        onDblTap={() => drawing && drawDblClick(6 / scale)}
         onMouseLeave={() => {
           endPan()
           clearCursor()

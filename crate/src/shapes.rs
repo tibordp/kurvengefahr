@@ -133,6 +133,34 @@ fn flatten_rec(p0: P, p1: P, p2: P, p3: P, tol: f32, depth: u8, out: &mut Vec<Po
     flatten_rec(p0123, p123, p23, p3, tol, depth + 1, out);
 }
 
+/// Split the cubic Bézier of the segment between two path nodes at parameter `t`, for inserting a
+/// node mid-segment. Inputs are the segment's start anchor `a`, its outgoing handle `a_hout` and the
+/// end node's incoming handle `b_hin` (both relative to their anchors), and the end anchor `b`.
+/// Returns 10 floats: the new anchor `S`, then the three handle pairs that change — the start node's
+/// new outgoing handle, the inserted node's in/out handles, and the end node's new incoming handle
+/// (all relative to their respective anchors): `[Sx,Sy, aHoutX,aHoutY, mHinX,mHinY, mHoutX,mHoutY,
+/// bHinX,bHinY]`. de Casteljau, so the curve is geometrically unchanged.
+pub fn split_cubic(a: P, a_hout: P, b_hin: P, b: P, t: f32) -> [f32; 10] {
+    let lerp = |p: P, q: P| (p.0 + (q.0 - p.0) * t, p.1 + (q.1 - p.1) * t);
+    let p0 = a;
+    let p1 = (a.0 + a_hout.0, a.1 + a_hout.1);
+    let p2 = (b.0 + b_hin.0, b.1 + b_hin.1);
+    let p3 = b;
+    let q0 = lerp(p0, p1);
+    let q1 = lerp(p1, p2);
+    let q2 = lerp(p2, p3);
+    let r0 = lerp(q0, q1);
+    let r1 = lerp(q1, q2);
+    let s = lerp(r0, r1);
+    [
+        s.0, s.1, // new anchor
+        q0.0 - p0.0, q0.1 - p0.1, // start node's new hout
+        r0.0 - s.0, r0.1 - s.1, // inserted node's hin
+        r1.0 - s.0, r1.1 - s.1, // inserted node's hout
+        q2.0 - p3.0, q2.1 - p3.1, // end node's new hin
+    ]
+}
+
 /// Ramer–Douglas–Peucker on a flat `[x0,y0,x1,y1,…]` polyline; returns the kept points, flat.
 /// Used to reduce a dense freehand capture before it becomes a `path`.
 pub fn simplify(xy: &[f32], tol: f32) -> Vec<f32> {
@@ -153,6 +181,29 @@ pub fn simplify(xy: &[f32], tol: f32) -> Vec<f32> {
         }
     }
     out
+}
+
+#[cfg(test)]
+mod split_tests {
+    use super::*;
+
+    fn eval(p0: P, p1: P, p2: P, p3: P, t: f32) -> P {
+        let mt = 1.0 - t;
+        let (a, b, c, d) = (mt * mt * mt, 3.0 * mt * mt * t, 3.0 * mt * t * t, t * t * t);
+        (a * p0.0 + b * p1.0 + c * p2.0 + d * p3.0, a * p0.1 + b * p1.1 + c * p2.1 + d * p3.1)
+    }
+
+    #[test]
+    fn split_anchor_lies_on_the_curve() {
+        // Symmetric arch; the t=0.5 split point must equal the curve evaluated at 0.5.
+        let (a, a_hout, b_hin, b) = ((0.0, 0.0), (0.0, 2.0), (0.0, 2.0), (4.0, 0.0));
+        let r = split_cubic(a, a_hout, b_hin, b, 0.5);
+        let p1 = (a.0 + a_hout.0, a.1 + a_hout.1);
+        let p2 = (b.0 + b_hin.0, b.1 + b_hin.1);
+        let e = eval(a, p1, p2, b, 0.5);
+        assert!((r[0] - e.0).abs() < 1e-4 && (r[1] - e.1).abs() < 1e-4, "split anchor off-curve: {r:?} vs {e:?}");
+        assert!((r[0] - 2.0).abs() < 1e-4 && (r[1] - 1.5).abs() < 1e-4);
+    }
 }
 
 fn rdp(pts: &[P], lo: usize, hi: usize, tol: f32, keep: &mut [bool]) {

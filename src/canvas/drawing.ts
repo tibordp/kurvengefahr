@@ -98,7 +98,7 @@ function finishBox(d: Extract<Draft, { kind: 'box' }>): void {
   } else {
     if (dist(a, b) < 0.5) return cancelDraft() // a click is not a line
     const nodes = [cornerNode(0, 0), cornerNode(b.x - a.x, b.y - a.y)]
-    add('path', { ...defaultPathParams(), nodes }, { x: a.x, y: a.y })
+    add('path', { ...defaultPathParams(), contours: [{ nodes, closed: false }] }, { x: a.x, y: a.y })
   }
   setDraft(null)
   useTools.getState().setTool('select')
@@ -109,7 +109,7 @@ function finishPen(d: Extract<Draft, { kind: 'pen' }>, closed: boolean): void {
   const o = d.nodes[0]
   useDoc.getState().addElement(
     'path',
-    { ...defaultPathParams(), nodes: relativeTo(d.nodes, o.x, o.y), closed },
+    { ...defaultPathParams(), contours: [{ nodes: relativeTo(d.nodes, o.x, o.y), closed }] },
     { x: o.x, y: o.y },
   )
   setDraft(null)
@@ -126,7 +126,7 @@ function finishFreehand(d: Extract<Draft, { kind: 'freehand' }>): void {
   const oy = kept[1]
   const nodes: PathNode[] = []
   for (let i = 0; i < kept.length; i += 2) nodes.push(cornerNode(kept[i] - ox, kept[i + 1] - oy))
-  useDoc.getState().addElement('path', { ...defaultPathParams(), nodes }, { x: ox, y: oy })
+  useDoc.getState().addElement('path', { ...defaultPathParams(), contours: [{ nodes, closed: false }] }, { x: ox, y: oy })
   setDraft(null)
   useTools.getState().setTool('select')
 }
@@ -206,8 +206,18 @@ export function finishPenPath(): boolean {
   return false
 }
 
-export function drawDblClick(): void {
-  finishPenPath()
+/** Konva fires `dblclick` on ANY two clicks within its time window — even at different positions —
+ *  so two quickly-placed (distinct) pen points would falsely finish the path. Only treat it as a
+ *  finish when it's a genuine *in-place* double-click: the last two nodes coincide (within `tolMm`).
+ *  Then drop the duplicate node and finish open. Otherwise it's two intentional points — ignore. */
+export function drawDblClick(tolMm: number): void {
+  const d = getDraft()
+  if (!d || d.kind !== 'pen') return
+  const n = d.nodes.length
+  if (n < 2) return
+  if (dist(d.nodes[n - 1], d.nodes[n - 2]) <= tolMm) {
+    finishPen({ ...d, nodes: d.nodes.slice(0, n - 1) }, false)
+  }
 }
 
 /** Returns true if it consumed the key (Enter finishes a pen path, Esc cancels / returns to Select). */

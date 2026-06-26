@@ -8,6 +8,7 @@ import { useUI } from '../store/ui'
 import { usePreview } from '../store/preview'
 import { exportGcode } from '../output/export'
 import { undo, redo } from '../store/history'
+import { deleteSelectedNodes, clearNodeSelection } from '../canvas/nodeSelection'
 import { TOOL_KEYS } from './shortcuts'
 
 function isTyping(target: EventTarget | null): boolean {
@@ -84,6 +85,11 @@ export function useShortcuts(): void {
         ArrowDown: [0, 1],
       }
       if (e.key === 'Delete' || e.key === 'Backspace') {
+        // Selected path nodes take priority: delete the nodes, not the whole element.
+        if (deleteSelectedNodes()) {
+          e.preventDefault()
+          return
+        }
         if (!selectedIds.length) return
         e.preventDefault()
         removeSelected()
@@ -98,7 +104,8 @@ export function useShortcuts(): void {
         const [dx, dy] = NUDGE[e.key]
         nudge(dx * step, dy * step)
       } else if (e.key === 'Escape') {
-        clearSelection()
+        // Esc clears the node selection first (stay in node editing); a second Esc deselects.
+        if (!clearNodeSelection()) clearSelection()
       }
     }
     window.addEventListener('keydown', onKey)

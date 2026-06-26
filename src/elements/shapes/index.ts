@@ -6,5 +6,12 @@ import './path'
 
 export { defaultRectParams, type RectParams } from './rect'
 export { defaultEllipseParams, type EllipseParams } from './ellipse'
-export { defaultPathParams, cornerNode, type PathParams, type PathNode } from './path'
+export {
+  defaultPathParams,
+  cornerNode,
+  pathOutlineStrokes,
+  type PathParams,
+  type PathNode,
+  type Contour,
+} from './path'
 export { defaultHatch, type Hatch, type HatchPattern } from './hatch'

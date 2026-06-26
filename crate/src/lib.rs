@@ -7,6 +7,7 @@
 //!   - `clip` — split strokes to the reachable rectangle.
 //!   - `optimize` — reorder strokes (greedy nearest-neighbour, honours `reversible`).
 
+mod boolean;
 mod clip;
 mod compose;
 mod geom;
@@ -140,10 +141,26 @@ pub fn tessellate_ellipse(rx: f32, ry: f32) -> GeometryBuffers {
     GeometryBuffers::from_strokes(&shapes::ellipse(rx, ry))
 }
 
-/// `nodes` = 6 f32 per node `[x, y, hinX, hinY, houtX, houtY]` (handles relative to the anchor).
+/// Multi-contour path. `nodes` = 6 f32 per node `[x, y, hinX, hinY, houtX, houtY]` (handles relative
+/// to the anchor), concatenated across all contours. `contour_starts` has `ncontours+1` entries in
+/// **node units** (contour `c` is `nodes[6*starts[c] .. 6*starts[c+1]]`); `closed[c]` flags whether
+/// contour `c` is closed. Returns **one stroke per contour, in order** (an empty stroke for a
+/// degenerate contour) so JS can keep its `contours[]` indexing aligned.
 #[wasm_bindgen]
-pub fn tessellate_path(nodes: &[f32], closed: bool, tol: f32) -> GeometryBuffers {
-    GeometryBuffers::from_strokes(&shapes::path(nodes, closed, tol))
+pub fn tessellate_path(nodes: &[f32], contour_starts: &[u32], closed: &[u8], tol: f32) -> GeometryBuffers {
+    let mut strokes: Vec<Stroke> = Vec::with_capacity(closed.len());
+    for c in 0..closed.len() {
+        let start = contour_starts[c] as usize * 6;
+        let end = contour_starts[c + 1] as usize * 6;
+        let one = shapes::path(&nodes[start..end], closed[c] != 0, tol);
+        strokes.push(one.into_iter().next().unwrap_or_else(|| Stroke {
+            points: Vec::new(),
+            pen: 0,
+            reversible: true,
+            group: 0,
+        }));
+    }
+    GeometryBuffers::from_strokes(&strokes)
 }
 
 /// Ramer–Douglas–Peucker simplification of a flat `[x0,y0,…]` polyline (for freehand capture).
@@ -152,16 +169,51 @@ pub fn simplify_polyline(xy: &[f32], tol: f32) -> Vec<f32> {
     shapes::simplify(xy, tol)
 }
 
-/// Hatch fill for a closed polygon outline. Pattern: 0 lines, 1 cross-hatch, 2 grid, 3 hilbert.
+/// Split the cubic between two path nodes at `t` (de Casteljau) for inserting a node mid-segment.
+/// See `shapes::split_cubic`; returns 10 floats `[Sx,Sy, aHoutX,aHoutY, mHinX,mHinY, mHoutX,mHoutY,
+/// bHinX,bHinY]`.
 #[wasm_bindgen]
-pub fn hatch(xy: &[f32], pattern: u32, spacing: f32, angle_deg: f32) -> GeometryBuffers {
-    GeometryBuffers::from_strokes(&hatch::fill(xy, pattern, spacing, angle_deg))
+pub fn split_cubic(
+    ax: f32,
+    ay: f32,
+    a_hout_x: f32,
+    a_hout_y: f32,
+    b_hin_x: f32,
+    b_hin_y: f32,
+    bx: f32,
+    by: f32,
+    t: f32,
+) -> Vec<f32> {
+    shapes::split_cubic((ax, ay), (a_hout_x, a_hout_y), (b_hin_x, b_hin_y), (bx, by), t).to_vec()
+}
+
+/// Hatch fill for one or more closed-polygon rings, filled together under **even-odd parity** so
+/// nested rings punch holes. `xy` is all rings' vertices concatenated; `ring_starts` has
+/// `nrings+1` entries in **point units** (ring `r` is `xy[2*starts[r] .. 2*starts[r+1]]`). Pattern:
+/// 0 lines, 1 cross-hatch, 2 grid, 3 hilbert, 4 concentric.
+#[wasm_bindgen]
+pub fn hatch(xy: &[f32], ring_starts: &[u32], pattern: u32, spacing: f32, angle_deg: f32) -> GeometryBuffers {
+    GeometryBuffers::from_strokes(&hatch::fill(xy, ring_starts, pattern, spacing, angle_deg))
 }
 
 /// Concentric rings. `kind 0` = rect (a=w, b=h); `kind 1` = ellipse (a=rx, b=ry).
 #[wasm_bindgen]
 pub fn concentric(kind: u32, a: f32, b: f32, spacing: f32) -> GeometryBuffers {
     GeometryBuffers::from_strokes(&hatch::concentric(kind, a, b, spacing))
+}
+
+/// Boolean op between two multi-contour inputs (flat xy + CSR ring offsets, point units): 0 union,
+/// 1 intersect, 2 difference, 3 xor. Returns one stroke per result ring (outer rings + holes), which
+/// a path element adopts as its even-odd-filled contours. Inputs interpreted even-odd.
+#[wasm_bindgen]
+pub fn boolean(
+    op: u32,
+    subj_xy: &[f32],
+    subj_starts: &[u32],
+    clip_xy: &[f32],
+    clip_starts: &[u32],
+) -> GeometryBuffers {
+    GeometryBuffers::from_strokes(&boolean::combine(op, subj_xy, subj_starts, clip_xy, clip_starts))
 }
 
 /// Vectorize an RGBA image (JS-decoded, row-major `width*height*4` bytes) into pen strokes, fit to

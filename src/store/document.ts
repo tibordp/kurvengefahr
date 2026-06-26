@@ -12,6 +12,10 @@ import { PRUSA_MK4, findBuiltinProfile } from './profiles'
 import { useLibrary } from './library'
 import { place } from '../core/pipeline/place'
 import type { DocSnapshot } from './persistence/schema'
+import type { Geometry, Point } from '../core/types'
+import { cornerNode, defaultHatch, pathOutlineStrokes } from '../elements/shapes'
+import type { Contour, PathParams, RectParams, EllipseParams, Hatch } from '../elements/shapes'
+import { rectGeometry, ellipseGeometry, booleanGeometry, type Rings } from '../core/wasm/shapes'
 
 let seedCounter = 1
 
@@ -40,6 +44,56 @@ function pageBBox(el: DocElement): BBox | null {
   return Number.isFinite(x0) ? { x0, y0, x1, y1 } : null
 }
 
+/** Page-space closed-boundary rings of a closed shape (rect / ellipse / closed-contour path),
+ *  independent of its hatch/stroke style. Empty for elements with nothing closed to combine. */
+function boundaryRings(el: DocElement): Point[][] {
+  let local: Geometry
+  if (el.type === 'rect') {
+    const p = el.params as RectParams
+    local = rectGeometry(p.w, p.h, p.cornerRadius)
+  } else if (el.type === 'ellipse') {
+    const p = el.params as EllipseParams
+    local = ellipseGeometry(p.rx, p.ry)
+  } else if (el.type === 'path') {
+    const p = el.params as PathParams
+    const closed = p.contours.filter((c) => c.closed && c.nodes.length >= 3)
+    if (!closed.length) return []
+    local = pathOutlineStrokes(closed)
+  } else {
+    return []
+  }
+  return place(local, el.transform)
+    .map((s) => s.points)
+    .filter((pts) => pts.length >= 3)
+}
+
+/** Flatten rings into the WASM boolean input form (flat xy + CSR ring offsets, point units). */
+function ringsBuffer(rings: Point[][]): Rings {
+  const valid = rings.filter((r) => r.length >= 3)
+  const total = valid.reduce((a, r) => a + r.length, 0)
+  const xy = new Float32Array(total * 2)
+  const starts = new Uint32Array(valid.length + 1)
+  let o = 0
+  for (let i = 0; i < valid.length; i++) {
+    starts[i] = o
+    for (const p of valid[i]) {
+      xy[o * 2] = p.x
+      xy[o * 2 + 1] = p.y
+      o++
+    }
+  }
+  starts[valid.length] = o
+  return { xy, starts }
+}
+
+/** The hatch a closed shape carries (so a boolean result inherits the topmost shape's fill). */
+function hatchOf(el: DocElement): Hatch {
+  if (el.type === 'rect') return (el.params as RectParams).hatch
+  if (el.type === 'ellipse') return (el.params as EllipseParams).hatch
+  if (el.type === 'path') return (el.params as PathParams).hatch
+  return defaultHatch()
+}
+
 interface DocStore {
   elements: DocElement[]
   profile: MachineProfile
@@ -64,6 +118,9 @@ interface DocStore {
   nudge: (dx: number, dy: number) => void
   /** Align selected elements' page bounding boxes to the group's bbox edge/centre. */
   align: (edge: AlignEdge) => void
+  /** Combine selected closed shapes (rect/ellipse/closed path) with a boolean op (0 union,
+   *  1 intersect, 2 difference, 3 xor), replacing them with one multi-contour path. One undo step. */
+  booleanSelected: (op: number) => void
   /** Replace an element's params wholesale (caller merges). Invalidates Geometry. */
   setParams: (id: string, params: DocElement['params']) => void
   /** Patch an element's transform. Invalidates only Place. */
@@ -222,6 +279,44 @@ export const useDoc = create<DocStore>((set) => ({
         return { ...e, transform: { ...e.transform, x: e.transform.x + dx, y: e.transform.y + dy } }
       })
       return { elements }
+    }),
+
+  booleanSelected: (op) =>
+    set((state) => {
+      // Selected closed shapes, in document order (later = drawn on top), each with page-space rings.
+      const shapes = state.elements
+        .filter((e) => state.selectedIds.includes(e.id))
+        .map((el) => ({ el, rings: boundaryRings(el) }))
+        .filter((s) => s.rings.length > 0)
+      if (shapes.length < 2) return {} // nothing to combine
+
+      // Fold pairwise in order: union/xor accumulate, intersect runs, difference subtracts each clip.
+      let acc: Rings = ringsBuffer(shapes[0].rings)
+      let result: Geometry = []
+      for (let i = 1; i < shapes.length; i++) {
+        result = booleanGeometry(op, acc, ringsBuffer(shapes[i].rings))
+        acc = ringsBuffer(result.map((s) => s.points))
+      }
+
+      const contours: Contour[] = result
+        .map((s) => ({ nodes: s.points.map((p) => cornerNode(p.x, p.y)), closed: true }))
+        .filter((c) => c.nodes.length >= 3)
+      if (!contours.length) return {} // empty result (e.g. intersect of disjoint) — leave originals
+
+      const top = shapes[shapes.length - 1].el
+      const newEl: DocElement = {
+        id: crypto.randomUUID(),
+        type: 'path',
+        transform: { ...IDENTITY_TRANSFORM },
+        params: { contours, hatch: hatchOf(top) } as PathParams,
+        pen: top.pen,
+      }
+      const removed = new Set(shapes.map((s) => s.el.id))
+      removed.forEach(dropFromCache)
+      return {
+        elements: [...state.elements.filter((e) => !removed.has(e.id)), newEl],
+        selectedIds: [newEl.id],
+      }
     }),
 
   setParams: (id, params) =>

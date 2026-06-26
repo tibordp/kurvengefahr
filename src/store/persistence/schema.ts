@@ -14,7 +14,10 @@ import { IDENTITY_TRANSFORM } from '../../core/types'
 import { PRUSA_MK4 } from '../profiles'
 import { isKnownType, sanitizeParams } from '../../elements/registry'
 
-export const CURRENT_DOC_SCHEMA = 1
+// v2: `path` params went multi-contour ({nodes,closed} → {contours:[{nodes,closed}]}). No migration
+// step is needed — the path sanitizer coerces the old single-contour shape — but the bump makes an
+// older app reject v2 docs as `unsupported` instead of silently dropping their paths.
+export const CURRENT_DOC_SCHEMA = 2
 export const CURRENT_LIBRARY_SCHEMA = 1
 
 export const DOC_FILE_KIND = 'kurvengefahr/document'

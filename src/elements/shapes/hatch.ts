@@ -40,35 +40,47 @@ export function sanitizeHatch(raw: unknown): Hatch {
   return { pattern, spacing: Math.max(0.3, num(o.spacing, 3)), angle: num(o.angle, 45), stroke }
 }
 
-function polygonXy(points: Point[]): Float32Array {
-  const xy = new Float32Array(points.length * 2)
-  for (let i = 0; i < points.length; i++) {
-    xy[i * 2] = points[i].x
-    xy[i * 2 + 1] = points[i].y
+/** Flatten rings to one xy buffer + a CSR ring-starts array (point units), dropping degenerate rings. */
+function ringsToFlat(rings: Point[][]): { xy: Float32Array; starts: Uint32Array } | null {
+  const valid = rings.filter((r) => r.length >= 3)
+  if (!valid.length) return null
+  const total = valid.reduce((a, r) => a + r.length, 0)
+  const xy = new Float32Array(total * 2)
+  const starts = new Uint32Array(valid.length + 1)
+  let o = 0
+  for (let i = 0; i < valid.length; i++) {
+    starts[i] = o
+    for (const p of valid[i]) {
+      xy[o * 2] = p.x
+      xy[o * 2 + 1] = p.y
+      o++
+    }
   }
-  return xy
+  starts[valid.length] = o
+  return { xy, starts }
 }
 
-/** Any polygon fill (lines/cross/grid/concentric/hilbert) clipped to the outline polygon. */
-function polygonFill(outline: Point[], hatch: Hatch): Geometry {
-  if (outline.length < 3) return []
-  return hatchGeometry(polygonXy(outline), CODE[hatch.pattern as keyof typeof CODE], hatch.spacing, hatch.angle)
+/** Any polygon fill (lines/cross/grid/concentric/hilbert) over one or more rings, even-odd → holes. */
+function polygonFill(rings: Point[][], hatch: Hatch): Geometry {
+  const flat = ringsToFlat(rings)
+  if (!flat) return []
+  return hatchGeometry(flat.xy, flat.starts, CODE[hatch.pattern as keyof typeof CODE], hatch.spacing, hatch.angle)
 }
 
 export function rectFill(w: number, h: number, outline: Point[], hatch: Hatch): Geometry {
   if (hatch.pattern === 'none') return []
   if (hatch.pattern === 'concentric') return concentricGeometry(0, w, h, hatch.spacing)
-  return polygonFill(outline, hatch)
+  return polygonFill([outline], hatch)
 }
 
 export function ellipseFill(rx: number, ry: number, outline: Point[], hatch: Hatch): Geometry {
   if (hatch.pattern === 'none') return []
   if (hatch.pattern === 'concentric') return concentricGeometry(1, rx, ry, hatch.spacing)
-  return polygonFill(outline, hatch)
+  return polygonFill([outline], hatch)
 }
 
-/** Closed paths: all patterns (incl. polygon concentric) go through the polygon fill. */
-export function pathFill(outline: Point[], hatch: Hatch): Geometry {
+/** Closed paths: all closed contours fill together (even-odd → holes); polygon concentric included. */
+export function pathFill(rings: Point[][], hatch: Hatch): Geometry {
   if (hatch.pattern === 'none') return []
-  return polygonFill(outline, hatch)
+  return polygonFill(rings, hatch)
 }

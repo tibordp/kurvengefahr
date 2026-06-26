@@ -48,7 +48,9 @@ function elementName(el: DocElement): string {
   if (el.type === 'ellipse') return 'Ellipse'
   if (el.type === 'path') {
     const p = el.params as PathParams
-    return `${p.closed ? 'Shape' : 'Path'} (${p.nodes.length})`
+    const nodeCount = p.contours.reduce((a, c) => a + c.nodes.length, 0)
+    const closed = p.contours.length > 0 && p.contours.every((c) => c.closed)
+    return `${closed ? 'Shape' : 'Path'} (${nodeCount})`
   }
   if (el.type === 'raster') return 'Image'
   return el.type
@@ -408,6 +410,9 @@ function EllipseInspector({ id, params }: { id: string; params: EllipseParams })
 
 function PathInspector({ id, params }: { id: string; params: PathParams }) {
   const setParams = useDoc((s) => s.setParams)
+  const nodeCount = params.contours.reduce((a, c) => a + c.nodes.length, 0)
+  const anyClosed = params.contours.some((c) => c.closed)
+  const allClosed = params.contours.length > 0 && params.contours.every((c) => c.closed)
   return (
     <>
       <SectionTitle>Path</SectionTitle>
@@ -415,15 +420,20 @@ function PathInspector({ id, params }: { id: string; params: PathParams }) {
         <input
           type="checkbox"
           className="h-4 w-4 justify-self-start"
-          checked={params.closed}
-          onChange={(e) => setParams(id, { ...params, closed: e.target.checked })}
+          checked={allClosed}
+          onChange={(e) =>
+            setParams(id, {
+              ...params,
+              contours: params.contours.map((c) => ({ ...c, closed: e.target.checked })),
+            })
+          }
         />
       </Field>
       <p className="note text-xs text-muted">
-        {params.nodes.length} node{params.nodes.length === 1 ? '' : 's'} · drag points & handles on
-        the canvas to edit.
+        {params.contours.length > 1 ? `${params.contours.length} contours · ` : ''}
+        {nodeCount} node{nodeCount === 1 ? '' : 's'} · drag points & handles on the canvas to edit.
       </p>
-      {params.closed && (
+      {anyClosed && (
         <HatchControls
           hatch={params.hatch}
           onChange={(h) => setParams(id, { ...params, hatch: h })}
@@ -707,6 +717,18 @@ function MultiSelectSection({ count }: { count: number }) {
   const removeSelected = useDoc((s) => s.removeSelected)
   const duplicateSelected = useDoc((s) => s.duplicateSelected)
   const setPenSelected = useDoc((s) => s.setPenSelected)
+  const booleanSelected = useDoc((s) => s.booleanSelected)
+  // How many selected elements are closed shapes (rect/ellipse/closed path) — boolean ops need ≥2.
+  const closedCount = useDoc(
+    (s) =>
+      s.elements.filter((e) => {
+        if (!s.selectedIds.includes(e.id)) return false
+        if (e.type === 'rect' || e.type === 'ellipse') return true
+        if (e.type === 'path')
+          return (e.params as PathParams).contours.some((c) => c.closed && c.nodes.length >= 3)
+        return false
+      }).length,
+  )
   // The shared pen of the selection, or null when they differ (→ "Mixed"). Single-pen elements
   // only; a natively multi-colour element in the mix is ignored for this control.
   const commonPen = useDoc((s) => {
@@ -731,6 +753,25 @@ function MultiSelectSection({ count }: { count: number }) {
         <A edge="centerY" Icon={AlignCenterHorizontal} title="Align middle (vertical)" />
         <A edge="bottom" Icon={AlignEndHorizontal} title="Align bottom" />
       </div>
+      {closedCount >= 2 && (
+        <div className="mt-3">
+          <SectionTitle>Combine shapes</SectionTitle>
+          <div className="grid grid-cols-2 gap-1">
+            <Button title="Union — merge into one shape" onClick={() => booleanSelected(0)}>
+              Union
+            </Button>
+            <Button title="Subtract — remove the upper shapes from the bottom one" onClick={() => booleanSelected(2)}>
+              Subtract
+            </Button>
+            <Button title="Intersect — keep only the overlap" onClick={() => booleanSelected(1)}>
+              Intersect
+            </Button>
+            <Button title="Exclude — keep the non-overlapping parts" onClick={() => booleanSelected(3)}>
+              Exclude
+            </Button>
+          </div>
+        </div>
+      )}
       <div className="mt-3">
         <PenSelect value={commonPen} onChange={(pen) => setPenSelected(pen)} />
       </div>

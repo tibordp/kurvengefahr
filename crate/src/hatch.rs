@@ -18,7 +18,7 @@ fn seg(a: P, b: P) -> Stroke {
     stroke(vec![pt(a.0, a.1), pt(b.0, b.1)])
 }
 
-/// Flat `[x0,y0,…]` → polygon vertices, dropping a trailing point that duplicates the first.
+/// Flat `[x0,y0,…]` → one ring's vertices, dropping a trailing point that duplicates the first.
 fn parse_poly(xy: &[f32]) -> Vec<P> {
     let mut v: Vec<P> = (0..xy.len() / 2).map(|i| (xy[2 * i], xy[2 * i + 1])).collect();
     if v.len() >= 2 {
@@ -31,10 +31,21 @@ fn parse_poly(xy: &[f32]) -> Vec<P> {
     v
 }
 
-/// Even-odd ray-cast point-in-polygon.
+/// Split a multi-ring `xy` into rings via `ring_starts` (point units, `nrings+1` entries).
+fn parse_polys(xy: &[f32], ring_starts: &[u32]) -> Vec<Vec<P>> {
+    let nrings = ring_starts.len().saturating_sub(1);
+    (0..nrings)
+        .map(|r| parse_poly(&xy[ring_starts[r] as usize * 2..ring_starts[r + 1] as usize * 2]))
+        .collect()
+}
+
+/// Even-odd ray-cast point-in-polygon for a single ring.
 fn inside(poly: &[P], x: f32, y: f32) -> bool {
-    let mut c = false;
     let n = poly.len();
+    if n < 3 {
+        return false;
+    }
+    let mut c = false;
     let mut j = n - 1;
     for i in 0..n {
         let (xi, yi) = poly[i];
@@ -47,10 +58,39 @@ fn inside(poly: &[P], x: f32, y: f32) -> bool {
     c
 }
 
-/// Parallel fill lines at `angle_deg`, `spacing` mm apart, clipped to the polygon via a scanline.
-/// Rotate the polygon so the lines become horizontal, scan, then rotate the segments back.
-fn lines(poly: &[P], spacing: f32, angle_deg: f32, out: &mut Vec<Stroke>) {
-    if poly.len() < 3 || spacing <= 1e-3 {
+/// Even-odd across all rings (XOR of per-ring parities): a point inside the outer ring and inside a
+/// nested ring (hole) is *outside* the filled region. Orientation-independent.
+fn inside_multi(rings: &[Vec<P>], x: f32, y: f32) -> bool {
+    let mut c = false;
+    for ring in rings {
+        if inside(ring, x, y) {
+            c = !c;
+        }
+    }
+    c
+}
+
+/// Bounding box over all rings' vertices.
+fn bbox(rings: &[Vec<P>]) -> (f32, f32, f32, f32) {
+    let (mut xmin, mut ymin, mut xmax, mut ymax) =
+        (f32::INFINITY, f32::INFINITY, f32::NEG_INFINITY, f32::NEG_INFINITY);
+    for ring in rings {
+        for &(x, y) in ring {
+            xmin = xmin.min(x);
+            ymin = ymin.min(y);
+            xmax = xmax.max(x);
+            ymax = ymax.max(y);
+        }
+    }
+    (xmin, ymin, xmax, ymax)
+}
+
+/// Parallel fill lines at `angle_deg`, `spacing` mm apart, clipped to all rings via a scanline.
+/// Rotate the rings so the lines become horizontal, gather every ring's edge crossings on each
+/// scanline, sort, and emit alternating in/out pairs (even-odd → holes fall out for free), then
+/// rotate the segments back.
+fn lines(rings: &[Vec<P>], spacing: f32, angle_deg: f32, out: &mut Vec<Stroke>) {
+    if rings.iter().all(|r| r.len() < 3) || spacing <= 1e-3 {
         return
     }
     let th = angle_deg.to_radians();
@@ -59,24 +99,31 @@ fn lines(poly: &[P], spacing: f32, angle_deg: f32, out: &mut Vec<Stroke>) {
     let fwd = |p: P| (p.0 * fc - p.1 * fs, p.0 * fs + p.1 * fc);
     let inv = |p: P| (p.0 * rc - p.1 * rs, p.0 * rs + p.1 * rc);
 
-    let rp: Vec<P> = poly.iter().map(|&p| fwd(p)).collect();
+    let rr: Vec<Vec<P>> = rings.iter().map(|r| r.iter().map(|&p| fwd(p)).collect()).collect();
     let (mut ymin, mut ymax) = (f32::INFINITY, f32::NEG_INFINITY);
-    for &(_, y) in &rp {
-        ymin = ymin.min(y);
-        ymax = ymax.max(y);
+    for ring in &rr {
+        for &(_, y) in ring {
+            ymin = ymin.min(y);
+            ymax = ymax.max(y);
+        }
     }
-    let n = rp.len();
     let mut y = ymin + spacing * 0.5;
     while y < ymax {
         let mut xs: Vec<f32> = Vec::new();
-        let mut j = n - 1;
-        for i in 0..n {
-            let (xi, yi) = rp[i];
-            let (xj, yj) = rp[j];
-            if (yi > y) != (yj > y) {
-                xs.push(xi + (y - yi) / (yj - yi) * (xj - xi));
+        for rp in &rr {
+            let n = rp.len();
+            if n < 3 {
+                continue
             }
-            j = i;
+            let mut j = n - 1;
+            for i in 0..n {
+                let (xi, yi) = rp[i];
+                let (xj, yj) = rp[j];
+                if (yi > y) != (yj > y) {
+                    xs.push(xi + (y - yi) / (yj - yi) * (xj - xi));
+                }
+                j = i;
+            }
         }
         xs.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
         let mut k = 0;
@@ -111,26 +158,31 @@ fn d2xy(side: u32, d: u32) -> (u32, u32) {
     (x, y)
 }
 
-/// Parameters t∈(0,1) where segment a→b crosses the polygon boundary, sorted and de-duplicated.
-fn crossings(poly: &[P], a: P, b: P) -> Vec<f32> {
+/// Parameters t∈(0,1) where segment a→b crosses any ring's boundary, sorted and de-duplicated.
+fn crossings(rings: &[Vec<P>], a: P, b: P) -> Vec<f32> {
     let (rx, ry) = (b.0 - a.0, b.1 - a.1);
-    let n = poly.len();
     let mut ts: Vec<f32> = Vec::new();
-    let mut j = n - 1;
-    for i in 0..n {
-        let c = poly[j];
-        let d = poly[i];
-        let (sx, sy) = (d.0 - c.0, d.1 - c.1);
-        let denom = rx * sy - ry * sx;
-        if denom.abs() > 1e-12 {
-            let (wx, wy) = (c.0 - a.0, c.1 - a.1);
-            let t = (wx * sy - wy * sx) / denom;
-            let u = (wx * ry - wy * rx) / denom;
-            if t > 1e-6 && t < 1.0 - 1e-6 && u >= -1e-6 && u <= 1.0 + 1e-6 {
-                ts.push(t);
-            }
+    for poly in rings {
+        let n = poly.len();
+        if n < 3 {
+            continue
         }
-        j = i;
+        let mut j = n - 1;
+        for i in 0..n {
+            let c = poly[j];
+            let d = poly[i];
+            let (sx, sy) = (d.0 - c.0, d.1 - c.1);
+            let denom = rx * sy - ry * sx;
+            if denom.abs() > 1e-12 {
+                let (wx, wy) = (c.0 - a.0, c.1 - a.1);
+                let t = (wx * sy - wy * sx) / denom;
+                let u = (wx * ry - wy * rx) / denom;
+                if t > 1e-6 && t < 1.0 - 1e-6 && u >= -1e-6 && u <= 1.0 + 1e-6 {
+                    ts.push(t);
+                }
+            }
+            j = i;
+        }
     }
     ts.sort_by(|x, y| x.partial_cmp(y).unwrap_or(std::cmp::Ordering::Equal));
     ts.dedup_by(|x, y| (*x - *y).abs() < 1e-5);
@@ -139,18 +191,11 @@ fn crossings(poly: &[P], a: P, b: P) -> Vec<f32> {
 
 /// A Hilbert space-filling curve over the polygon's bbox, **clipped to the polygon boundary** so the
 /// fill reaches the edges while staying continuous. Density set by `spacing` (the cell size).
-fn hilbert(poly: &[P], spacing: f32, out: &mut Vec<Stroke>) {
-    if poly.len() < 3 || spacing <= 1e-3 {
+fn hilbert(rings: &[Vec<P>], spacing: f32, out: &mut Vec<Stroke>) {
+    if rings.iter().all(|r| r.len() < 3) || spacing <= 1e-3 {
         return
     }
-    let (mut xmin, mut ymin, mut xmax, mut ymax) =
-        (f32::INFINITY, f32::INFINITY, f32::NEG_INFINITY, f32::NEG_INFINITY);
-    for &(x, y) in poly {
-        xmin = xmin.min(x);
-        ymin = ymin.min(y);
-        xmax = xmax.max(x);
-        ymax = ymax.max(y);
-    }
+    let (xmin, ymin, xmax, ymax) = bbox(rings);
     let dim = (xmax - xmin).max(ymax - ymin).max(1e-3);
     // The Hilbert curve needs a square power-of-two grid sized to the LONGER axis. Keep the cells
     // exactly `spacing` (so density honours the parameter independent of bbox size / aspect ratio)
@@ -193,7 +238,7 @@ fn hilbert(poly: &[P], spacing: f32, out: &mut Vec<Stroke>) {
             continue
         }
         let mut bounds = vec![0.0_f32];
-        bounds.extend(crossings(poly, a, b));
+        bounds.extend(crossings(rings, a, b));
         bounds.push(1.0);
         for k in 0..bounds.len() - 1 {
             let (t0, t1) = (bounds[k], bounds[k + 1]);
@@ -201,7 +246,7 @@ fn hilbert(poly: &[P], spacing: f32, out: &mut Vec<Stroke>) {
                 continue
             }
             let mid = lerp(a, b, 0.5 * (t0 + t1));
-            if inside(poly, mid.0, mid.1) {
+            if inside_multi(rings, mid.0, mid.1) {
                 let p0 = lerp(a, b, t0);
                 let p1 = lerp(a, b, t1);
                 let joins = run.last().is_some_and(|q| (q.x - p0.0).abs() < 1e-6 && (q.y - p0.1).abs() < 1e-6);
@@ -227,20 +272,25 @@ fn pt_seg_dist2(px: f32, py: f32, a: P, b: P) -> f32 {
     ex * ex + ey * ey
 }
 
-/// Signed distance to the polygon boundary, **positive inside**.
-fn signed_dist(poly: &[P], x: f32, y: f32) -> f32 {
-    let n = poly.len();
+/// Signed distance to the nearest edge of any ring, **positive inside** the even-odd region.
+fn signed_dist(rings: &[Vec<P>], x: f32, y: f32) -> f32 {
     let mut best = f32::INFINITY;
-    let mut j = n - 1;
-    for i in 0..n {
-        let d2 = pt_seg_dist2(x, y, poly[j], poly[i]);
-        if d2 < best {
-            best = d2;
+    for poly in rings {
+        let n = poly.len();
+        if n < 3 {
+            continue
         }
-        j = i;
+        let mut j = n - 1;
+        for i in 0..n {
+            let d2 = pt_seg_dist2(x, y, poly[j], poly[i]);
+            if d2 < best {
+                best = d2;
+            }
+            j = i;
+        }
     }
     let d = best.sqrt();
-    if inside(poly, x, y) { d } else { -d }
+    if inside_multi(rings, x, y) { d } else { -d }
 }
 
 /// Marching-squares cell at iso-level `l`. Corners are bottom-left/right, top-right/left distance
@@ -337,19 +387,12 @@ fn stitch(segs: &[(P, P)], tol: f32) -> Vec<Vec<P>> {
 /// Concentric fill for an **arbitrary** polygon: iso-distance contours of the inward distance field
 /// (rings at `spacing`, `2·spacing`, …), so it works on concave shapes and splits into multiple
 /// rings where the medial axis branches. (Rect/ellipse use the exact parametric `concentric`.)
-fn concentric_poly(poly: &[P], spacing: f32, out: &mut Vec<Stroke>) {
-    if poly.len() < 3 || spacing <= 1e-3 {
+fn concentric_poly(rings: &[Vec<P>], spacing: f32, out: &mut Vec<Stroke>) {
+    if rings.iter().all(|r| r.len() < 3) || spacing <= 1e-3 {
         return
     }
     const MAX_CELLS: usize = 400;
-    let (mut xmin, mut ymin, mut xmax, mut ymax) =
-        (f32::INFINITY, f32::INFINITY, f32::NEG_INFINITY, f32::NEG_INFINITY);
-    for &(x, y) in poly {
-        xmin = xmin.min(x);
-        ymin = ymin.min(y);
-        xmax = xmax.max(x);
-        ymax = ymax.max(y);
-    }
+    let (xmin, ymin, xmax, ymax) = bbox(rings);
     let ext_x = (xmax - xmin).max(1e-3);
     let ext_y = (ymax - ymin).max(1e-3);
     // Sample finer than the spacing so contours stay smooth; cap the grid so big shapes stay fast.
@@ -364,7 +407,7 @@ fn concentric_poly(poly: &[P], spacing: f32, out: &mut Vec<Stroke>) {
     for jy in 0..nodes_y {
         let y = ymin + jy as f32 * sy;
         for ix in 0..nodes_x {
-            let d = signed_dist(poly, xmin + ix as f32 * sx, y);
+            let d = signed_dist(rings, xmin + ix as f32 * sx, y);
             field[jy * nodes_x + ix] = d;
             maxd = maxd.max(d);
         }
@@ -401,22 +444,23 @@ fn concentric_poly(poly: &[P], spacing: f32, out: &mut Vec<Stroke>) {
     }
 }
 
-/// Pattern dispatch. 0 lines, 1 cross-hatch, 2 grid, 3 hilbert, 4 concentric (arbitrary polygon).
-pub fn fill(xy: &[f32], pattern: u32, spacing: f32, angle_deg: f32) -> Vec<Stroke> {
-    let poly = parse_poly(xy);
+/// Pattern dispatch over one or more rings (filled together, even-odd → holes). 0 lines,
+/// 1 cross-hatch, 2 grid, 3 hilbert, 4 concentric (arbitrary polygon).
+pub fn fill(xy: &[f32], ring_starts: &[u32], pattern: u32, spacing: f32, angle_deg: f32) -> Vec<Stroke> {
+    let rings = parse_polys(xy, ring_starts);
     let mut out = Vec::new();
     match pattern {
-        0 => lines(&poly, spacing, angle_deg, &mut out),
+        0 => lines(&rings, spacing, angle_deg, &mut out),
         1 => {
-            lines(&poly, spacing, angle_deg, &mut out);
-            lines(&poly, spacing, angle_deg + 90.0, &mut out);
+            lines(&rings, spacing, angle_deg, &mut out);
+            lines(&rings, spacing, angle_deg + 90.0, &mut out);
         }
         2 => {
-            lines(&poly, spacing, 0.0, &mut out);
-            lines(&poly, spacing, 90.0, &mut out);
+            lines(&rings, spacing, 0.0, &mut out);
+            lines(&rings, spacing, 90.0, &mut out);
         }
-        3 => hilbert(&poly, spacing, &mut out),
-        4 => concentric_poly(&poly, spacing, &mut out),
+        3 => hilbert(&rings, spacing, &mut out),
+        4 => concentric_poly(&rings, spacing, &mut out),
         _ => {}
     }
     out
@@ -473,7 +517,7 @@ mod concentric_tests {
         // 20x20 square, spacing 3 -> expect rings inset by ~3,6,9 (3 rings before collapse at 10).
         let sq: Vec<P> = vec![(0.0, 0.0), (20.0, 0.0), (20.0, 20.0), (0.0, 20.0)];
         let mut out = Vec::new();
-        concentric_poly(&sq, 3.0, &mut out);
+        concentric_poly(&[sq], 3.0, &mut out);
         assert!(out.len() >= 2, "expected multiple rings, got {}", out.len());
         for s in &out {
             // Closed loop: first ~ last.
@@ -503,6 +547,25 @@ mod concentric_tests {
     }
 
     #[test]
+    fn even_odd_punches_a_hole() {
+        // A 20×20 square with a concentric 10×10 hole. Even-odd parity across both rings must leave
+        // the hole unfilled: no horizontal line segment may span the centre (10,10).
+        let outer: Vec<P> = vec![(0.0, 0.0), (20.0, 0.0), (20.0, 20.0), (0.0, 20.0)];
+        let inner: Vec<P> = vec![(5.0, 5.0), (15.0, 5.0), (15.0, 15.0), (5.0, 15.0)];
+        let mut out = Vec::new();
+        lines(&[outer, inner], 2.0, 0.0, &mut out);
+        assert!(!out.is_empty(), "expected fill in the annulus");
+        for s in &out {
+            let (a, b) = (s.points[0], s.points[1]);
+            let ymid = (a.y + b.y) * 0.5;
+            if (ymid - 10.0).abs() < 1.0 {
+                let (lo, hi) = (a.x.min(b.x), a.x.max(b.x));
+                assert!(!(lo < 10.0 && hi > 10.0), "fill crosses the hole at y={ymid}");
+            }
+        }
+    }
+
+    #[test]
     fn hilbert_pitch_matches_spacing_regardless_of_aspect_ratio() {
         let rect = |w: f32, h: f32| -> Vec<P> { vec![(0.0, 0.0), (w, 0.0), (w, h), (0.0, h)] };
         // Square sizes, plus increasingly elongated boxes at a tight spacing — the long axis here
@@ -511,7 +574,7 @@ mod concentric_tests {
             &[(18.0, 18.0, 2.0), (73.0, 73.0, 2.0), (40.0, 8.0, 1.0), (200.0, 20.0, 1.0), (400.0, 20.0, 1.0)];
         for &(w, h, spacing) in cases {
             let mut out = Vec::new();
-            hilbert(&rect(w, h), spacing, &mut out);
+            hilbert(&[rect(w, h)], spacing, &mut out);
             let pitch = dominant_pitch(&out);
             assert!((pitch - spacing).abs() < 1e-3, "{w}x{h} sp {spacing}: pitch {pitch} != {spacing}");
         }

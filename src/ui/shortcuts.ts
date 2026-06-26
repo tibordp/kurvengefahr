@@ -72,6 +72,19 @@ export const SHORTCUT_GROUPS: { title: string; items: ShortcutItem[] }[] = [
     ],
   },
   {
+    title: 'Node editing (selected path)',
+    items: [
+      { keys: ['Click', 'node'], label: 'Select a node' },
+      { keys: ['Shift', 'Click'], label: 'Add / remove a node from the selection' },
+      { keys: ['Drag', 'empty'], label: 'Rubber-band select nodes (Shift adds)' },
+      { keys: ['Drag', 'node'], label: 'Move the selected node(s)' },
+      { keys: ['Click', 'midpoint'], label: 'Insert a node on a segment' },
+      { keys: ['Del'], label: 'Delete the selected node(s)' },
+      { keys: ['Double-click', 'node'], label: 'Toggle corner / smooth' },
+      { keys: ['Alt', 'drag handle'], label: 'Break handle symmetry (cusp)' },
+    ],
+  },
+  {
     title: 'Output',
     items: [
       { keys: [MOD_KEY, 'S'], label: 'Generate & download G-code' },
