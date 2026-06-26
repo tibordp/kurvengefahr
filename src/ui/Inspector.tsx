@@ -31,103 +31,15 @@ import { profilesFile, parseProfilesFile } from '../store/persistence/schema'
 import { drawableRegion } from '../core/pipeline/clip'
 import { downloadJson, pickJsonFile } from '../output/download'
 import { substitution_note } from '../core/wasm'
-import type { DocElement, Pen } from '../core/types'
+import type { Pen } from '../core/types'
 import type { HandwritingParams } from '../elements/handwriting'
 import { SEEDED_METHODS, type RasterParams, type RasterMethod } from '../elements/raster'
 import type { RectParams, EllipseParams, PathParams, Hatch, HatchPattern } from '../elements/shapes'
 import { Button, IconButton, Field, SectionTitle, Banner, controlClass, textareaClass, cx } from './primitives'
 import { MOD_KEY } from './shortcuts'
+import { ElementsTree } from './ElementsTree'
 
-function elementName(el: DocElement): string {
-  if (el.type === 'handwriting') {
-    const text = (el.params as HandwritingParams).text.replace(/\s+/g, ' ').trim()
-    if (!text) return 'Handwriting (empty)'
-    return text.length > 20 ? `“${text.slice(0, 20)}…”` : `“${text}”`
-  }
-  if (el.type === 'rect') return 'Rectangle'
-  if (el.type === 'ellipse') return 'Ellipse'
-  if (el.type === 'path') {
-    const p = el.params as PathParams
-    const nodeCount = p.contours.reduce((a, c) => a + c.nodes.length, 0)
-    const closed = p.contours.length > 0 && p.contours.every((c) => c.closed)
-    return `${closed ? 'Shape' : 'Path'} (${nodeCount})`
-  }
-  if (el.type === 'raster') return 'Image'
-  return el.type
-}
 
-/** A flat list of all elements — the reliable way to (re)select one, including an element
- *  dragged off the bed. Selection here drives the same store as clicking on the canvas. */
-function ElementList() {
-  const elements = useDoc((s) => s.elements)
-  const selectedIds = useDoc((s) => s.selectedIds)
-  const select = useDoc((s) => s.select)
-  const removeElement = useDoc((s) => s.removeElement)
-  const genStatus = useGeneration((s) => s.status)
-
-  if (elements.length === 0) return null
-  return (
-    <>
-      <SectionTitle>Elements</SectionTitle>
-      <ul className="flex flex-col gap-1">
-        {elements.map((el) => {
-          const g = genStatus[el.id]
-          const rowDirty = !g && needsManualRegen(el.id, el.type, el.params)
-          const badge =
-            g?.phase === 'loading-model'
-              ? '⏳'
-              : g?.phase === 'generating'
-                ? '✎'
-                : g?.phase === 'error'
-                  ? '⚠'
-                  : rowDirty
-                    ? '●'
-                    : ''
-          const badgeWarn = g?.phase === 'error' || rowDirty
-          const busy = g?.phase === 'loading-model' || g?.phase === 'generating'
-          const selected = selectedIds.includes(el.id)
-          return (
-            <li
-              key={el.id}
-              className={cx(
-                'group flex cursor-pointer items-center gap-2 rounded-md border px-2 py-1.5 text-sm transition-colors',
-                selected
-                  ? 'border-accent-border bg-accent-subtle'
-                  : 'border-border hover:bg-bg',
-              )}
-              onClick={(e) => select(el.id, e.shiftKey || e.metaKey || e.ctrlKey)}
-            >
-              <span className="flex-1 truncate">{elementName(el)}</span>
-              {badge && (
-                <span
-                  className={cx(
-                    'text-2xs leading-none',
-                    busy && 'animate-pulse',
-                    badgeWarn ? 'text-accent-text' : 'text-muted',
-                  )}
-                  title={g?.phase ?? (rowDirty ? 'edited' : '')}
-                >
-                  {badge}
-                </span>
-              )}
-              <button
-                className="rounded p-1 text-faint opacity-60 transition-colors hover:bg-surface hover:text-accent-text sm:opacity-0 sm:group-hover:opacity-100"
-                title="Delete"
-                aria-label="Delete element"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  removeElement(el.id)
-                }}
-              >
-                <Trash2 size={14} />
-              </button>
-            </li>
-          )
-        })}
-      </ul>
-    </>
-  )
-}
 
 const display = (v: number) => (Number.isFinite(v) ? String(v) : '0')
 
@@ -1303,7 +1215,7 @@ export function Inspector() {
       >
         {tab === 'elements' ? (
           <>
-            <ElementList />
+            <ElementsTree />
             <ElementSection />
             <FiducialSection />
           </>

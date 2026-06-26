@@ -37,6 +37,7 @@ import {
 import { place, localToPage } from '../core/pipeline/place'
 import { generateLocal } from '../elements/registry'
 import { useNodeSelection, isNodeSelected, type NodeSel } from './nodeSelection'
+import { useHover } from '../store/hover'
 import type { PathParams } from '../elements/shapes'
 
 const clamp = (v: number, lo: number, hi: number) => (v < lo ? lo : v > hi ? hi : v)
@@ -511,6 +512,7 @@ export function Canvas() {
           {previewActive && <PreviewLayer pxPerMm={scale} />}
           {drawing && <DrawingPreview pxPerMm={scale} />}
           {!previewActive && !drawing && <NodeEditLayer pxPerMm={scale} />}
+          {!previewActive && !drawing && <HoverHighlight pxPerMm={scale} />}
           <FiducialLayer pxPerMm={scale} interactive={!previewActive && !spaceHeld && !drawing} />
           {marquee && (
             <Rect
@@ -619,5 +621,41 @@ export function Canvas() {
       )}
       {menu && <CanvasContextMenu menu={menu} onClose={() => setMenu(null)} />}
     </div>
+  )
+}
+
+/** A dashed accent outline around the element hovered in the Elements tree, so it's obvious which
+ *  row maps to which mark on the canvas. Skipped when the element is already selected (the
+ *  Transformer covers it). Coordinates are page-mm inside the scaled Layer. */
+function HoverHighlight({ pxPerMm }: { pxPerMm: number }) {
+  const id = useHover((s) => s.id)
+  const el = useDoc((s) => (id ? (s.elements.find((e) => e.id === id) ?? null) : null))
+  const selected = useDoc((s) => (id ? s.selectedIds.includes(id) : false))
+  if (!el || selected) return null
+  let x0 = Infinity
+  let y0 = Infinity
+  let x1 = -Infinity
+  let y1 = -Infinity
+  for (const s of place(generateLocal(el), el.transform))
+    for (const p of s.points) {
+      if (p.x < x0) x0 = p.x
+      if (p.y < y0) y0 = p.y
+      if (p.x > x1) x1 = p.x
+      if (p.y > y1) y1 = p.y
+    }
+  if (!Number.isFinite(x0)) return null
+  const pad = 1.5 / pxPerMm
+  return (
+    <Rect
+      x={x0 - pad}
+      y={y0 - pad}
+      width={x1 - x0 + 2 * pad}
+      height={y1 - y0 + 2 * pad}
+      stroke="#e5484d"
+      strokeWidth={1.5 / pxPerMm}
+      dash={[4 / pxPerMm, 3 / pxPerMm]}
+      cornerRadius={2 / pxPerMm}
+      listening={false}
+    />
   )
 }

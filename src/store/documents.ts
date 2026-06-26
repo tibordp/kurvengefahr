@@ -27,6 +27,16 @@ const emptySnapshot = (): DocSnapshot => ({
   profile: structuredClone(PRUSA_MK4),
   selectedIds: [],
   fiducial: null,
+  groups: [],
+})
+
+/** Load a stored doc's content into the working store (groups default to [] for older docs). */
+const snapshotOf = (doc: StoredDoc): DocSnapshot => ({
+  elements: doc.elements,
+  profile: doc.profile,
+  selectedIds: doc.selectedIds,
+  fiducial: doc.fiducial,
+  groups: doc.groups ?? [],
 })
 
 interface DocsStore {
@@ -72,7 +82,7 @@ export const useDocuments = create<DocsStore>((set, get) => ({
     flushSave()
     leaveHistory(prev)
     storage.setActiveId(id)
-    useDoc.getState().loadDocument({ elements: doc.elements, profile: doc.profile, selectedIds: doc.selectedIds, fiducial: doc.fiducial })
+    useDoc.getState().loadDocument(snapshotOf(doc))
     autoName = null // a real, saved name
     set({ activeId: id, activeName: doc.name })
     lastContent = contentKey() // matches storage → no redundant rewrite
@@ -127,8 +137,8 @@ export const useDocuments = create<DocsStore>((set, get) => ({
 // defeat the diff). A no-op `notifyGeometry()` re-render produces an identical key → skipped.
 function contentKey(): string {
   const { activeName } = useDocuments.getState()
-  const { elements, profile, selectedIds, fiducial } = useDoc.getState()
-  return JSON.stringify({ activeName, elements, profile, selectedIds, fiducial })
+  const { elements, profile, selectedIds, fiducial, groups } = useDoc.getState()
+  return JSON.stringify({ activeName, elements, profile, selectedIds, fiducial, groups })
 }
 
 let lastContent: string | null = null
@@ -170,7 +180,7 @@ function persistActive(opts?: { force?: boolean }): void {
   setDirty(false) // about to write the current content → clean
 
   const { activeId, activeName } = useDocuments.getState()
-  const { elements, profile, selectedIds, fiducial } = useDoc.getState()
+  const { elements, profile, selectedIds, fiducial, groups } = useDoc.getState()
   const doc: StoredDoc = {
     schemaVersion: CURRENT_DOC_SCHEMA,
     id: activeId,
@@ -180,6 +190,7 @@ function persistActive(opts?: { force?: boolean }): void {
     profile,
     selectedIds,
     fiducial,
+    groups,
   }
   storage.writeDocRaw(activeId, storage.docPayload(doc))
   const index = upsert(useDocuments.getState().index, { id: activeId, name: activeName, updatedAt: doc.updatedAt })
@@ -201,7 +212,7 @@ function isEditingText(): boolean {
 }
 
 function applyRemote(doc: StoredDoc): void {
-  useDoc.getState().loadDocument({ elements: doc.elements, profile: doc.profile, selectedIds: doc.selectedIds, fiducial: doc.fiducial })
+  useDoc.getState().loadDocument(snapshotOf(doc))
   autoName = null // the remote doc has a real, saved name
   useDocuments.setState({ activeName: doc.name })
   lastContent = contentKey() // echo guard: our own autosave now sees no change
@@ -296,7 +307,7 @@ export function initDocuments(): void {
   if (activeId) {
     const doc = storage.readDoc(activeId)
     if (doc) {
-      useDoc.getState().loadDocument({ elements: doc.elements, profile: doc.profile, selectedIds: doc.selectedIds, fiducial: doc.fiducial })
+      useDoc.getState().loadDocument(snapshotOf(doc))
       autoName = null // restoring a real, saved doc
       useDocuments.setState({ index, activeId, activeName: doc.name })
       lastContent = contentKey()

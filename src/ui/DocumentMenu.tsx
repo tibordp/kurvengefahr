@@ -81,7 +81,7 @@ export function DocumentMenu() {
 
   const onExport = async () => {
     const { activeId, activeName, index } = useDocuments.getState()
-    const { elements, profile, selectedIds, fiducial } = useDoc.getState()
+    const { elements, profile, selectedIds, fiducial, groups } = useDoc.getState()
     const doc: StoredDoc = {
       schemaVersion: CURRENT_DOC_SCHEMA,
       id: activeId,
@@ -91,6 +91,7 @@ export function DocumentMenu() {
       profile,
       selectedIds,
       fiducial,
+      groups,
     }
     // Bundle every referenced image blob alongside the JSON. A missing blob is simply omitted (the
     // element re-imports as a placeholder).

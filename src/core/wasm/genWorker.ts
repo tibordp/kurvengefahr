@@ -11,8 +11,8 @@ import init, {
   model_ready,
   clean_text,
   generate_word,
-} from '@wasm/kg_toolpath.js'
-import wasmUrl from '@wasm/kg_toolpath_bg.wasm?url'
+} from '@wasm/kg_core.js'
+import wasmUrl from '@wasm/kg_core_bg.wasm?url'
 import { flatten, unflatten } from './serde'
 import type { Geometry } from '../types'
 import type { HandwritingParams } from '../../elements/handwriting'

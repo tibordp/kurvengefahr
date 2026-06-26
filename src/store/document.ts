@@ -2,7 +2,7 @@
 // inspector are pure views over this; the canvas library (Konva) never becomes authoritative.
 // On a Konva transform-end we read the affine back into here.
 import { create } from 'zustand'
-import type { DocElement, Fiducial, MachineProfile, PenId, Transform } from '../core/types'
+import type { DocElement, Fiducial, Group, MachineProfile, PenId, Transform } from '../core/types'
 import { IDENTITY_TRANSFORM } from '../core/types'
 import { dropFromCache, generateLocal } from '../elements/registry'
 import { defaultHandwritingParams } from '../elements/handwriting'
@@ -86,6 +86,13 @@ function ringsBuffer(rings: Point[][]): Rings {
   return { xy, starts }
 }
 
+/** Drop groups left with no members (e.g. after deleting their last element). */
+function pruneGroups(elements: DocElement[], groups: Group[]): Group[] {
+  const used = new Set<string>()
+  for (const e of elements) if (e.groupId) used.add(e.groupId)
+  return groups.filter((g) => used.has(g.id))
+}
+
 /** The hatch a closed shape carries (so a boolean result inherits the topmost shape's fill). */
 function hatchOf(el: DocElement): Hatch {
   if (el.type === 'rect') return (el.params as RectParams).hatch
@@ -100,14 +107,26 @@ interface DocStore {
   selectedIds: string[]
   /** The document's single alignment fiducial (page-space mm), or null. */
   fiducial: Fiducial | null
+  /** Organizational element groups for the Elements tree (membership is each element's `groupId`). */
+  groups: Group[]
 
   addHandwriting: (text?: string, at?: { x: number; y: number }) => void
   /** Add an element of any registered type at a page-space transform; selects it. Returns its id. */
   addElement: (type: string, params: unknown, transform?: Partial<Transform>) => string
-  /** Add many elements at once (one history step); selects them all. Returns their ids. */
+  /** Add many elements at once (one history step); selects them all. Optionally wrap them in a new
+   *  group (e.g. an SVG import). Returns their ids. */
   addElements: (
     specs: { type: string; params: unknown; pen?: PenId; transform?: Partial<Transform> }[],
+    group?: { name: string; collapsed?: boolean },
   ) => string[]
+  /** Group the given elements under a new group; returns its id (empty string if <1 element). */
+  createGroup: (elementIds: string[], name?: string) => string
+  /** Dissolve a group, returning its members to the top level. */
+  ungroup: (groupId: string) => void
+  renameGroup: (groupId: string, name: string) => void
+  setGroupCollapsed: (groupId: string, collapsed: boolean) => void
+  /** Set (or clear, with '') an element's display name. */
+  setElementName: (id: string, name: string) => void
   removeElement: (id: string) => void
   /** Remove every selected element. */
   removeSelected: () => void
@@ -153,6 +172,7 @@ export const useDoc = create<DocStore>((set) => ({
   profile: PRUSA_MK4,
   selectedIds: [],
   fiducial: null,
+  groups: [],
 
   addHandwriting: (text = 'Kurvengefahr', at = { x: 20, y: 20 }) =>
     set((state) => {
@@ -177,26 +197,70 @@ export const useDoc = create<DocStore>((set) => ({
     return id
   },
 
-  addElements: (specs) => {
+  addElements: (specs, group) => {
+    const groupId = group ? crypto.randomUUID() : undefined
     const created: DocElement[] = specs.map((s) => ({
       id: crypto.randomUUID(),
       type: s.type,
       transform: { ...IDENTITY_TRANSFORM, ...s.transform },
       params: s.params,
       pen: s.pen ?? 0,
+      ...(groupId ? { groupId } : {}),
     }))
     set((state) => ({
       elements: [...state.elements, ...created],
+      groups:
+        group && groupId
+          ? [...state.groups, { id: groupId, name: group.name, collapsed: group.collapsed ?? false }]
+          : state.groups,
       selectedIds: created.map((c) => c.id),
     }))
     return created.map((c) => c.id)
   },
 
+  createGroup: (elementIds, name) => {
+    const ids = new Set(elementIds)
+    if (ids.size < 1) return ''
+    const groupId = crypto.randomUUID()
+    set((state) => ({
+      elements: state.elements.map((e) => (ids.has(e.id) ? { ...e, groupId } : e)),
+      groups: [...state.groups, { id: groupId, name: name ?? 'Group', collapsed: false }],
+    }))
+    return groupId
+  },
+
+  ungroup: (groupId) =>
+    set((state) => ({
+      elements: state.elements.map((e) =>
+        e.groupId === groupId ? (({ groupId: _drop, ...rest }) => rest)(e) : e,
+      ),
+      groups: state.groups.filter((g) => g.id !== groupId),
+    })),
+
+  renameGroup: (groupId, name) =>
+    set((state) => ({
+      groups: state.groups.map((g) => (g.id === groupId ? { ...g, name } : g)),
+    })),
+
+  setElementName: (id, name) =>
+    set((state) => ({
+      elements: state.elements.map((e) =>
+        e.id === id ? (name ? { ...e, name } : (({ name: _drop, ...rest }) => rest)(e)) : e,
+      ),
+    })),
+
+  setGroupCollapsed: (groupId, collapsed) =>
+    set((state) => ({
+      groups: state.groups.map((g) => (g.id === groupId ? { ...g, collapsed } : g)),
+    })),
+
   removeElement: (id) =>
     set((state) => {
       dropFromCache(id)
+      const elements = state.elements.filter((e) => e.id !== id)
       return {
-        elements: state.elements.filter((e) => e.id !== id),
+        elements,
+        groups: pruneGroups(elements, state.groups),
         selectedIds: state.selectedIds.filter((s) => s !== id),
       }
     }),
@@ -205,7 +269,8 @@ export const useDoc = create<DocStore>((set) => ({
     set((state) => {
       state.selectedIds.forEach(dropFromCache)
       const sel = new Set(state.selectedIds)
-      return { elements: state.elements.filter((e) => !sel.has(e.id)), selectedIds: [] }
+      const elements = state.elements.filter((e) => !sel.has(e.id))
+      return { elements, groups: pruneGroups(elements, state.groups), selectedIds: [] }
     }),
 
   duplicateElement: (id) =>
@@ -332,8 +397,10 @@ export const useDoc = create<DocStore>((set) => ({
       }
       const removed = new Set(shapes.map((s) => s.el.id))
       removed.forEach(dropFromCache)
+      const elements = [...state.elements.filter((e) => !removed.has(e.id)), newEl]
       return {
-        elements: [...state.elements.filter((e) => !removed.has(e.id)), newEl],
+        elements,
+        groups: pruneGroups(elements, state.groups),
         selectedIds: [newEl.id],
       }
     }),
@@ -378,6 +445,7 @@ export const useDoc = create<DocStore>((set) => ({
       profile: snapshot.profile,
       selectedIds: snapshot.selectedIds,
       fiducial: snapshot.fiducial,
+      groups: snapshot.groups ?? [],
     }),
 
   notifyGeometry: () => set((state) => ({ elements: [...state.elements] })),

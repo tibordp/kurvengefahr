@@ -1,11 +1,17 @@
-//! Toolpath + mark generation for Kurvengefahr — all the "fancy" geometry work, in Rust.
+//! `kg_core` — all of Kurvengefahr's "fancy" geometry & mark compute, in Rust → WASM. The TS app
+//! owns only the UI, view-state and the WASM-boundary marshalling; everything that makes marks or
+//! motion is here.
 //!
 //! WASM entry points:
-//!   - `init_model` — load the Graves RNN-MDN weight blob (once, lazily fetched by JS).
-//!   - `generate_word` — one word → positioned strokes + width (the worker lays words out).
+//!   - `init_model` / `generate_word` — the Graves RNN-MDN handwriting model (one word at a time).
 //!   - `clean_text` / `substitution_note` — alphabet substitution (cleaned text + a human note).
+//!   - `tessellate_rect/ellipse/path`, `hatch`, `concentric`, `simplify_polyline`, `split_cubic`
+//!     — vector shapes, multi-contour paths, even-odd hatch fills, and path-edit helpers.
+//!   - `boolean` — polygon booleans (union/intersect/difference/xor) for combining shapes.
+//!   - `import_svg` — parse an SVG (usvg) → occluded multi-contour geometry.
+//!   - `vectorize_image` — raster → strokes (outline/hatch/TSP/flow/spiral/…).
 //!   - `clip` — split strokes to the reachable rectangle.
-//!   - `optimize` — reorder strokes (greedy nearest-neighbour, honours `reversible`).
+//!   - `optimize` — reorder strokes (chain-aware, per-pen greedy nearest-neighbour).
 
 mod boolean;
 mod clip;

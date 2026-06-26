@@ -9,7 +9,7 @@
 //     simply backfilled when loading older data.
 //   • Forward (old app, newer data): a `schemaVersion` greater than CURRENT yields `unsupported`;
 //     callers report it and leave the stored bytes untouched rather than mangling them.
-import type { DocElement, Fiducial, MachineProfile, Transform } from '../../core/types'
+import type { DocElement, Fiducial, Group, MachineProfile, Transform } from '../../core/types'
 import { IDENTITY_TRANSFORM } from '../../core/types'
 import { PRUSA_MK4 } from '../profiles'
 import { isKnownType, sanitizeParams } from '../../elements/registry'
@@ -30,6 +30,8 @@ export interface DocSnapshot {
   selectedIds: string[]
   /** The single alignment fiducial (page-space mm), or null. */
   fiducial: Fiducial | null
+  /** Organizational element groups for the Elements tree (membership is on each element). */
+  groups: Group[]
 }
 
 /** A document as stored under `kg-doc:<id>` — snapshot + identity/metadata. */
@@ -114,7 +116,21 @@ function sanitizeElements(arr: unknown): DocElement[] {
       transform: sanitizeTransform(e.transform),
       params: sanitizeParams(type, e.params),
       pen: num(e.pen, num(legacyPen, 0)),
+      ...(typeof e.groupId === 'string' ? { groupId: e.groupId } : {}),
+      ...(typeof e.name === 'string' ? { name: e.name } : {}),
     })
+  }
+  return out
+}
+
+/** Coerce the persisted groups array. Dangling members and empty groups are reconciled in
+ *  {@link sanitizeSnapshot} once both elements and groups are known. */
+function sanitizeGroups(arr: unknown): Group[] {
+  if (!Array.isArray(arr)) return []
+  const out: Group[] = []
+  for (const g of arr) {
+    if (!isObj(g) || typeof g.id !== 'string') continue
+    out.push({ id: g.id, name: str(g.name, 'Group'), collapsed: !!g.collapsed })
   }
   return out
 }
@@ -138,7 +154,17 @@ export function sanitizeSnapshot(raw: unknown): DocSnapshot {
       ? [o.selectedId]
       : []
   const selectedIds = rawIds.filter((id: unknown): id is string => typeof id === 'string' && ids.has(id))
-  return { elements, profile: sanitizeProfile(o.profile), selectedIds, fiducial: sanitizeFiducial(o.fiducial) }
+
+  // Reconcile groups with membership: keep only groups that have ≥1 member, and clear any element's
+  // groupId that points at a dropped group — so a tree can never reference a phantom group.
+  let groups = sanitizeGroups(o.groups)
+  const used = new Set<string>()
+  for (const e of elements) if (e.groupId) used.add(e.groupId)
+  groups = groups.filter((g) => used.has(g.id))
+  const live = new Set(groups.map((g) => g.id))
+  for (const e of elements) if (e.groupId && !live.has(e.groupId)) delete e.groupId
+
+  return { elements, profile: sanitizeProfile(o.profile), selectedIds, fiducial: sanitizeFiducial(o.fiducial), groups }
 }
 
 // ---- migrations ---------------------------------------------------------------------------------
@@ -222,6 +248,7 @@ export function documentFile(doc: StoredDoc) {
       profile: doc.profile,
       selectedIds: doc.selectedIds,
       fiducial: doc.fiducial,
+      groups: doc.groups,
     },
   }
 }

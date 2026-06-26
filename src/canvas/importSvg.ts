@@ -19,6 +19,8 @@ export interface SvgImportOptions {
   mapDensity: boolean
   /** Map each source colour to the nearest palette pen (else everything on pen 0). */
   colorToPen: boolean
+  /** Name for the group the imported shapes are collected under (so the tree stays tidy). */
+  groupName?: string
 }
 
 export const defaultSvgImportOptions = (): SvgImportOptions => ({
@@ -103,6 +105,8 @@ export function addSvgElements(bytes: Uint8Array, opts: SvgImportOptions): numbe
     .filter((s): s is NonNullable<typeof s> => s !== null)
 
   if (!specs.length) return 0
-  useDoc.getState().addElements(specs)
+  // Collect the import into one collapsed group so a busy SVG doesn't flood the elements tree.
+  const group = specs.length > 1 ? { name: opts.groupName || 'SVG import', collapsed: true } : undefined
+  useDoc.getState().addElements(specs, group)
   return specs.length
 }

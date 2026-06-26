@@ -65,6 +65,20 @@ export interface DocElement<TParams = unknown> {
    *  type that is *natively* multi-colour sets per-stroke pens in its generator and opts out of
    *  stamping (registry `multiPen`); `pen` then acts as its base/fallback. */
   pen: PenId
+  /** Optional flat-group membership — a purely organizational tag for the Elements tree (collapse,
+   *  group-select, rename). It does NOT affect geometry, plot order, or the pipeline; an element
+   *  with no `groupId` sits at the tree's top level. References a {@link Group} by id. */
+  groupId?: string
+  /** Optional user-given display name for the Elements tree; falls back to a derived label. */
+  name?: string
+}
+
+/** A flat (non-nesting) organizational group of elements, shown as a collapsible node in the
+ *  Elements tree. Membership lives on each element's `groupId`; this just holds the display state. */
+export interface Group {
+  id: string
+  name: string
+  collapsed: boolean
 }
 
 export interface Pen {

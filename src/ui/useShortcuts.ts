@@ -55,6 +55,14 @@ export function useShortcuts(): void {
         return
       }
 
+      // Select all elements.
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'a' || e.key === 'A')) {
+        e.preventDefault()
+        const { elements, selectMany } = useDoc.getState()
+        selectMany(elements.map((el) => el.id))
+        return
+      }
+
       // Space toggles preview playback (only while the preview transport is active). If a button
       // has focus, let its native Space-activation handle it instead (avoids a double-toggle).
       if (e.key === ' ' && usePreview.getState().active) {

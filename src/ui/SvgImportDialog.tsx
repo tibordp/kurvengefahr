@@ -72,7 +72,7 @@ export function SvgImportDialog() {
 
   const filled = opts.fillStyle !== 'none'
   const onImport = () => {
-    addSvgElements(pending.bytes, opts)
+    addSvgElements(pending.bytes, { ...opts, groupName: pending.name.replace(/\.svg$/i, '') })
     close()
   }
 

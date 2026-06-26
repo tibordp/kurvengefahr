@@ -20,8 +20,8 @@ import init, {
   import_svg,
   SvgImport,
   GeometryBuffers,
-} from '@wasm/kg_toolpath.js'
-import wasmUrl from '@wasm/kg_toolpath_bg.wasm?url'
+} from '@wasm/kg_core.js'
+import wasmUrl from '@wasm/kg_core_bg.wasm?url'
 
 let ready: Promise<void> | null = null
 

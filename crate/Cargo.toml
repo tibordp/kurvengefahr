@@ -1,8 +1,8 @@
 [package]
-name = "kg_toolpath"
+name = "kg_core"
 version = "0.1.0"
 edition = "2021"
-description = "Toolpath generation for Kurvengefahr (pen-plotter CAM)"
+description = "Core compute for Kurvengefahr (pen-plotter CAM), compiled to WASM: vector shapes & multi-contour paths, polygon booleans, hatch fills, SVG import, raster stylization, the handwriting RNN, plus clipping and stroke-ordering."
 license = "MIT"
 
 [lib]

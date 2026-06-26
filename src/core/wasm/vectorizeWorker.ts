@@ -5,8 +5,8 @@
 // generation controller drives both identically: one `partial` (the full geometry) then `done`, or
 // an `error`. Every method traces live as params change, so the decoded image is cached (keyed by
 // imageId, which is immutable) — a re-trace on a slider edit re-runs only the Rust, not the decode.
-import init, { vectorize_image } from '@wasm/kg_toolpath.js'
-import wasmUrl from '@wasm/kg_toolpath_bg.wasm?url'
+import init, { vectorize_image } from '@wasm/kg_core.js'
+import wasmUrl from '@wasm/kg_core_bg.wasm?url'
 import { getImageBlob } from '../../store/images'
 import { type RasterParams } from '../../elements/raster'
 import type { FlatGeometry } from './serde'
