@@ -19,7 +19,8 @@ registerElement('ellipse', {
     const rx = Math.max(0, p.rx)
     const ry = Math.max(0, p.ry)
     const outline = ellipseGeometry(rx, ry)
-    return [...outline, ...ellipseFill(rx, ry, outline[0]?.points ?? [], p.hatch)]
+    const fill = ellipseFill(rx, ry, outline[0]?.points ?? [], p.hatch)
+    return [...(p.hatch.stroke ? outline : []), ...fill]
   },
   isLocked: () => false,
   sanitizeParams: (raw) => {

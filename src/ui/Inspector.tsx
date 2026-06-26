@@ -327,32 +327,52 @@ function HandwritingInspector({ id, params }: { id: string; params: HandwritingP
   )
 }
 
-/** Fill (hatch) controls shared by all closed shapes. */
+/** The three valid stroke/fill combinations (never both off → no marks). */
+type FillStyle = 'stroke' | 'both' | 'fill'
+const fillStyle = (h: Hatch): FillStyle =>
+  h.pattern === 'none' ? 'stroke' : h.stroke ? 'both' : 'fill'
+
+/** Fill (hatch) controls shared by all closed shapes. Style picks stroke / stroke+fill / fill;
+ *  "neither" is unrepresentable. */
 function HatchControls({ hatch, onChange }: { hatch: Hatch; onChange: (h: Hatch) => void }) {
   const set = (patch: Partial<Hatch>) => onChange({ ...hatch, ...patch })
+  const style = fillStyle(hatch)
+  const setStyle = (s: FillStyle) => {
+    if (s === 'stroke') return set({ stroke: true, pattern: 'none' })
+    // Entering a fill style needs a real pattern; revive 'lines' if there isn't one.
+    set({ stroke: s === 'both', pattern: hatch.pattern === 'none' ? 'lines' : hatch.pattern })
+  }
   return (
     <>
       <SectionTitle>Fill</SectionTitle>
-      <Field label="Pattern">
-        <select
-          className={controlClass}
-          value={hatch.pattern}
-          onChange={(e) => set({ pattern: e.target.value as HatchPattern })}
-        >
-          <option value="none">None</option>
-          <option value="lines">Lines</option>
-          <option value="cross">Cross-hatch</option>
-          <option value="grid">Grid</option>
-          <option value="concentric">Concentric</option>
-          <option value="hilbert">Hilbert curve</option>
+      <Field label="Style">
+        <select className={controlClass} value={style} onChange={(e) => setStyle(e.target.value as FillStyle)}>
+          <option value="stroke">Stroke</option>
+          <option value="both">Stroke + Fill</option>
+          <option value="fill">Fill</option>
         </select>
       </Field>
-      {hatch.pattern !== 'none' && (
-        <Num label="Density (mm)" value={hatch.spacing} step={0.5}
-          onChange={(v) => set({ spacing: Math.max(0.3, v) })} />
-      )}
-      {(hatch.pattern === 'lines' || hatch.pattern === 'cross') && (
-        <Num label="Angle (°)" value={hatch.angle} step={5} onChange={(v) => set({ angle: v })} />
+      {style !== 'stroke' && (
+        <>
+          <Field label="Pattern">
+            <select
+              className={controlClass}
+              value={hatch.pattern}
+              onChange={(e) => set({ pattern: e.target.value as HatchPattern })}
+            >
+              <option value="lines">Lines</option>
+              <option value="cross">Cross-hatch</option>
+              <option value="grid">Grid</option>
+              <option value="concentric">Concentric</option>
+              <option value="hilbert">Hilbert curve</option>
+            </select>
+          </Field>
+          <Num label="Density (mm)" value={hatch.spacing} step={0.5}
+            onChange={(v) => set({ spacing: Math.max(0.3, v) })} />
+          {(hatch.pattern === 'lines' || hatch.pattern === 'cross') && (
+            <Num label="Angle (°)" value={hatch.angle} step={5} onChange={(v) => set({ angle: v })} />
+          )}
+        </>
       )}
     </>
   )

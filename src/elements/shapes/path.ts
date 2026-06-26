@@ -52,8 +52,10 @@ registerElement('path', {
   generate: (p: PathParams): Geometry => {
     if (p.nodes.length < 2) return []
     const outline = pathGeometry(nodesToFlat(p.nodes), p.closed, 0)
-    if (!p.closed || p.hatch.pattern === 'none') return outline
-    return [...outline, ...pathFill(outline[0]?.points ?? [], p.hatch)]
+    // Only closed paths fill; an open path is always just its stroke.
+    if (!p.closed) return outline
+    const fill = pathFill(outline[0]?.points ?? [], p.hatch)
+    return [...(p.hatch.stroke ? outline : []), ...fill]
   },
   isLocked: () => false,
   sanitizeParams: (raw) => {

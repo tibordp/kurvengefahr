@@ -44,7 +44,7 @@ export function simplifyPolyline(xy: Float32Array, tol: number): Float32Array {
   return simplify_polyline(xy, tol)
 }
 
-/** Hatch fill for a closed-polygon outline. pattern: 0 lines, 1 cross, 2 grid, 3 hilbert. */
+/** Hatch fill for a closed-polygon outline. pattern: 0 lines, 1 cross, 2 grid, 3 hilbert, 4 concentric. */
 export function hatchGeometry(
   polygonXy: Float32Array,
   pattern: number,

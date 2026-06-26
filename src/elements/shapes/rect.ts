@@ -26,7 +26,8 @@ registerElement('rect', {
     const w = Math.max(0, p.w)
     const h = Math.max(0, p.h)
     const outline = rectGeometry(w, h, Math.max(0, p.cornerRadius))
-    return [...outline, ...rectFill(w, h, outline[0]?.points ?? [], p.hatch)]
+    const fill = rectFill(w, h, outline[0]?.points ?? [], p.hatch)
+    return [...(p.hatch.stroke ? outline : []), ...fill]
   },
   isLocked: () => false,
   sanitizeParams: (raw) => {
