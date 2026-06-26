@@ -18,6 +18,7 @@ import {
   Sun,
   Moon,
   Monitor,
+  Dices,
 } from 'lucide-react'
 import { useDoc, type AlignEdge } from '../store/document'
 import { useUI } from '../store/ui'
@@ -32,7 +33,7 @@ import { downloadJson, pickJsonFile } from '../output/download'
 import { substitution_note } from '../core/wasm'
 import type { DocElement, Pen } from '../core/types'
 import type { HandwritingParams } from '../elements/handwriting'
-import type { RasterParams } from '../elements/raster'
+import { SEEDED_METHODS, type RasterParams, type RasterMethod } from '../elements/raster'
 import type { RectParams, EllipseParams, PathParams, Hatch, HatchPattern } from '../elements/shapes'
 import { Button, IconButton, Field, SectionTitle, Banner, controlClass, textareaClass, cx } from './primitives'
 import { MOD_KEY } from './shortcuts'
@@ -212,11 +213,13 @@ function GenerationNote({ id }: { id: string }) {
   }
   // Loading / generating flash in and out — a live re-trace fires on every edit. Keep this a
   // fixed-height, single-line slot so showing or clearing the label never reflows the inspector.
+  // Handwriting streams word by word (show the line count); raster lands in one shot (no count).
+  const progress = status?.total && status.total > 1 ? ` ${status.done ?? 0}/${status.total} lines` : ''
   const text =
     status?.phase === 'loading-model'
       ? '⏳ Loading handwriting model… (first use only)'
       : status?.phase === 'generating'
-        ? `✎ Generating…${status.total && status.total > 1 ? ` ${status.done ?? 0}/${status.total} lines` : ''}`
+        ? `✎ Generating…${progress}`
         : ''
   return (
     <p className="mb-2 h-4 truncate text-xs text-muted" aria-live="polite">
@@ -410,58 +413,213 @@ function PathInspector({ id, params }: { id: string; params: PathParams }) {
   )
 }
 
+/** Compact, right-aligned number input that pairs with a slider (narrow — the inspector column is
+ *  tight). Mirrors {@link Num}'s local-edit-then-commit behaviour. */
+const numFieldClass =
+  'w-[3.6em] shrink-0 rounded-md border border-border bg-surface px-1 h-8 text-sm text-right ' +
+  'tabular-nums text-text outline-none transition-colors hover:border-border-strong ' +
+  'focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/35'
+
+/** A slider with an inline editable number box. The slider's `max` is a *soft* bound — typing a
+ *  larger value is allowed (and the thumb just pins at max) unless `hardMax`. `int` rounds. This is
+ *  the default raster knob: drag for feel, type for precision, exceed the range when you want to. */
+function SliderNum({
+  label, title, min, max, step, value, onChange, hardMax = false, int = false,
+}: {
+  label: string
+  title?: string
+  min: number
+  max: number
+  step: number
+  value: number
+  onChange: (v: number) => void
+  hardMax?: boolean
+  int?: boolean
+}) {
+  const [text, setText] = useState(() => String(value))
+  const [focused, setFocused] = useState(false)
+  // Mirror external changes (slider drag, regenerate, selection switch) only when not typing.
+  useEffect(() => {
+    if (!focused) setText(String(value))
+  }, [value, focused])
+
+  const clampNum = (n: number) => {
+    let v = int ? Math.round(n) : n
+    v = Math.max(min, v)
+    return hardMax ? Math.min(max, v) : v
+  }
+  const commit = (raw: string) => {
+    const n = parseFloat(raw)
+    if (Number.isFinite(n)) onChange(clampNum(n))
+  }
+  const sliderVal = Math.min(max, Math.max(min, value))
+
+  return (
+    <Field label={label} title={title}>
+      <div className="flex min-w-0 items-center gap-1.5">
+        <input
+          type="range"
+          className="min-w-0 flex-1"
+          min={min}
+          max={max}
+          step={step}
+          value={sliderVal}
+          onChange={(e) => onChange(clampNum(parseFloat(e.target.value)))}
+        />
+        <input
+          type="text"
+          inputMode="decimal"
+          className={numFieldClass}
+          value={text}
+          onFocus={() => setFocused(true)}
+          onBlur={(e) => {
+            setFocused(false)
+            commit(e.target.value)
+          }}
+          onChange={(e) => {
+            setText(e.target.value)
+            commit(e.target.value)
+          }}
+        />
+      </div>
+    </Field>
+  )
+}
+
+/** Human label for each stylization method (drives the picker). */
+const METHOD_LABELS: Record<RasterMethod, string> = {
+  contours: 'Outline tracing',
+  contourmap: 'Topographic lines',
+  hatch: 'Tonal hatching',
+  scanlines: 'Squiggle scanlines',
+  tsp: 'TSP art (one line)',
+  flowfield: 'Flow field',
+  spiral: 'Spiral',
+}
+
 function RasterInspector({ id, params }: { id: string; params: RasterParams }) {
   const setParams = useDoc((s) => s.setParams)
+  // Every edit re-traces live (debounced, off-thread), so there's no manual Regenerate — just patch.
   const up = (patch: Partial<RasterParams>) => setParams(id, { ...params, ...patch })
-  const busy = useGeneration((s) => !!s.status[id])
-  const dirty = !busy && needsManualRegen(id, 'raster', params)
+  const m = params.method
+  const seeded = SEEDED_METHODS.has(m)
+
   return (
     <>
       <SectionTitle>Image</SectionTitle>
       <GenerationNote id={id} />
-      {dirty && (
-        <Banner
-          action={
-            <Button variant="primary" className="h-7 px-2.5 text-xs" onClick={() => regenerate(id)}>
-              Regenerate
-            </Button>
-          }
-        >
-          ● Edited — preview is out of date
-        </Banner>
-      )}
       {!params.imageId && (
         <Banner variant="warn">⚠ Image data missing — re-import this image.</Banner>
       )}
-      <Field label="Method">
+      <Field label="Method" title="How the image is turned into pen strokes.">
         <select
           className={controlClass}
-          value={params.method}
-          onChange={(e) => up({ method: e.target.value as RasterParams['method'] })}
+          value={m}
+          onChange={(e) => up({ method: e.target.value as RasterMethod })}
         >
-          <option value="contours">Outline tracing</option>
+          {(Object.keys(METHOD_LABELS) as RasterMethod[]).map((k) => (
+            <option key={k} value={k}>{METHOD_LABELS[k]}</option>
+          ))}
         </select>
       </Field>
-      <Field
-        label="Threshold"
-        title="Luma cutoff: pixels darker than this become ink. Lower = less ink, higher = more."
-      >
-        <div className="flex items-center gap-2">
-          <input
-            type="range"
-            className="min-w-0 flex-1"
-            min={0}
-            max={255}
-            step={1}
-            value={params.threshold}
-            onChange={(e) => up({ threshold: parseInt(e.target.value, 10) })}
-          />
-          <span className="min-w-[2.6em] text-right text-xs tabular-nums text-muted">
-            {params.threshold}
-          </span>
-        </div>
-      </Field>
-      <Field label="Invert" title="Swap ink and paper (trace the light areas instead of the dark).">
+
+      {/* --- per-method controls --- */}
+      {m === 'contours' && (
+        <>
+          <SliderNum label="Threshold" min={0} max={255} step={1} value={params.threshold} hardMax int
+            title="Luma cutoff: pixels darker than this become ink. Lower = less ink, higher = more."
+            onChange={(v) => up({ threshold: v })} />
+          <SliderNum label="Smoothing (mm)" min={0} max={5} step={0.1} value={params.simplifyTol}
+            title="Elastic-band smoothing strength: how far (mm) the traced line may be pulled taut from the pixel edge. 0 = faithful/jagged; higher = smoother and simpler. Sharp corners are kept."
+            onChange={(v) => up({ simplifyTol: v })} />
+          <SliderNum label="Despeckle (px²)" min={0} max={100} step={1} value={params.minArea} int
+            title="Drop traced contours smaller than this many pixels² (removes specks)."
+            onChange={(v) => up({ minArea: v })} />
+        </>
+      )}
+
+      {m === 'contourmap' && (
+        <SliderNum label="Levels" min={1} max={12} step={1} value={params.levels} hardMax int
+          title="Number of evenly-spaced tone thresholds drawn as iso-lines (like a contour map)."
+          onChange={(v) => up({ levels: v })} />
+      )}
+
+      {m === 'hatch' && (
+        <>
+          <SliderNum label="Spacing (mm)" min={0.2} max={8} step={0.1} value={params.spacing}
+            title="Distance between hatch lines. Smaller = denser, darker tone." onChange={(v) => up({ spacing: v })} />
+          <SliderNum label="Angle (°)" min={0} max={180} step={5} value={params.angle} hardMax
+            title="Base hatch angle; successive tone bands cross it for an engraving look." onChange={(v) => up({ angle: v })} />
+          <SliderNum label="Tone bands" min={1} max={16} step={1} value={params.levels} hardMax int
+            title="How many darkness bands accrue cross-hatch passes, each at its own evenly-spread angle. More = finer tonal range."
+            onChange={(v) => up({ levels: v })} />
+        </>
+      )}
+
+      {m === 'scanlines' && (
+        <>
+          <SliderNum label="Spacing (mm)" min={0.4} max={8} step={0.1} value={params.spacing}
+            title="Distance between scanlines." onChange={(v) => up({ spacing: v })} />
+          <SliderNum label="Amplitude (mm)" min={0} max={10} step={0.1} value={params.amplitude}
+            title="How tall the squiggle gets in the darkest areas. Unbounded — type past the slider to let lines cross." onChange={(v) => up({ amplitude: v })} />
+          <SliderNum label="Frequency" min={0.1} max={20} step={0.5} value={params.frequency}
+            title="How tight the squiggle is (waves per unit length)." onChange={(v) => up({ frequency: v })} />
+        </>
+      )}
+
+      {m === 'spiral' && (
+        <>
+          <SliderNum label="Pitch (mm)" min={0.3} max={8} step={0.1} value={params.spacing}
+            title="Radial gap between successive spiral turns." onChange={(v) => up({ spacing: v })} />
+          <SliderNum label="Amplitude (mm)" min={0} max={10} step={0.1} value={params.amplitude}
+            title="How far the line swells in/out in the darkest areas. Unbounded — type past the slider to let turns cross." onChange={(v) => up({ amplitude: v })} />
+          <SliderNum label="Frequency" min={0.1} max={20} step={0.5} value={params.frequency}
+            title="How fast the line oscillates along the spiral." onChange={(v) => up({ frequency: v })} />
+        </>
+      )}
+
+      {m === 'tsp' && (
+        <SliderNum label="Density" min={0} max={1} step={0.01} value={params.detail} hardMax
+          title="How many points the single line threads through (weighted toward dark areas). Higher = more detail but slower."
+          onChange={(v) => up({ detail: v })} />
+      )}
+
+      {m === 'flowfield' && (
+        <>
+          <SliderNum label="Density" min={0} max={1} step={0.01} value={params.detail} hardMax
+            title="How many streamlines are seeded (weighted toward dark areas)." onChange={(v) => up({ detail: v })} />
+          <SliderNum label="Angle (°)" min={0} max={180} step={5} value={params.angle} hardMax
+            title="Direction the flow falls back to in flat (edgeless) regions." onChange={(v) => up({ angle: v })} />
+          <SliderNum label="Length" min={4} max={400} step={1} value={params.flowSteps} hardMax int
+            title="Maximum streamline length (integration steps)." onChange={(v) => up({ flowSteps: v })} />
+        </>
+      )}
+
+      {seeded && (
+        <Field label="Seed" title="Random arrangement. Re-roll for a different one.">
+          <div className="flex min-w-0 items-center gap-2">
+            <input
+              className={cx(controlClass, 'min-w-0 flex-1')}
+              type="text"
+              inputMode="numeric"
+              value={params.seed}
+              onChange={(e) => {
+                const v = parseInt(e.target.value, 10)
+                if (Number.isFinite(v)) up({ seed: Math.max(0, v) })
+              }}
+            />
+            <IconButton
+              aria-label="Re-roll seed"
+              title="Re-roll: new random arrangement"
+              onClick={() => up({ seed: Math.floor(Math.random() * 1e9) })}
+            >
+              <Dices size={16} />
+            </IconButton>
+          </div>
+        </Field>
+      )}
+
+      <Field label="Invert" title="Swap ink and paper (render the light areas instead of the dark).">
         <input
           type="checkbox"
           className="h-4 w-4 justify-self-start"
@@ -469,16 +627,11 @@ function RasterInspector({ id, params }: { id: string; params: RasterParams }) {
           onChange={(e) => up({ invert: e.target.checked })}
         />
       </Field>
-      <Num label="Smoothing (mm)" value={params.simplifyTol} step={0.1}
-        title="Elastic-band smoothing strength: how far (mm) the traced line may be pulled taut from the pixel edge. 0 = faithful/jagged; higher = smoother and simpler. Sharp corners are kept."
-        onChange={(v) => up({ simplifyTol: Math.max(0, v) })} />
-      <Num label="Despeckle (px²)" value={params.minArea} step={1}
-        onChange={(v) => up({ minArea: Math.max(0, v) })} />
-      <Num label="Width (mm)" value={params.targetWidthMm} step={1}
-        onChange={(v) => up({ targetWidthMm: Math.max(0, v) })} />
-      <Num label="Height (mm)" value={params.targetHeightMm} step={1}
-        onChange={(v) => up({ targetHeightMm: Math.max(0, v) })} />
-      <Field label="Show source" title="Draw the faint source image under the traced strokes (display only — doesn't affect the plot).">
+      <SliderNum label="Width (mm)" min={1} max={400} step={1} value={params.targetWidthMm} int
+        onChange={(v) => up({ targetWidthMm: v })} />
+      <SliderNum label="Height (mm)" min={1} max={400} step={1} value={params.targetHeightMm} int
+        onChange={(v) => up({ targetHeightMm: v })} />
+      <Field label="Show source" title="Draw the faint source image under the strokes (display only — doesn't affect the plot).">
         <input
           type="checkbox"
           className="h-4 w-4 justify-self-start"

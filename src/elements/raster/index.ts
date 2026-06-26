@@ -1,18 +1,28 @@
 // The raster image element. The source image lives as a blob in IndexedDB (see store/images.ts);
-// the document only stores its `imageId` plus the vectorization params. Like handwriting, this is
-// an **async** type — the trace runs in a Web Worker (loading the blob + decoding the image are
-// async, and tracing a few-MP image is too heavy for the main thread). The controller drives the
-// worker, fills the registry cache, and re-renders; `generateLocal` just reads the cached strokes.
+// the document only stores its `imageId` plus the stylization params. Like handwriting, this is an
+// **async** type — tracing runs in a Web Worker (loading the blob + decoding the image are async,
+// and stylizing a few-MP image is too heavy for the main thread). The controller drives the worker,
+// fills the registry cache, and re-renders; `generateLocal` just reads the cached strokes.
 //
-// This file is purely the element's param shape + registration.
+// One image, many renderings: `method` picks a stylization (outline tracing, hatching, TSP art,
+// flow field, spiral, topographic contours, squiggle scanlines). Each is a self-contained Rust routine
+// producing the same `Stroke[]`; the params object below is the *union* of every method's knobs, and
+// the inspector shows only the active method's subset. All of it is marshalled to Rust as one JSON
+// blob (see the vectorize worker) — `raster::Params` is the authoritative schema.
 import { registerElement } from '../registry'
 
-/** Vectorization method. Only outline tracing today; the field is the seam for adding more
- *  (e.g. grayscale hatching) without a pipeline change. */
-export type RasterMethod = 'contours'
+/** Stylization method. Each maps to a Rust routine in `crate/src/raster/`. */
+export type RasterMethod =
+  | 'contours' // faithful outline tracing
+  | 'contourmap' // topographic iso-tone lines
+  | 'hatch' // engraving-style tonal cross-hatch
+  | 'scanlines' // squiggle scanlines (wiggle ∝ darkness)
+  | 'tsp' // one continuous line threaded through a density-weighted point cloud
+  | 'flowfield' // streamlines flowing along the image's edges
+  | 'spiral' // one radially-modulated Archimedean spiral
 
-/** Method name → the u32 the WASM `vectorize_image` API expects. Shared with the vectorize worker. */
-export const METHOD_CODE: Record<RasterMethod, number> = { contours: 0 }
+/** Methods that use a random seed (so the inspector offers a re-roll). */
+export const SEEDED_METHODS: ReadonlySet<RasterMethod> = new Set(['tsp', 'flowfield'])
 
 export interface RasterParams {
   /** Key into the IndexedDB image store. The authoritative, geometry-affecting input. */
@@ -25,22 +35,45 @@ export interface RasterParams {
   targetWidthMm: number
   targetHeightMm: number
   method: RasterMethod
-  /** Luma threshold 0..255; ink = darker. */
-  threshold: number
-  /** Flip ink/paper. */
+  /** Flip ink/paper (trace the light areas instead). Shared by all methods. */
   invert: boolean
-  /** RDP simplification tolerance in mm. */
+  /** Seed for the randomized methods (tsp/flowfield). */
+  seed: number
+
+  // --- contours / contourmap ---
+  /** Luma threshold 0..255; ink = darker (contours). */
+  threshold: number
+  /** Elastic-band smoothing / RDP tolerance in mm (contours). */
   simplifyTol: number
-  /** Despeckle: drop traced contours under this many px². */
+  /** Despeckle: drop traced contours under this many px² (contours). */
   minArea: number
+
+  // --- hatch / scanlines / spiral / contourmap ---
+  /** Line spacing / spiral pitch in mm. */
+  spacing: number
+  /** Base hatch / flow angle in degrees. */
+  angle: number
+  /** Tone bands (hatch cross-hatch depth; contourmap iso-levels). */
+  levels: number
+  /** Wiggle amplitude in mm (scanlines / spiral). */
+  amplitude: number
+  /** Wiggle frequency (scanlines / spiral). */
+  frequency: number
+
+  // --- tsp / flowfield ---
+  /** 0..1 density of sampled points / seeds. */
+  detail: number
+  /** Flow streamline max length (integration steps). */
+  flowSteps: number
+
   /** Display-only: draw the faint source image under the traced strokes. Not a geometry input
    *  (see registry `viewParams`), so toggling it never re-traces. */
   showUnderlay: boolean
 }
 
-// Async (worker-backed): no synchronous `generate`. Free singletons in the optimization bag (a
-// traced image is not a locked chain). Resize bakes into the physical box so tracing stays crisp at
-// any size (and the element goes dirty → Regenerate, like handwriting edits). Single pen.
+// Async (worker-backed): no synchronous `generate`. Free singletons in the optimization bag. Resize
+// bakes into the physical box so tracing stays crisp at any size (and the element goes dirty →
+// Regenerate, like handwriting edits). Single pen.
 registerElement('raster', {
   isLocked: () => false,
   sanitizeParams: sanitizeRasterParams,
@@ -49,9 +82,9 @@ registerElement('raster', {
     targetWidthMm: p.targetWidthMm * Math.abs(sx),
     targetHeightMm: p.targetHeightMm * Math.abs(sy),
   }),
-  // Outline tracing is cheap enough to re-trace live (debounced) as params change. A future heavier
-  // method (e.g. tonal hatching) would return false here and fall back to manual Regenerate.
-  autoRegenerate: (p: RasterParams) => p.method === 'contours',
+  // Every method re-traces live (debounced) as params change — they're all fast enough off-thread,
+  // so there's no manual "Regenerate" for raster (unlike handwriting's slow model run).
+  autoRegenerate: () => true,
   // The mm box the trace is fit into — lets the canvas rescale stale ink to a new size during a
   // resize, instead of flashing the old size until the re-trace lands.
   provisionalExtent: (p: RasterParams) => ({ w: p.targetWidthMm, h: p.targetHeightMm }),
@@ -61,6 +94,9 @@ registerElement('raster', {
 
 const num = (v: unknown, d: number) => (typeof v === 'number' && Number.isFinite(v) ? v : d)
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v))
+const VALID_METHODS: ReadonlySet<string> = new Set([
+  'contours', 'contourmap', 'hatch', 'scanlines', 'tsp', 'flowfield', 'spiral',
+])
 
 /** Coerce arbitrary (persisted/imported, possibly older or malformed) params into a valid
  *  `RasterParams`. Keeps the element even if `imageId` is missing (it renders as a placeholder; the
@@ -74,11 +110,19 @@ export function sanitizeRasterParams(raw: unknown): RasterParams {
     naturalHeight: Math.max(0, num(p.naturalHeight, d.naturalHeight)),
     targetWidthMm: Math.max(0, num(p.targetWidthMm, d.targetWidthMm)),
     targetHeightMm: Math.max(0, num(p.targetHeightMm, d.targetHeightMm)),
-    method: p.method === 'contours' ? p.method : d.method,
-    threshold: clamp(num(p.threshold, d.threshold), 0, 255),
+    method: VALID_METHODS.has(p.method) ? p.method : d.method,
     invert: typeof p.invert === 'boolean' ? p.invert : d.invert,
+    seed: Math.max(0, Math.floor(num(p.seed, d.seed))),
+    threshold: clamp(num(p.threshold, d.threshold), 0, 255),
     simplifyTol: Math.max(0, num(p.simplifyTol, d.simplifyTol)),
     minArea: Math.max(0, num(p.minArea, d.minArea)),
+    spacing: Math.max(0.1, num(p.spacing, d.spacing)),
+    angle: num(p.angle, d.angle),
+    levels: clamp(Math.floor(num(p.levels, d.levels)), 1, 16),
+    amplitude: Math.max(0, num(p.amplitude, d.amplitude)),
+    frequency: Math.max(0.1, num(p.frequency, d.frequency)),
+    detail: clamp(num(p.detail, d.detail), 0, 1),
+    flowSteps: clamp(Math.floor(num(p.flowSteps, d.flowSteps)), 4, 4000),
     showUnderlay: typeof p.showUnderlay === 'boolean' ? p.showUnderlay : d.showUnderlay,
   }
 }
@@ -97,10 +141,18 @@ export function defaultRasterParams(
     targetWidthMm,
     targetHeightMm,
     method: 'contours',
-    threshold: 128,
     invert: false,
+    seed: 1,
+    threshold: 128,
     simplifyTol: 0.3,
     minArea: 8,
+    spacing: 1.5,
+    angle: 45,
+    levels: 4,
+    amplitude: 1.2,
+    frequency: 5,
+    detail: 0.5,
+    flowSteps: 80,
     showUnderlay: true,
   }
 }

@@ -85,6 +85,18 @@ registry `generate()`. Non-obvious bits:
   Transformer.
 - **Snapping is grid-only** (`store/snap.ts`; Alt bypasses) — object/point snapping was removed by
   request.
+- **Raster is a stylization layer, not one tracer** (`crate/src/raster/`, worker-backed like
+  handwriting): one uploaded image, `method` picks how it becomes strokes (outline/topographic/
+  hatch/scanlines/TSP/flow/spiral). Each method is a Rust submodule reading a shared inkness
+  `Grid` + the union `Params`; adding one = submodule + match arm + an inspector control. Two
+  non-obvious seams: (1) **params cross the boundary as a JSON string**, not flat buffers — the one
+  exception to the CSR-buffer rule below, because the param *union* outgrew a positional signature
+  (`raster::Params` with serde is the schema; the worker just `JSON.stringify`s `RasterParams`, and
+  Rust ignores the non-geometry keys). (2) **Every method auto-regenerates live** (debounced,
+  off-thread — all fast enough, even 50k-point TSP), so there's *no* manual Regenerate for raster
+  (only handwriting's slow model run is manual). The worker caches the decoded image by `imageId` so
+  a param-only edit re-runs only the Rust, not the decode. The randomized methods (tsp/flow, in
+  `SEEDED_METHODS`) are deterministic per `seed` (re-roll = new arrangement).
 
 ## Pipeline (`src/core/pipeline`)
 

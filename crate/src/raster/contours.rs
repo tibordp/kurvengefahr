@@ -1,87 +1,29 @@
-//! Raster → vector: trace a bitmap into pen strokes. JS decodes the image (it owns the full image
-//! stack) and hands us raw RGBA bytes; Rust only ever sees pixels, so no image-decoding crate is
-//! needed. Output is element-local mm (origin 0,0), fit to the element's physical box —
-//! place→clip→optimize→emit does the rest, exactly like `shapes`.
-//!
-//! Method 0 (the only one today) is **outline tracing**: grayscale → threshold → trace the
-//! ink/paper boundary as closed rectilinear loops → simplify (RDP). The `method` arm is the seam
-//! for a future grayscale-hatching method.
+//! **Outline tracing** (`contours`): threshold the inkness grid → trace the ink/paper boundary as
+//! closed rectilinear loops → elastic-smooth + RDP-simplify. The faithful, line-art rendering.
 
 use std::collections::HashMap;
 
+use super::{Grid, Params};
 use crate::geom::{Point, Stroke};
 use crate::shapes::simplify;
-
-/// Vectorize an RGBA image into pen strokes.
-///
-/// `rgba` is row-major `width*height*4` bytes. `target_w_mm`/`target_h_mm` set the element's
-/// physical box (the pixel grid is fit into it). `threshold` is 0..255 on luma (ink = darker);
-/// `invert` flips ink/paper. `simplify_tol` is the RDP tolerance in mm; `min_area` despeckles
-/// contours below that many px² (lattice units).
-#[allow(clippy::too_many_arguments)]
-pub fn vectorize(
-    rgba: &[u8],
-    width: u32,
-    height: u32,
-    target_w_mm: f32,
-    target_h_mm: f32,
-    method: u32,
-    threshold: u32,
-    invert: bool,
-    simplify_tol: f32,
-    min_area: f32,
-) -> Vec<Stroke> {
-    let w = width as usize;
-    let h = height as usize;
-    if w == 0 || h == 0 || rgba.len() < w * h * 4 {
-        return vec![];
-    }
-    // 0 = outline tracing — the only method today. `method` is the seam for future variants
-    // (e.g. 1 = grayscale hatching).
-    let _ = method;
-    contours(
-        rgba,
-        w,
-        h,
-        target_w_mm,
-        target_h_mm,
-        threshold,
-        invert,
-        simplify_tol,
-        min_area,
-    )
-}
 
 /// Lattice vertex (pixel-corner) coordinate. The corner grid is `(w+1) × (h+1)`.
 type V = (i32, i32);
 
-#[allow(clippy::too_many_arguments)]
-fn contours(
-    rgba: &[u8],
-    w: usize,
-    h: usize,
-    target_w_mm: f32,
-    target_h_mm: f32,
-    threshold: u32,
-    invert: bool,
-    simplify_tol: f32,
-    min_area: f32,
-) -> Vec<Stroke> {
-    // Binarize: ink where composited luma < threshold (flipped by `invert`).
-    let thr = threshold as f32;
-    let mut ink = vec![false; w * h];
-    for y in 0..h {
-        for x in 0..w {
-            let p = (y * w + x) * 4;
-            let r = rgba[p] as f32;
-            let g = rgba[p + 1] as f32;
-            let b = rgba[p + 2] as f32;
-            let a = rgba[p + 3] as f32 / 255.0;
-            // Composite over white so transparent pixels read as paper.
-            let luma = (0.299 * r + 0.587 * g + 0.114 * b) * a + 255.0 * (1.0 - a);
-            ink[y * w + x] = (luma < thr) ^ invert;
-        }
-    }
+/// Trace closed ink/paper boundary loops. `threshold` 0..255 sets the ink cutoff on inkness (higher
+/// = more ink); `simplify_tol` (mm) drives both smoothing and decimation; `min_area` despeckles
+/// loops under that many px².
+pub fn contours(grid: &Grid, p: &Params) -> Vec<Stroke> {
+    let w = grid.w;
+    let h = grid.h;
+    let target_w_mm = grid.tw;
+    let target_h_mm = grid.th;
+    let simplify_tol = p.simplify_tol;
+    let min_area = p.min_area;
+    // Binarize: ink where inkness clears the cutoff (threshold 0..255, higher = more ink). The grid
+    // already folded in luma/composite/invert.
+    let cutoff = 1.0 - p.threshold as f32 / 255.0;
+    let ink: Vec<bool> = (0..w * h).map(|i| grid.ink_at(i) >= cutoff).collect();
     let is_ink = |x: i32, y: i32| -> bool {
         x >= 0 && y >= 0 && (x as usize) < w && (y as usize) < h && ink[y as usize * w + x as usize]
     };
@@ -299,9 +241,16 @@ mod tests {
         (rgba, w as u32, h as u32)
     }
 
-    fn trace(rows: &[&str]) -> Vec<Stroke> {
+    /// Run `contours` on a mask with the given smoothing/despeckle/invert (threshold fixed at 128).
+    fn run(rows: &[&str], simplify_tol: f32, min_area: f32, invert: bool) -> Vec<Stroke> {
         let (rgba, w, h) = mask(rows);
-        vectorize(&rgba, w, h, w as f32, h as f32, 0, 128, false, 0.0, 1.0)
+        let grid = Grid::build(&rgba, w as usize, h as usize, w as f32, h as f32, invert);
+        let p = Params { simplify_tol, min_area, threshold: 128, ..Default::default() };
+        contours(&grid, &p)
+    }
+
+    fn trace(rows: &[&str]) -> Vec<Stroke> {
+        run(rows, 0.0, 1.0, false)
     }
 
     /// Sum of absolute turn angles along a (closed) stroke — a measure of jaggedness.
@@ -347,9 +296,8 @@ mod tests {
 
     #[test]
     fn min_area_despeckles() {
-        let (rgba, w, h) = mask(&["#    ", "   ##", "   ##", "     "]);
         // The lone 1px speck (area 1) is dropped at min_area=2; the 2×2 block (area 4) survives.
-        let out = vectorize(&rgba, w, h, w as f32, h as f32, 0, 128, false, 0.0, 2.0);
+        let out = run(&["#    ", "   ##", "   ##", "     "], 0.0, 2.0, false);
         assert_eq!(out.len(), 1);
     }
 
@@ -361,9 +309,8 @@ mod tests {
             "########", "####### ", "######  ", "#####   ", "####    ", "###     ", "##      ",
             "#       ",
         ];
-        let (rgba, w, h) = mask(tri);
-        let raw = vectorize(&rgba, w, h, w as f32, h as f32, 0, 128, false, 0.0, 1.0);
-        let smooth = vectorize(&rgba, w, h, w as f32, h as f32, 0, 128, false, 1.5, 1.0);
+        let raw = run(tri, 0.0, 1.0, false);
+        let smooth = run(tri, 1.5, 1.0, false);
         assert_eq!(raw.len(), 1);
         assert_eq!(smooth.len(), 1);
         // Still a closed loop.
@@ -381,8 +328,7 @@ mod tests {
     fn smoothing_stays_within_tolerance() {
         // A solid block: smoothing must not push the outline more than ~tol beyond the true edges.
         let tol = 1.0;
-        let (rgba, w, h) = mask(&["          ", " ######## ", " ######## ", " ######## ", " ######## ", " ######## ", " ######## ", " ######## ", " ######## ", "          "]);
-        let out = vectorize(&rgba, w, h, w as f32, h as f32, 0, 128, false, tol, 1.0);
+        let out = run(&["          ", " ######## ", " ######## ", " ######## ", " ######## ", " ######## ", " ######## ", " ######## ", " ######## ", "          "], tol, 1.0, false);
         assert_eq!(out.len(), 1);
         // The ink spans x,y ∈ [1,9]; with the leash every vertex stays within tol of that box.
         for p in &out[0].points {
@@ -395,10 +341,7 @@ mod tests {
     fn invert_traces_paper() {
         // All ink except a hole → with invert, the single white pixel becomes the only contour.
         let out = trace(&["###", "# #", "###"]);
-        let inv = {
-            let (rgba, w, h) = mask(&["###", "# #", "###"]);
-            vectorize(&rgba, w, h, w as f32, h as f32, 0, 128, true, 0.0, 0.5)
-        };
+        let inv = run(&["###", "# #", "###"], 0.0, 0.5, true);
         // Non-inverted: outer + hole = 2. Inverted: the paper pixel is the only ink → 1 loop.
         assert_eq!(out.len(), 2);
         assert_eq!(inv.len(), 1);

@@ -3,11 +3,13 @@
 // too heavy for the UI thread. Owns its *own* WASM instance (separate from the handwriting worker's,
 // which carries the ~7 MB model). Speaks the same message protocol as the handwriting worker so the
 // generation controller drives both identically: one `partial` (the full geometry) then `done`, or
-// an `error`. No model, no streaming — a single one-shot trace.
+// an `error`. Every method traces live as params change, so the decoded image is cached (keyed by
+// imageId, which is immutable) — a re-trace on a slider edit re-runs only the Rust, not the decode.
 import init, { vectorize_image } from '@wasm/kg_toolpath.js'
 import wasmUrl from '@wasm/kg_toolpath_bg.wasm?url'
 import { getImageBlob } from '../../store/images'
-import { METHOD_CODE, type RasterParams } from '../../elements/raster'
+import { type RasterParams } from '../../elements/raster'
+import type { FlatGeometry } from './serde'
 
 // Typed worker `postMessage` (TS otherwise resolves the DOM Window overload that wants a string).
 const post = (msg: unknown, transfer?: Transferable[]) =>
@@ -54,8 +56,18 @@ async function pump() {
   }
 }
 
+interface Decoded {
+  rgba: Uint8Array
+  width: number
+  height: number
+}
+
+// One-entry decode cache: editing params re-traces the *same* image, so decoding it once and reusing
+// the bytes makes a live slider drag re-run only the Rust. Keyed by imageId (immutable per image).
+let decodeCache: { imageId: string; data: Decoded } | null = null
+
 /** Decode an image blob to raw RGBA bytes + dimensions via an OffscreenCanvas. */
-async function decodeRgba(blob: Blob): Promise<{ rgba: Uint8Array; width: number; height: number }> {
+async function decodeRgba(blob: Blob): Promise<Decoded> {
   const bitmap = await createImageBitmap(blob)
   try {
     const { width, height } = bitmap
@@ -70,6 +82,16 @@ async function decodeRgba(blob: Blob): Promise<{ rgba: Uint8Array; width: number
   }
 }
 
+/** Decoded RGBA for an image, from the cache when the id matches (params-only edits hit this). */
+async function getDecoded(imageId: string): Promise<Decoded> {
+  if (decodeCache?.imageId === imageId) return decodeCache.data
+  const blob = await getImageBlob(imageId)
+  if (!blob) throw new Error('image not found')
+  const data = await decodeRgba(blob)
+  decodeCache = { imageId, data }
+  return data
+}
+
 async function runJob(job: GenerateMsg) {
   const { jobId, elementId, hash, params } = job
   const aborted = () => cancelled.has(jobId)
@@ -77,38 +99,25 @@ async function runJob(job: GenerateMsg) {
     await ready
     if (aborted()) return
 
-    const blob = await getImageBlob(params.imageId)
-    if (aborted()) return
-    if (!blob) throw new Error('image not found')
-
-    const { rgba, width, height } = await decodeRgba(blob)
+    const { rgba, width, height } = await getDecoded(params.imageId)
     if (aborted()) return
 
-    const res = vectorize_image(
-      rgba,
-      width,
-      height,
-      params.targetWidthMm,
-      params.targetHeightMm,
-      METHOD_CODE[params.method] ?? 0,
-      Math.round(params.threshold),
-      params.invert,
-      params.simplifyTol,
-      params.minArea,
-    )
+    const res = vectorize_image(rgba, width, height, JSON.stringify(params))
     // Read the flat buffers out (getters copy into JS memory) before freeing the Rust struct.
-    const xy = res.xy
-    const pressure = res.pressure
-    const offsets = res.offsets
-    const pen = res.pen
-    const reversible = res.reversible
-    const group = res.group
+    const flat: FlatGeometry = {
+      xy: res.xy,
+      pressure: res.pressure,
+      offsets: res.offsets,
+      pen: res.pen,
+      reversible: res.reversible,
+      group: res.group,
+    }
     res.free()
-
     if (aborted()) return
+
     post(
-      { type: 'partial', jobId, elementId, hash, done: 1, total: 1, xy, pressure, offsets, pen, reversible, group },
-      [xy.buffer, pressure.buffer, offsets.buffer, pen.buffer, reversible.buffer, group.buffer],
+      { type: 'partial', jobId, elementId, hash, done: 1, total: 1, ...flat },
+      [flat.xy.buffer, flat.pressure.buffer, flat.offsets.buffer, flat.pen.buffer, flat.reversible.buffer, flat.group.buffer],
     )
     post({ type: 'done', jobId, elementId })
   } catch (err) {
