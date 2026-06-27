@@ -6,7 +6,8 @@
 //   - Space-drag / MMB → pan (only meaningful when the bed exceeds the viewport; clamped)
 //   - mouse-move       → publish cursor position (mm) to the status bar
 // The store stays authoritative for element transforms; the viewport is its own UI store.
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import type { DocElement } from '../core/types'
 import { Stage, Layer, Rect, Circle, Line, Transformer } from 'react-konva'
 import type Konva from 'konva'
 import type { KonvaEventObject } from 'konva/lib/Node'
@@ -17,6 +18,7 @@ import { useViewport, useCursor } from '../store/viewport'
 import { clampViewport, fitScale, MIN_SCALE, MAX_SCALE } from './viewport'
 import { drawableRegion } from '../core/pipeline/clip'
 import { ElementNode } from './ElementNode'
+import { ClipNode } from './ClipNode'
 import { CanvasContextMenu, type CanvasMenuState } from './CanvasContextMenu'
 import { PreviewLayer } from './PreviewLayer'
 import { DrawingPreview } from './DrawingPreview'
@@ -34,7 +36,8 @@ import {
   finishPenPath,
   type Pt,
 } from './drawing'
-import { place, localToPage } from '../core/pipeline/place'
+import { place, localToPage, effectiveTransform } from '../core/pipeline/place'
+import { clipLocalGeometry } from '../core/pipeline/clipGeometry'
 import { generateLocal } from '../elements/registry'
 import { useNodeSelection, isNodeSelected, type NodeSel } from './nodeSelection'
 import { useHover } from '../store/hover'
@@ -44,6 +47,22 @@ const clamp = (v: number, lo: number, hi: number) => (v < lo ? lo : v > hi ? hi 
 
 export function Canvas() {
   const elements = useDoc((s) => s.elements)
+  // Clip lookup: ids of clip elements, the clipParent→members map (for ClipNode / member hiding), and
+  // an id→element map (for composing a member's effective page transform when editing it in place).
+  const { clipIds, membersOf, byId } = useMemo(() => {
+    const clipIds = new Set(elements.filter((e) => e.type === 'clip').map((e) => e.id))
+    const membersOf = new Map<string, DocElement[]>()
+    const byId = new Map<string, DocElement>()
+    for (const e of elements) {
+      byId.set(e.id, e)
+      if (e.clipParent) {
+        const arr = membersOf.get(e.clipParent) ?? []
+        arr.push(e)
+        membersOf.set(e.clipParent, arr)
+      }
+    }
+    return { clipIds, membersOf, byId }
+  }, [elements])
   const profile = useDoc((s) => s.profile)
   const bed = profile.bed
   const selectedIds = useDoc((s) => s.selectedIds)
@@ -542,14 +561,27 @@ export function Canvas() {
               listening={false}
             />
           ))}
-          {elements.map((el) => (
-            <ElementNode
-              key={el.id}
-              element={el}
-              pxPerMm={scale}
-              interactive={!previewActive && !spaceHeld && !drawing}
-            />
-          ))}
+          {elements.map((el) => {
+            const interactive = !previewActive && !spaceHeld && !drawing
+            // Clip members (mask + clipped contents) aren't drawn at the top level — only via their
+            // clip's clipped composition. A *selected* member renders raw at its effective page
+            // transform, so you can see and edit it in context (the clip chain is composed in).
+            if (el.clipParent && clipIds.has(el.clipParent)) {
+              if (!selectedIds.includes(el.id)) return null
+              return (
+                <ElementNode
+                  key={el.id}
+                  element={el}
+                  effective={effectiveTransform(el, byId)}
+                  pxPerMm={scale}
+                  interactive={interactive}
+                />
+              )
+            }
+            if (el.type === 'clip')
+              return <ClipNode key={el.id} element={el} membersOf={membersOf} pxPerMm={scale} interactive={interactive} />
+            return <ElementNode key={el.id} element={el} pxPerMm={scale} interactive={interactive} />
+          })}
           {previewActive && <PreviewLayer pxPerMm={scale} />}
           {drawing && <DrawingPreview pxPerMm={scale} />}
           {!previewActive && !drawing && <NodeEditLayer pxPerMm={scale} />}
@@ -670,14 +702,25 @@ export function Canvas() {
  *  Transformer covers it). Coordinates are page-mm inside the scaled Layer. */
 function HoverHighlight({ pxPerMm }: { pxPerMm: number }) {
   const id = useHover((s) => s.id)
-  const el = useDoc((s) => (id ? (s.elements.find((e) => e.id === id) ?? null) : null))
+  const elements = useDoc((s) => s.elements)
+  const el = id ? (elements.find((e) => e.id === id) ?? null) : null
   const selected = useDoc((s) => (id ? s.selectedIds.includes(id) : false))
   if (!el || selected) return null
+  // Bounds in page space: a clip uses its clipped composition; a clip member its effective transform.
+  let geom = generateLocal(el)
+  let t = el.transform
+  if (el.type === 'clip') {
+    const m = new Map<string, DocElement[]>()
+    for (const e of elements) if (e.clipParent) m.set(e.clipParent, [...(m.get(e.clipParent) ?? []), e])
+    geom = clipLocalGeometry(el, m)
+  } else if (el.clipParent) {
+    t = effectiveTransform(el, new Map(elements.map((e) => [e.id, e])))
+  }
   let x0 = Infinity
   let y0 = Infinity
   let x1 = -Infinity
   let y1 = -Infinity
-  for (const s of place(generateLocal(el), el.transform))
+  for (const s of place(geom, t))
     for (const p of s.points) {
       if (p.x < x0) x0 = p.x
       if (p.y < y0) y0 = p.y

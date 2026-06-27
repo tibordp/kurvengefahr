@@ -10,7 +10,7 @@ import { Circle, Line } from 'react-konva'
 import type Konva from 'konva'
 import { useDoc } from '../store/document'
 import { beginGesture, endGesture } from '../store/history'
-import { localToPage, pageToLocal } from '../core/pipeline/place'
+import { localToPage, pageToLocal, effectiveTransform } from '../core/pipeline/place'
 import { splitCubic } from '../core/wasm/shapes'
 import { snap } from './snap'
 import { cornerNode, type PathNode, type PathParams } from '../elements/shapes'
@@ -38,6 +38,7 @@ export function NodeEditLayer({ pxPerMm }: { pxPerMm: number }) {
     s.selectedIds.length === 1 ? (s.elements.find((e) => e.id === s.selectedIds[0]) ?? null) : null,
   )
   const setParams = useDoc((s) => s.setParams)
+  const elements = useDoc((s) => s.elements)
   const sels = useNodeSelection((s) => s.sels)
   const setSels = useNodeSelection((s) => s.set)
 
@@ -53,7 +54,9 @@ export function NodeEditLayer({ pxPerMm }: { pxPerMm: number }) {
   if (!el || el.type !== 'path') return null
 
   const p = el.params as PathParams
-  const t = el.transform
+  // Effective page transform — for a clip member this composes the clip chain, so handles land where
+  // the (moved) clip actually is, and edits still commit in the path's own local coords.
+  const t = el.clipParent ? effectiveTransform(el, new Map(elements.map((e) => [e.id, e]))) : el.transform
   const r = 4 / pxPerMm // anchor radius, screen-constant
   const hr = 3 / pxPerMm // handle radius
   const ir = 2.6 / pxPerMm // insert (midpoint) dot radius

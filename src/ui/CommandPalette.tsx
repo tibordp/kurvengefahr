@@ -36,6 +36,7 @@ function buildCommands(): Command[] {
       (e.type === 'path' && (e.params as PathParams).contours.some((c) => c.closed && c.nodes.length >= 3)),
   )
   const groupIds = [...new Set(sel.map((e) => e.groupId).filter((g): g is string => !!g))]
+  const clipIds = sel.filter((e) => e.type === 'clip').map((e) => e.id)
   const cmds: Command[] = []
   const add = (id: string, label: string, group: string, run: () => void) => cmds.push({ id, label, group, run })
 
@@ -62,6 +63,8 @@ function buildCommands(): Command[] {
     add('break', 'Break apart path', 'Combine', doc.breakApartSelected)
   if (sel.length >= 2) add('group', 'Group selection', 'Arrange', () => doc.createGroup(doc.selectedIds))
   if (groupIds.length) add('ungroup', 'Ungroup', 'Arrange', () => groupIds.forEach(doc.ungroup))
+  if (sel.length >= 2) add('clip', 'Clip to topmost shape', 'Arrange', () => doc.clipSelected())
+  if (clipIds.length) add('unclip', 'Release clip', 'Arrange', () => clipIds.forEach(doc.unclip))
   if (sel.some((e) => e.type !== 'path')) add('to-path', 'Convert to path', 'Arrange', () => doc.convertToPath())
   if (closed.length >= 2) {
     add('bool-union', 'Union', 'Combine', () => doc.booleanSelected(0))

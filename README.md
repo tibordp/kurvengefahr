@@ -22,6 +22,10 @@ with a spring-loaded pen holder; the machine profile is editable.
   included); combine several elements into one editable compound path (Bézier curves preserved); weld
   touching open contours into a single fillable outline; or break a compound path back into its
   pieces.
+- **Clip to shape** -- Clip anything (generative patterns, traced images, handwriting, imports) to a
+  shape, non-destructively: the topmost selection becomes the mask, the rest is clipped to it. Clips
+  nest and transform as one object, the mask stays editable and comes back when you release the clip,
+  and you can flatten a clip into plain paths with convert-to-path.
 - **Generative** -- Parametric pattern generators: spirographs, L-system fractals, Truchet tiles,
   Voronoi diagrams, and noise flow fields, each fit to a box and reproducible per seed.
 - **Vector import** -- SVG and DXF become native, editable paths, sized to fit or imported at 1:1
