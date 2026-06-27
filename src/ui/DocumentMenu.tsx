@@ -2,7 +2,8 @@
 // New / Duplicate / Delete / Import / Export / Open-recent. Deliberately compact — a fresh tab just
 // shows "Untitled" on a blank canvas; nothing here is modal.
 import { useEffect, useState } from 'react'
-import { ChevronDown, FilePlus, Copy, Trash2, Upload, Download, FileText, Shapes } from 'lucide-react'
+import { ChevronDown, FilePlus, Copy, Trash2, Upload, Download, FileText, Shapes, FileImage, FileCode } from 'lucide-react'
+import { exportSvg, exportPng } from '../output/exportVector'
 import { useDocuments } from '../store/documents'
 import { useDoc } from '../store/document'
 import { useSvgImport } from '../store/svgImport'
@@ -180,7 +181,13 @@ export function DocumentMenu() {
           <Shapes size={15} /> Import SVG…
         </MenuItem>
         <MenuItem onClick={onExport}>
-          <Download size={15} /> Export
+          <Download size={15} /> Export .kgz
+        </MenuItem>
+        <MenuItem onClick={() => exportSvg()}>
+          <FileCode size={15} /> Export SVG
+        </MenuItem>
+        <MenuItem onClick={() => void exportPng()}>
+          <FileImage size={15} /> Export PNG
         </MenuItem>
         {recent.length > 0 && (
           <>
