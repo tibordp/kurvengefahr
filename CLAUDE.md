@@ -9,6 +9,10 @@ This file is the *why* and the non-obvious invariants — the stuff you can't gr
 here. **Where things go:** project memories hold only workflow & communication preferences;
 anything all contributors' agents should know lives here in CLAUDE.md.
 
+**Keep `README.md` current:** when you add a major feature or rework an existing one, update the
+README *if it changes what the app can do* (it's the user-facing feature list, house style: no emoji,
+`--` not em-dash, American spelling). Skip it for internal-only changes.
+
 ## Cardinal rule
 
 **All "fancy" geometry/toolpath compute lives in Rust** (`crate/`, compiled to WASM). TS owns the
