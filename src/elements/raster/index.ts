@@ -19,11 +19,12 @@ export type RasterMethod =
   | 'hatch' // engraving-style tonal cross-hatch
   | 'scanlines' // squiggle scanlines (wiggle ∝ darkness)
   | 'tsp' // one continuous line threaded through a density-weighted point cloud
+  | 'voronoi' // Voronoi mosaic of a density-weighted point cloud (small cells where dark)
   | 'flowfield' // streamlines flowing along the image's edges
   | 'spiral' // one radially-modulated Archimedean spiral
 
 /** Methods that use a random seed (so the inspector offers a re-roll). */
-export const SEEDED_METHODS: ReadonlySet<RasterMethod> = new Set(['tsp', 'flowfield'])
+export const SEEDED_METHODS: ReadonlySet<RasterMethod> = new Set(['tsp', 'voronoi', 'flowfield'])
 
 export interface RasterParams {
   /** Key into the IndexedDB image store. The authoritative, geometry-affecting input. */
@@ -96,7 +97,7 @@ registerElement('raster', {
 const num = (v: unknown, d: number) => (typeof v === 'number' && Number.isFinite(v) ? v : d)
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v))
 const VALID_METHODS: ReadonlySet<string> = new Set([
-  'contours', 'contourmap', 'hatch', 'scanlines', 'tsp', 'flowfield', 'spiral',
+  'contours', 'centerline', 'contourmap', 'hatch', 'scanlines', 'tsp', 'voronoi', 'flowfield', 'spiral',
 ])
 
 /** Coerce arbitrary (persisted/imported, possibly older or malformed) params into a valid

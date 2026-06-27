@@ -17,6 +17,7 @@
 //! - **flowfield** — streamlines that flow along the image's edges.
 //! - **spiral** — one Archimedean spiral, radially modulated by darkness.
 
+mod cells;
 mod centerline;
 mod contourmap;
 mod contours;
@@ -51,6 +52,7 @@ pub fn vectorize(rgba: &[u8], width: u32, height: u32, params: &str) -> Vec<Stro
         "hatch" => tone::hatch(&grid, &p),
         "scanlines" => scanlines::scanlines(&grid, &p),
         "tsp" => tsp::tsp(&grid, &p),
+        "voronoi" => cells::voronoi(&grid, &p),
         "flowfield" => flow::flow(&grid, &p),
         "spiral" => spiral::spiral(&grid, &p),
         // "contours" and any unknown method fall through to faithful outline tracing.

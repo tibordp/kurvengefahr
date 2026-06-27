@@ -26,7 +26,7 @@ export interface GenerativeParams {
   // voronoi
   points: number
   // flow
-  lines: number
+  spacing: number
   steps: number
   noiseScale: number
 }
@@ -58,7 +58,7 @@ export const defaultGenerativeParams = (): GenerativeParams => ({
   cell: 12,
   style: 'arcs',
   points: 140,
-  lines: 220,
+  spacing: 4,
   steps: 220,
   noiseScale: 0.04,
 })
@@ -95,7 +95,7 @@ registerElement('generative', {
       cell: Math.max(2, num(o.cell, d.cell)),
       style: o.style === 'lines' ? 'lines' : 'arcs',
       points: Math.max(3, Math.round(num(o.points, d.points))),
-      lines: Math.max(1, Math.round(num(o.lines, d.lines))),
+      spacing: Math.max(0.5, num(o.spacing, d.spacing)),
       steps: Math.max(2, Math.round(num(o.steps, d.steps))),
       noiseScale: num(o.noiseScale, d.noiseScale),
     } as GenerativeParams

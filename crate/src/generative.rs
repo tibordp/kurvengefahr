@@ -27,7 +27,7 @@ struct Params {
     // voronoi
     points: u32,
     // flow field
-    lines: u32,
+    spacing: f32,
     steps: u32,
     noise_scale: f32,
 }
@@ -47,7 +47,7 @@ impl Default for Params {
             cell: 12.0,
             style: "arcs".into(),
             points: 140,
-            lines: 220,
+            spacing: 4.0,
             steps: 220,
             noise_scale: 0.04,
         }
@@ -388,12 +388,13 @@ fn flow_crowded(grid: &[Vec<(f32, f32)>], cols: i32, rows: i32, sep: f32, x: f32
 /// lines tile the field instead of piling onto the same few attractors.
 fn flow(p: &Params) -> Vec<Stroke> {
     let (w, h) = (p.width, p.height);
-    let n_target = p.lines.clamp(1, 4000) as f32;
     let steps = p.steps.clamp(2, 4000) as usize;
     let scale = p.noise_scale.clamp(0.001, 1.0);
-    // Spacing for ~n_target evenly-spaced lines over the area; step well under it for smooth curves.
-    let sep = (w * h / n_target).sqrt().max(0.5);
-    let step_len = (sep * 0.25).clamp(0.25, 1.5);
+    // Absolute line spacing (mm) → density is independent of the box size. Just a tiny hard floor
+    // (sub-pen-width spacing is meaningless); no box-relative clamp, so the slider always does what
+    // it says.
+    let sep = p.spacing.max(0.4);
+    let step_len = (sep * 0.35).clamp(0.3, 1.0);
     let min_d2 = (sep * 0.8).powi(2);
     let (cols, rows) = ((w / sep) as i32 + 2, (h / sep) as i32 + 2);
     let mut grid: Vec<Vec<(f32, f32)>> = vec![Vec::new(); (cols * rows) as usize];

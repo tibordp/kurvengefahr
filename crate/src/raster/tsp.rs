@@ -14,7 +14,7 @@ use crate::geom::{Point, Stroke};
 const MAX_TSP: usize = 50000;
 
 /// Rejection-sample `target` points weighted by inkness (accept ∝ darkness). Returns mm coords.
-fn sample(grid: &Grid, seed: u32, target: usize) -> Vec<(f32, f32)> {
+pub(super) fn sample(grid: &Grid, seed: u32, target: usize) -> Vec<(f32, f32)> {
     if target == 0 {
         return vec![];
     }

@@ -399,7 +399,7 @@ function GenerativeInspector({ id, params }: { id: string; params: GenerativePar
       )}
       {k === 'flow' && (
         <>
-          <SliderNum label="Lines" min={1} max={2000} step={1} value={params.lines} int onChange={(v) => up({ lines: v })} />
+          <SliderNum label="Spacing (mm)" min={0.5} max={20} step={0.5} value={params.spacing} onChange={(v) => up({ spacing: v })} />
           <SliderNum label="Length (steps)" min={2} max={2000} step={1} value={params.steps} int onChange={(v) => up({ steps: v })} />
           <SliderNum label="Detail" min={0.005} max={0.2} step={0.005} value={params.noiseScale} onChange={(v) => up({ noiseScale: v })} />
         </>
@@ -628,6 +628,7 @@ const METHOD_LABELS: Record<RasterMethod, string> = {
   hatch: 'Tonal hatching',
   scanlines: 'Squiggle scanlines',
   tsp: 'TSP art (one line)',
+  voronoi: 'Voronoi mosaic',
   flowfield: 'Flow field',
   spiral: 'Spiral',
 }
@@ -720,6 +721,11 @@ function RasterInspector({ id, params }: { id: string; params: RasterParams }) {
       {m === 'tsp' && (
         <SliderNum label="Density" min={0} max={1} step={0.01} value={params.detail} hardMax
           title="How many points the single line threads through (weighted toward dark areas). Higher = more detail but slower."
+          onChange={(v) => up({ detail: v })} />
+      )}
+      {m === 'voronoi' && (
+        <SliderNum label="Density" min={0} max={1} step={0.01} value={params.detail} hardMax
+          title="How many Voronoi cells (points weighted toward dark areas). Higher = finer mosaic."
           onChange={(v) => up({ detail: v })} />
       )}
 
