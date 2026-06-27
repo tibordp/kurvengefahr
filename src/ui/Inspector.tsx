@@ -294,6 +294,11 @@ function HatchControls({ hatch, onChange }: { hatch: Hatch; onChange: (h: Hatch)
               <option value="grid">Grid</option>
               <option value="concentric">Concentric</option>
               <option value="hilbert">Hilbert curve</option>
+              <option value="gradient">Gradient hatch</option>
+              <option value="scribble">Scribble</option>
+              <option value="stipple">Stipple (dots)</option>
+              <option value="voronoi">Voronoi</option>
+              <option value="truchet">Truchet tiles</option>
             </select>
           </Field>
           <Num label="Density (mm)" value={hatch.spacing} step={0.5}

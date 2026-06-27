@@ -444,8 +444,240 @@ fn concentric_poly(rings: &[Vec<P>], spacing: f32, out: &mut Vec<Stroke>) {
     }
 }
 
+/// Deterministic 0..1 hash for jittered placement (stipple / voronoi seeds / truchet orientation).
+fn rand01(x: i32, y: i32) -> f32 {
+    let mut h = (x as u32).wrapping_mul(374761393) ^ (y as u32).wrapping_mul(668265263);
+    h ^= h >> 13;
+    h = h.wrapping_mul(1274126177);
+    h ^= h >> 16;
+    h as f32 / u32::MAX as f32
+}
+
+/// Split a polyline into the sub-polylines lying inside the even-odd region of `rings`, appending
+/// each as a stroke. (Same clip the Hilbert fill uses, factored out for the line-art fills.)
+fn clip_to_rings(rings: &[Vec<P>], pts: &[P], out: &mut Vec<Stroke>) {
+    if pts.len() < 2 {
+        return
+    }
+    let lerp = |a: P, b: P, t: f32| (a.0 + (b.0 - a.0) * t, a.1 + (b.1 - a.1) * t);
+    let mut run: Vec<Point> = Vec::new();
+    let close = |run: &mut Vec<Point>, out: &mut Vec<Stroke>| {
+        if run.len() >= 2 {
+            out.push(stroke(std::mem::take(run)));
+        } else {
+            run.clear();
+        }
+    };
+    for w in pts.windows(2) {
+        let (a, b) = (w[0], w[1]);
+        let mut bounds = vec![0.0_f32];
+        bounds.extend(crossings(rings, a, b));
+        bounds.push(1.0);
+        for k in 0..bounds.len() - 1 {
+            let (t0, t1) = (bounds[k], bounds[k + 1]);
+            if t1 - t0 < 1e-9 {
+                continue
+            }
+            let mid = lerp(a, b, 0.5 * (t0 + t1));
+            if inside_multi(rings, mid.0, mid.1) {
+                let p0 = lerp(a, b, t0);
+                let p1 = lerp(a, b, t1);
+                let joins = run.last().is_some_and(|q| (q.x - p0.0).abs() < 1e-6 && (q.y - p0.1).abs() < 1e-6);
+                if !joins {
+                    run.push(pt(p0.0, p0.1));
+                }
+                run.push(pt(p1.0, p1.1));
+            } else {
+                close(&mut run, out);
+            }
+        }
+    }
+    close(&mut run, out);
+}
+
+/// Stipple: jittered dots (tiny circles) on a grid, kept where inside the region.
+fn stipple(rings: &[Vec<P>], spacing: f32, out: &mut Vec<Stroke>) {
+    if spacing <= 1e-3 {
+        return
+    }
+    let (x0, y0, x1, y1) = bbox(rings);
+    let r = (spacing * 0.16).max(0.05);
+    let mut gy = 0;
+    let mut y = y0;
+    while y <= y1 {
+        let mut gx = 0;
+        let mut x = x0;
+        while x <= x1 {
+            let (px, py) = (x + (rand01(gx, gy * 7 + 1) - 0.5) * spacing * 0.6, y + (rand01(gx * 7 + 3, gy) - 0.5) * spacing * 0.6);
+            if inside_multi(rings, px, py) {
+                let n = 8;
+                let pts = (0..=n).map(|i| {
+                    let t = i as f32 / n as f32 * std::f32::consts::TAU;
+                    pt(px + r * t.cos(), py + r * t.sin())
+                });
+                out.push(stroke(pts.collect()));
+            }
+            x += spacing;
+            gx += 1;
+        }
+        y += spacing;
+        gy += 1;
+    }
+}
+
+/// Rotate rings by −θ so a horizontal sweep yields lines at angle θ; returns (rotated rings, fns).
+fn rotated(rings: &[Vec<P>], angle_deg: f32) -> (Vec<Vec<P>>, impl Fn(P) -> P) {
+    let th = angle_deg.to_radians();
+    let (fc, fs) = ((-th).cos(), (-th).sin());
+    let (rc, rs) = (th.cos(), th.sin());
+    let rr = rings.iter().map(|r| r.iter().map(|&p| (p.0 * fc - p.1 * fs, p.0 * fs + p.1 * fc)).collect()).collect();
+    (rr, move |p: P| (p.0 * rc - p.1 * rs, p.0 * rs + p.1 * rc))
+}
+
+/// Scribble: sinusoidally-wiggled scanlines, clipped to the region (hand-drawn shading).
+fn scribble(rings: &[Vec<P>], spacing: f32, angle_deg: f32, out: &mut Vec<Stroke>) {
+    if spacing <= 1e-3 {
+        return
+    }
+    let (rr, inv) = rotated(rings, angle_deg);
+    let (x0, y0, x1, y1) = bbox(&rr);
+    let amp = spacing * 0.42;
+    let freq = std::f32::consts::TAU / (spacing * 1.6);
+    let step = (spacing * 0.25).max(0.3);
+    let mut y = y0 + spacing * 0.5;
+    let mut row = 0;
+    while y < y1 {
+        let phase = row as f32 * 1.7;
+        let mut pts: Vec<P> = Vec::new();
+        let mut x = x0;
+        while x <= x1 {
+            pts.push(inv((x, y + amp * (x * freq + phase).sin())));
+            x += step;
+        }
+        clip_to_rings(rings, &pts, out);
+        y += spacing;
+        row += 1;
+    }
+}
+
+/// Variable-density hatch: parallel lines whose spacing grows across the sweep, a tonal gradient.
+fn gradient(rings: &[Vec<P>], spacing: f32, angle_deg: f32, out: &mut Vec<Stroke>) {
+    if spacing <= 1e-3 {
+        return
+    }
+    let (rr, inv) = rotated(rings, angle_deg);
+    let (_, ymin, _, ymax) = bbox(&rr);
+    if ymax <= ymin {
+        return
+    }
+    let mut tmp: Vec<Stroke> = Vec::new();
+    let mut y = ymin + spacing * 0.5;
+    while y < ymax {
+        // One scanline: clip the infinite line y=const to the rings via even-odd crossing pairs.
+        let f = (y - ymin) / (ymax - ymin);
+        let mut xs: Vec<f32> = Vec::new();
+        for ring in &rr {
+            let n = ring.len();
+            if n < 3 {
+                continue
+            }
+            let mut j = n - 1;
+            for i in 0..n {
+                let (xi, yi) = ring[i];
+                let (xj, yj) = ring[j];
+                if (yi > y) != (yj > y) {
+                    xs.push(xi + (y - yi) / (yj - yi) * (xj - xi));
+                }
+                j = i;
+            }
+        }
+        xs.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        let mut k = 0;
+        while k + 1 < xs.len() {
+            tmp.push(stroke(vec![pt_p(inv((xs[k], y))), pt_p(inv((xs[k + 1], y)))]));
+            k += 2;
+        }
+        y += spacing * (0.45 + 2.6 * f); // dense at one end, sparse at the other
+    }
+    out.extend(tmp);
+}
+
+fn pt_p(p: P) -> Point {
+    pt(p.0, p.1)
+}
+
+/// Voronoi fill: jittered seeds over the bbox, Delaunay dual edges clipped to the region.
+fn voronoi_fill(rings: &[Vec<P>], spacing: f32, out: &mut Vec<Stroke>) {
+    if spacing <= 1e-3 {
+        return
+    }
+    let (x0, y0, x1, y1) = bbox(rings);
+    let cols = ((x1 - x0) / spacing).max(1.0).ceil() as i32;
+    let rows = ((y1 - y0) / spacing).max(1.0).ceil() as i32;
+    let mut seeds: Vec<delaunator::Point> = Vec::new();
+    for gy in 0..=rows {
+        for gx in 0..=cols {
+            let sx = x0 + (gx as f32 + rand01(gx, gy * 13 + 1) - 0.5) * spacing;
+            let sy = y0 + (gy as f32 + rand01(gx * 13 + 7, gy) - 0.5) * spacing;
+            seeds.push(delaunator::Point { x: sx as f64, y: sy as f64 });
+        }
+    }
+    if seeds.len() < 3 {
+        return
+    }
+    let tri = delaunator::triangulate(&seeds);
+    let ntri = tri.triangles.len() / 3;
+    let circ = |a: &delaunator::Point, b: &delaunator::Point, c: &delaunator::Point| -> P {
+        let d = 2.0 * (a.x * (b.y - c.y) + b.x * (c.y - a.y) + c.x * (a.y - b.y));
+        if d.abs() < 1e-12 {
+            return (((a.x + b.x + c.x) / 3.0) as f32, ((a.y + b.y + c.y) / 3.0) as f32);
+        }
+        let (a2, b2, c2) = (a.x * a.x + a.y * a.y, b.x * b.x + b.y * b.y, c.x * c.x + c.y * c.y);
+        let ux = (a2 * (b.y - c.y) + b2 * (c.y - a.y) + c2 * (a.y - b.y)) / d;
+        let uy = (a2 * (c.x - b.x) + b2 * (a.x - c.x) + c2 * (b.x - a.x)) / d;
+        (ux as f32, uy as f32)
+    };
+    let cc: Vec<P> = (0..ntri)
+        .map(|t| circ(&seeds[tri.triangles[3 * t]], &seeds[tri.triangles[3 * t + 1]], &seeds[tri.triangles[3 * t + 2]]))
+        .collect();
+    for e in 0..tri.halfedges.len() {
+        let o = tri.halfedges[e];
+        if o != delaunator::EMPTY && e < o {
+            clip_to_rings(rings, &[cc[e / 3], cc[o / 3]], out);
+        }
+    }
+}
+
+/// Truchet fill: a grid of randomly-oriented quarter-arc tiles clipped to the region.
+fn truchet_fill(rings: &[Vec<P>], spacing: f32, out: &mut Vec<Stroke>) {
+    let s = spacing.max(1.0);
+    let (x0, y0, x1, y1) = bbox(rings);
+    let cols = (((x1 - x0) / s).ceil() as i32).max(1);
+    let rows = (((y1 - y0) / s).ceil() as i32).max(1);
+    let arc = |cx: f32, cy: f32, a0: f32, a1: f32| -> Vec<P> {
+        (0..=10).map(|i| {
+            let t = a0 + (a1 - a0) * i as f32 / 10.0;
+            (cx + s * 0.5 * t.cos(), cy + s * 0.5 * t.sin())
+        }).collect()
+    };
+    use std::f32::consts::{FRAC_PI_2, PI};
+    for gy in 0..rows {
+        for gx in 0..cols {
+            let (ox, oy) = (x0 + gx as f32 * s, y0 + gy as f32 * s);
+            let (a, b) = if rand01(gx, gy) > 0.5 {
+                (arc(ox, oy, 0.0, FRAC_PI_2), arc(ox + s, oy + s, PI, PI + FRAC_PI_2))
+            } else {
+                (arc(ox + s, oy, FRAC_PI_2, PI), arc(ox, oy + s, -FRAC_PI_2, 0.0))
+            };
+            clip_to_rings(rings, &a, out);
+            clip_to_rings(rings, &b, out);
+        }
+    }
+}
+
 /// Pattern dispatch over one or more rings (filled together, even-odd → holes). 0 lines,
-/// 1 cross-hatch, 2 grid, 3 hilbert, 4 concentric (arbitrary polygon).
+/// 1 cross-hatch, 2 grid, 3 hilbert, 4 concentric, 5 stipple, 6 scribble, 7 gradient, 8 voronoi,
+/// 9 truchet.
 pub fn fill(xy: &[f32], ring_starts: &[u32], pattern: u32, spacing: f32, angle_deg: f32) -> Vec<Stroke> {
     let rings = parse_polys(xy, ring_starts);
     let mut out = Vec::new();
@@ -461,6 +693,11 @@ pub fn fill(xy: &[f32], ring_starts: &[u32], pattern: u32, spacing: f32, angle_d
         }
         3 => hilbert(&rings, spacing, &mut out),
         4 => concentric_poly(&rings, spacing, &mut out),
+        5 => stipple(&rings, spacing, &mut out),
+        6 => scribble(&rings, spacing, angle_deg, &mut out),
+        7 => gradient(&rings, spacing, angle_deg, &mut out),
+        8 => voronoi_fill(&rings, spacing, &mut out),
+        9 => truchet_fill(&rings, spacing, &mut out),
         _ => {}
     }
     out
@@ -544,6 +781,17 @@ mod concentric_tests {
             }
         }
         max_d // full-cell hops are the longest steps; clipped sub-spans are shorter.
+    }
+
+    #[test]
+    fn new_fills_produce_strokes() {
+        // A 30×30 square; each new pattern code should fill it with strokes, clipped to the shape.
+        let sq: Vec<f32> = vec![0.0, 0.0, 30.0, 0.0, 30.0, 30.0, 0.0, 30.0];
+        let starts = vec![0u32, 4];
+        for code in [5u32, 6, 7, 8, 9] {
+            let out = fill(&sq, &starts, code, 2.0, 45.0);
+            assert!(!out.is_empty(), "fill pattern {code} produced nothing");
+        }
     }
 
     #[test]

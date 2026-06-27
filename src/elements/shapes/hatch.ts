@@ -3,7 +3,18 @@
 import { hatchGeometry, concentricGeometry } from '../../core/wasm/shapes'
 import type { Geometry, Point } from '../../core/types'
 
-export type HatchPattern = 'none' | 'lines' | 'cross' | 'grid' | 'concentric' | 'hilbert'
+export type HatchPattern =
+  | 'none'
+  | 'lines'
+  | 'cross'
+  | 'grid'
+  | 'concentric'
+  | 'hilbert'
+  | 'stipple'
+  | 'scribble'
+  | 'gradient'
+  | 'voronoi'
+  | 'truchet'
 
 export interface Hatch {
   pattern: HatchPattern
@@ -20,15 +31,32 @@ export const defaultHatch = (): Hatch => ({ pattern: 'none', spacing: 3, angle: 
 
 /** WASM pattern codes for the polygon-based fills. Rect/ellipse use the exact parametric
  *  `concentric` instead; arbitrary polygons (paths) fall through to the marching-squares one here. */
-const CODE: Record<'lines' | 'cross' | 'grid' | 'concentric' | 'hilbert', number> = {
+const CODE: Record<Exclude<HatchPattern, 'none'>, number> = {
   lines: 0,
   cross: 1,
   grid: 2,
   hilbert: 3,
   concentric: 4,
+  stipple: 5,
+  scribble: 6,
+  gradient: 7,
+  voronoi: 8,
+  truchet: 9,
 }
 
-const PATTERNS: HatchPattern[] = ['none', 'lines', 'cross', 'grid', 'concentric', 'hilbert']
+const PATTERNS: HatchPattern[] = [
+  'none',
+  'lines',
+  'cross',
+  'grid',
+  'concentric',
+  'hilbert',
+  'stipple',
+  'scribble',
+  'gradient',
+  'voronoi',
+  'truchet',
+]
 const num = (v: unknown, d: number) => (typeof v === 'number' && Number.isFinite(v) ? v : d)
 
 export function sanitizeHatch(raw: unknown): Hatch {
