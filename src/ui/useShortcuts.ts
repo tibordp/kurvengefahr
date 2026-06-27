@@ -63,6 +63,20 @@ export function useShortcuts(): void {
         return
       }
 
+      // Clipboard (in-tab, works across documents).
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'c' || e.key === 'C')) {
+        useDoc.getState().copySelected()
+        return
+      }
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'x' || e.key === 'X')) {
+        useDoc.getState().cutSelected()
+        return
+      }
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'v' || e.key === 'V')) {
+        useDoc.getState().paste()
+        return
+      }
+
       // Space toggles preview playback (only while the preview transport is active). If a button
       // has focus, let its native Space-activation handle it instead (avoids a double-toggle).
       if (e.key === ' ' && usePreview.getState().active) {
