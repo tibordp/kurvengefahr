@@ -476,6 +476,8 @@ function PathInspector({ id, params }: { id: string; params: PathParams }) {
   const nodeCount = params.contours.reduce((a, c) => a + c.nodes.length, 0)
   const anyClosed = params.contours.some((c) => c.closed)
   const allClosed = params.contours.length > 0 && params.contours.every((c) => c.closed)
+  // Weldable only when there are multiple contours and at least one open end to chain.
+  const hasOpenContour = params.contours.length > 1 && params.contours.some((c) => !c.closed)
   return (
     <>
       <SectionTitle>Path</SectionTitle>
@@ -496,17 +498,19 @@ function PathInspector({ id, params }: { id: string; params: PathParams }) {
         {params.contours.length > 1 ? `${params.contours.length} contours · ` : ''}
         {nodeCount} node{nodeCount === 1 ? '' : 's'} · drag points & handles on the canvas to edit.
       </p>
-      <div className="mt-1 flex items-center gap-2">
-        <span className="whitespace-nowrap text-xs text-muted">Simplify (mm)</span>
-        <input
-          className={numFieldClass}
-          value={tol}
-          inputMode="decimal"
-          title="Tolerance in mm — higher removes more nodes"
-          onChange={(e) => setTol(e.target.value)}
-        />
+      {/* Path actions in a single 2-col grid so the buttons line up. */}
+      <div className="mt-2 grid grid-cols-2 gap-1">
+        <div className="flex items-center gap-1.5">
+          <input
+            className={numFieldClass}
+            value={tol}
+            inputMode="decimal"
+            title="Simplify tolerance in mm — higher removes more nodes"
+            onChange={(e) => setTol(e.target.value)}
+          />
+          <span className="text-xs text-muted">mm</span>
+        </div>
         <Button
-          className="flex-1"
           title="Reduce node count with Ramer–Douglas–Peucker"
           onClick={() => {
             const t = parseFloat(tol)
@@ -515,26 +519,24 @@ function PathInspector({ id, params }: { id: string; params: PathParams }) {
         >
           Simplify
         </Button>
-      </div>
-      {params.contours.length > 1 && (
-        <div className="mt-1 grid grid-cols-2 gap-1">
-          {params.contours.some((c) => !c.closed) && (
-            <Button
-              title="Weld open contours that share endpoints into single contours (loops close, so they can fill)"
-              onClick={() => weldSelected()}
-            >
-              <Link2 size={15} /> Merge
-            </Button>
-          )}
+        {hasOpenContour && (
           <Button
-            className={params.contours.some((c) => !c.closed) ? '' : 'col-span-2'}
+            title="Weld open contours that share endpoints into single contours (loops close, so they can fill)"
+            onClick={() => weldSelected()}
+          >
+            <Link2 size={15} /> Merge
+          </Button>
+        )}
+        {params.contours.length > 1 && (
+          <Button
+            className={hasOpenContour ? '' : 'col-span-2'}
             title="Break this compound path into one path per contour"
             onClick={() => breakApartSelected()}
           >
             <Ungroup size={15} /> Break apart
           </Button>
-        </div>
-      )}
+        )}
+      </div>
       {anyClosed && (
         <HatchControls
           hatch={params.hatch}
@@ -912,10 +914,10 @@ function MultiSelectSection({ count }: { count: number }) {
       )}
       <Button
         className="mt-1 w-full"
-        title="Join the selection into one path (a compound path; keeps Bézier curves). Touching ends weld at plot time."
+        title="Combine into one compound path — keeps curves and open paths; overlaps become holes (use Union to merge areas instead)."
         onClick={() => joinSelected()}
       >
-        <Link2 size={15} /> Join into one path
+        <Link2 size={15} /> Combine
       </Button>
       <div className="mt-3">
         <PenSelect value={commonPen} onChange={(pen) => setPenSelected(pen)} />

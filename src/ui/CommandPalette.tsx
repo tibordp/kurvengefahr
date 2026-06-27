@@ -55,7 +55,7 @@ function buildCommands(): Command[] {
     add('cut', 'Cut', 'Edit', () => void cutSelectionToClipboard())
   }
   add('paste', 'Paste', 'Edit', () => void pasteFromClipboard())
-  if (sel.length >= 2) add('join', 'Join into one path', 'Combine', doc.joinSelected)
+  if (sel.length >= 2) add('join', 'Combine into one path', 'Combine', doc.joinSelected)
   if (sel.some((e) => e.type === 'path' && (e.params as PathParams).contours.some((c) => !c.closed)))
     add('weld', 'Merge open contours', 'Combine', doc.weldSelected)
   if (sel.some((e) => e.type === 'path' && (e.params as PathParams).contours.length > 1))
