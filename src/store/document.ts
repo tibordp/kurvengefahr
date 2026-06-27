@@ -14,8 +14,8 @@ import { place } from '../core/pipeline/place'
 import type { DocSnapshot } from './persistence/schema'
 import type { Geometry, Point } from '../core/types'
 import { cornerNode, defaultHatch, pathOutlineStrokes } from '../elements/shapes'
-import type { Contour, PathParams, RectParams, EllipseParams, Hatch } from '../elements/shapes'
-import { rectGeometry, ellipseGeometry, booleanGeometry, type Rings } from '../core/wasm/shapes'
+import type { Contour, PathNode, PathParams, RectParams, EllipseParams, Hatch } from '../elements/shapes'
+import { rectGeometry, ellipseGeometry, booleanGeometry, simplifyPolyline, type Rings } from '../core/wasm/shapes'
 
 let seedCounter = 1
 
@@ -86,6 +86,53 @@ function ringsBuffer(rings: Point[][]): Rings {
   return { xy, starts }
 }
 
+/** A polyline whose ends coincide is a closed contour. */
+function isClosedPts(pts: Point[]): boolean {
+  if (pts.length < 4) return false
+  const a = pts[0]
+  const b = pts[pts.length - 1]
+  return Math.hypot(a.x - b.x, a.y - b.y) < 1e-3
+}
+
+/** A polyline of points → one path contour (corner nodes), dropping a duplicate closing vertex. */
+function pointsToContour(pts: Point[]): Contour {
+  const closed = isClosedPts(pts)
+  const nodes = pts.map((p) => cornerNode(p.x, p.y))
+  if (closed && nodes.length > 1) nodes.pop()
+  return { nodes, closed }
+}
+
+/** Build an editable `path` element from any other element's geometry, preserving transform / pen /
+ *  group / name. Shapes become their outline (keeping the hatch); ink (handwriting, raster, …) is
+ *  expanded stroke-by-stroke into contours. Returns null if there's nothing to convert yet. */
+function elementToPath(el: DocElement): DocElement | null {
+  if (el.type === 'path') return null
+  let contours: Contour[]
+  let hatch = defaultHatch()
+  if (el.type === 'rect' || el.type === 'ellipse') {
+    const r = el.params as RectParams & EllipseParams
+    const rings =
+      el.type === 'rect' ? rectGeometry(r.w, r.h, r.cornerRadius) : ellipseGeometry(r.rx, r.ry)
+    contours = rings.map((s) => pointsToContour(s.points))
+    hatch = (el.params as { hatch?: Hatch }).hatch ?? defaultHatch()
+  } else {
+    const geom = generateLocal(el)
+    if (!geom.length) return null // async type not generated yet — nothing to bake
+    contours = geom.map((s) => pointsToContour(s.points))
+  }
+  contours = contours.filter((c) => c.nodes.length >= 2)
+  if (!contours.length) return null
+  return {
+    id: crypto.randomUUID(),
+    type: 'path',
+    transform: el.transform,
+    params: { contours, hatch } as PathParams,
+    pen: el.pen,
+    ...(el.groupId ? { groupId: el.groupId } : {}),
+    ...(el.name ? { name: el.name } : {}),
+  }
+}
+
 /** Drop groups left with no members (e.g. after deleting their last element). */
 function pruneGroups(elements: DocElement[], groups: Group[]): Group[] {
   const used = new Set<string>()
@@ -144,6 +191,10 @@ interface DocStore {
   /** Combine selected closed shapes (rect/ellipse/closed path) with a boolean op (0 union,
    *  1 intersect, 2 difference, 3 xor), replacing them with one multi-contour path. One undo step. */
   booleanSelected: (op: number) => void
+  /** Convert the given (or selected) non-path elements into editable `path` elements. */
+  convertToPath: (ids?: string[]) => void
+  /** Ramer–Douglas–Peucker ("rubber-band") simplify of the selected paths' contours, tolerance mm. */
+  simplifySelected: (tolMm: number) => void
   /** Replace an element's params wholesale (caller merges). Invalidates Geometry. */
   setParams: (id: string, params: DocElement['params']) => void
   /** Patch an element's transform. Invalidates only Place. */
@@ -403,6 +454,51 @@ export const useDoc = create<DocStore>((set) => ({
         groups: pruneGroups(elements, state.groups),
         selectedIds: [newEl.id],
       }
+    }),
+
+  convertToPath: (ids) =>
+    set((state) => {
+      const targets = new Set(ids ?? state.selectedIds)
+      const idMap = new Map<string, string>()
+      const elements = state.elements.map((el) => {
+        if (!targets.has(el.id) || el.type === 'path') return el
+        const p = elementToPath(el)
+        if (!p) return el
+        dropFromCache(el.id)
+        idMap.set(el.id, p.id)
+        return p
+      })
+      if (idMap.size === 0) return {}
+      return { elements, selectedIds: state.selectedIds.map((id) => idMap.get(id) ?? id) }
+    }),
+
+  simplifySelected: (tolMm) =>
+    set((state) => {
+      const sel = new Set(state.selectedIds)
+      const tol = Math.max(0.01, tolMm)
+      const elements = state.elements.map((el) => {
+        if (!sel.has(el.id) || el.type !== 'path') return el
+        const p = el.params as PathParams
+        const contours = p.contours.map((c) => {
+          if (c.nodes.length < 3) return c
+          const stroke = pathOutlineStrokes([c])[0]
+          if (!stroke || stroke.points.length < 3) return c
+          const flat = new Float32Array(stroke.points.length * 2)
+          stroke.points.forEach((pt, i) => ((flat[i * 2] = pt.x), (flat[i * 2 + 1] = pt.y)))
+          const kept = simplifyPolyline(flat, tol)
+          const nodes: PathNode[] = []
+          for (let i = 0; i < kept.length; i += 2) nodes.push(cornerNode(kept[i], kept[i + 1]))
+          // pathOutlineStrokes re-closed the contour (duplicate last vertex) — drop it again.
+          if (c.closed && nodes.length > 1) {
+            const a = nodes[0]
+            const b = nodes[nodes.length - 1]
+            if (Math.hypot(a.x - b.x, a.y - b.y) < 1e-3) nodes.pop()
+          }
+          return { nodes, closed: c.closed }
+        })
+        return { ...el, params: { ...p, contours } }
+      })
+      return { elements }
     }),
 
   setParams: (id, params) =>

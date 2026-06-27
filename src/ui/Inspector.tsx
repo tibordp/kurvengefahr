@@ -19,6 +19,7 @@ import {
   Moon,
   Monitor,
   Dices,
+  Spline,
 } from 'lucide-react'
 import { useDoc, type AlignEdge } from '../store/document'
 import { useUI } from '../store/ui'
@@ -322,6 +323,8 @@ function EllipseInspector({ id, params }: { id: string; params: EllipseParams })
 
 function PathInspector({ id, params }: { id: string; params: PathParams }) {
   const setParams = useDoc((s) => s.setParams)
+  const simplifySelected = useDoc((s) => s.simplifySelected)
+  const [tol, setTol] = useState('0.3')
   const nodeCount = params.contours.reduce((a, c) => a + c.nodes.length, 0)
   const anyClosed = params.contours.some((c) => c.closed)
   const allClosed = params.contours.length > 0 && params.contours.every((c) => c.closed)
@@ -345,6 +348,26 @@ function PathInspector({ id, params }: { id: string; params: PathParams }) {
         {params.contours.length > 1 ? `${params.contours.length} contours · ` : ''}
         {nodeCount} node{nodeCount === 1 ? '' : 's'} · drag points & handles on the canvas to edit.
       </p>
+      <div className="mt-1 flex items-center gap-2">
+        <span className="whitespace-nowrap text-xs text-muted">Simplify (mm)</span>
+        <input
+          className={numFieldClass}
+          value={tol}
+          inputMode="decimal"
+          title="Tolerance in mm — higher removes more nodes"
+          onChange={(e) => setTol(e.target.value)}
+        />
+        <Button
+          className="flex-1"
+          title="Reduce node count with Ramer–Douglas–Peucker"
+          onClick={() => {
+            const t = parseFloat(tol)
+            if (Number.isFinite(t) && t > 0) simplifySelected(t)
+          }}
+        >
+          Simplify
+        </Button>
+      </div>
       {anyClosed && (
         <HatchControls
           hatch={params.hatch}
@@ -630,6 +653,14 @@ function MultiSelectSection({ count }: { count: number }) {
   const duplicateSelected = useDoc((s) => s.duplicateSelected)
   const setPenSelected = useDoc((s) => s.setPenSelected)
   const booleanSelected = useDoc((s) => s.booleanSelected)
+  const convertToPath = useDoc((s) => s.convertToPath)
+  const simplifySelected = useDoc((s) => s.simplifySelected)
+  const nonPathCount = useDoc(
+    (s) => s.elements.filter((e) => s.selectedIds.includes(e.id) && e.type !== 'path').length,
+  )
+  const pathCount = useDoc(
+    (s) => s.elements.filter((e) => s.selectedIds.includes(e.id) && e.type === 'path').length,
+  )
   // How many selected elements are closed shapes (rect/ellipse/closed path) — boolean ops need ≥2.
   const closedCount = useDoc(
     (s) =>
@@ -684,6 +715,28 @@ function MultiSelectSection({ count }: { count: number }) {
           </div>
         </div>
       )}
+      {(nonPathCount > 0 || pathCount > 0) && (
+        <div className="mt-3 grid grid-cols-2 gap-1">
+          {nonPathCount > 0 && (
+            <Button
+              className={pathCount > 0 ? '' : 'col-span-2'}
+              title="Convert the non-path elements in the selection into editable paths"
+              onClick={() => convertToPath()}
+            >
+              <Spline size={15} /> To path
+            </Button>
+          )}
+          {pathCount > 0 && (
+            <Button
+              className={nonPathCount > 0 ? '' : 'col-span-2'}
+              title="Simplify selected paths (Ramer–Douglas–Peucker, 0.3 mm)"
+              onClick={() => simplifySelected(0.3)}
+            >
+              Simplify
+            </Button>
+          )}
+        </div>
+      )}
       <div className="mt-3">
         <PenSelect value={commonPen} onChange={(pen) => setPenSelected(pen)} />
       </div>
@@ -735,6 +788,7 @@ function ElementSection() {
   const setTransform = useDoc((s) => s.setTransform)
   const setPen = useDoc((s) => s.setPen)
   const removeElement = useDoc((s) => s.removeElement)
+  const convertToPath = useDoc((s) => s.convertToPath)
 
   if (selectedIds.length === 0) {
     return (
@@ -763,6 +817,16 @@ function ElementSection() {
       )}
       {element.type === 'path' && <PathInspector id={element.id} params={element.params as PathParams} />}
       {element.type === 'raster' && <RasterInspector id={element.id} params={element.params as RasterParams} />}
+
+      {element.type !== 'path' && (
+        <Button
+          className="mt-3 w-full"
+          title="Convert this element into editable path(s) you can node-edit"
+          onClick={() => convertToPath([element.id])}
+        >
+          <Spline size={15} /> Convert to path
+        </Button>
+      )}
 
       {!isMultiPen(element.type) && (
         <>
