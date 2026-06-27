@@ -50,10 +50,10 @@ export function exportSvg(): void {
   downloadBlob(`${safeFilename(name, 'kurvengefahr')}.svg`, new Blob([svg], { type: 'image/svg+xml' }))
 }
 
-export async function exportPng(): Promise<void> {
+/** PNG export at `pxPerMm` pixels per millimetre (default ≈ a crisp, bounded image). */
+export async function exportPng(pxPerMm?: number): Promise<void> {
   const { geom, bed, penColor, name } = plottable()
-  // Aim for a crisp but bounded image (≈ longest side 2400 px).
-  const scale = Math.min(10, Math.max(2, 2400 / Math.max(bed.width, bed.height)))
+  const scale = pxPerMm ?? Math.min(10, Math.max(2, 2400 / Math.max(bed.width, bed.height)))
   const canvas = document.createElement('canvas')
   canvas.width = Math.max(1, Math.round(bed.width * scale))
   canvas.height = Math.max(1, Math.round(bed.height * scale))

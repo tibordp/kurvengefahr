@@ -6,7 +6,32 @@
 import { useDoc } from '../store/document'
 import { importImage } from '../store/images'
 import { defaultRasterParams } from '../elements/raster'
-import { pickImageFile } from '../output/download'
+import { pickImageFile, pickFile } from '../output/download'
+import { useSvgImport } from '../store/svgImport'
+
+const isSvg = (f: File) => f.type === 'image/svg+xml' || /\.svg$/i.test(f.name)
+const isDxf = (f: File) => /\.dxf$/i.test(f.name)
+
+/** Route a picked content file to the right importer: SVG → the SVG import dialog, anything else →
+ *  a raster image element. (So dropping an SVG on the image button silently does the right thing.) */
+export async function importFile(file: File): Promise<void> {
+  if (isSvg(file)) {
+    const bytes = new Uint8Array(await file.arrayBuffer())
+    useSvgImport.getState().open({ bytes, name: file.name })
+    return
+  }
+  if (isDxf(file)) {
+    alert('DXF import is coming soon.')
+    return
+  }
+  await addImageElement(file)
+}
+
+/** Menu "Import…": pick any supported content file (vector or raster) and route it. */
+export async function importContentFile(): Promise<void> {
+  const file = await pickFile('image/svg+xml,.svg,.dxf,image/*')
+  if (file) await importFile(file)
+}
 
 /** Store an image (File or Blob — clipboard images arrive as Blobs) and add a raster element for it. */
 export async function addImageElement(source: File | Blob): Promise<void> {
@@ -22,8 +47,8 @@ export async function addImageElement(source: File | Blob): Promise<void> {
   }
 }
 
+/** Toolbar "image" button: pick an image — but an SVG silently diverts to the SVG importer. */
 export async function importImageElement(): Promise<void> {
   const file = await pickImageFile()
-  if (!file) return
-  await addImageElement(file)
+  if (file) await importFile(file)
 }

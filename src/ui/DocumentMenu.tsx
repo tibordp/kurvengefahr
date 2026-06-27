@@ -2,11 +2,11 @@
 // New / Duplicate / Delete / Import / Export / Open-recent. Deliberately compact — a fresh tab just
 // shows "Untitled" on a blank canvas; nothing here is modal.
 import { useEffect, useState } from 'react'
-import { ChevronDown, FilePlus, Copy, Trash2, Upload, Download, FileText, Shapes, FileImage, FileCode } from 'lucide-react'
-import { exportSvg, exportPng } from '../output/exportVector'
+import { ChevronDown, FilePlus, Copy, Trash2, Upload, Download, FileText, FolderOpen, Save } from 'lucide-react'
+import { importContentFile } from '../canvas/importImage'
+import { useExportDialog } from '../store/exportDialog'
 import { useDocuments } from '../store/documents'
 import { useDoc } from '../store/document'
-import { useSvgImport } from '../store/svgImport'
 import { useSaveStatus } from '../store/saveStatus'
 import { documentFile, CURRENT_DOC_SCHEMA, type DocSnapshot, type StoredDoc } from '../store/persistence/schema'
 import { downloadBlob, pickFile, safeFilename } from '../output/download'
@@ -133,17 +133,6 @@ export function DocumentMenu() {
     }
   }
 
-  const onImportSvg = async () => {
-    try {
-      const file = await pickFile('.svg,image/svg+xml')
-      if (!file) return
-      const bytes = new Uint8Array(await file.arrayBuffer())
-      useSvgImport.getState().open({ bytes, name: file.name })
-    } catch {
-      alert('Could not read that file.')
-    }
-  }
-
   const onDelete = () => {
     if (!confirm('Delete this document? This cannot be undone.')) return
     useDocuments.getState().deleteDocument(activeId)
@@ -167,6 +156,13 @@ export function DocumentMenu() {
         <MenuItem onClick={() => useDocuments.getState().newDocument()}>
           <FilePlus size={15} /> New document
         </MenuItem>
+        <MenuItem onClick={onImport}>
+          <FolderOpen size={15} /> Open…
+        </MenuItem>
+        <MenuItem onClick={onExport}>
+          <Save size={15} /> Save as…
+        </MenuItem>
+        <MenuSeparator />
         <MenuItem onClick={() => useDocuments.getState().duplicateActive()}>
           <Copy size={15} /> Duplicate
         </MenuItem>
@@ -174,20 +170,11 @@ export function DocumentMenu() {
           <Trash2 size={15} /> Delete
         </MenuItem>
         <MenuSeparator />
-        <MenuItem onClick={onImport}>
-          <Upload size={15} /> Import document…
+        <MenuItem onClick={() => void importContentFile()}>
+          <Upload size={15} /> Import…
         </MenuItem>
-        <MenuItem onClick={onImportSvg}>
-          <Shapes size={15} /> Import SVG…
-        </MenuItem>
-        <MenuItem onClick={onExport}>
-          <Download size={15} /> Export .kgz
-        </MenuItem>
-        <MenuItem onClick={() => exportSvg()}>
-          <FileCode size={15} /> Export SVG
-        </MenuItem>
-        <MenuItem onClick={() => void exportPng()}>
-          <FileImage size={15} /> Export PNG
+        <MenuItem onClick={() => useExportDialog.getState().set(true)}>
+          <Download size={15} /> Export…
         </MenuItem>
         {recent.length > 0 && (
           <>
