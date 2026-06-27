@@ -367,30 +367,98 @@ fn vnoise(x: f32, y: f32, seed: u32) -> f32 {
     ab + (cd - ab) * v
 }
 
-fn flow(p: &Params) -> Vec<Stroke> {
-    let n = p.lines.clamp(1, 4000) as usize;
-    let steps = p.steps.clamp(2, 4000) as usize;
-    let scale = p.noise_scale.clamp(0.001, 1.0);
-    let step_len = (p.width.min(p.height) / steps as f32).max(0.3).min(1.5);
-    let mut rng = Rng::new(p.seed);
-    let mut out = Vec::new();
-    for _ in 0..n {
-        let (mut x, mut y) = (rng.f32() * p.width, rng.f32() * p.height);
-        let mut pl = vec![(x, y)];
-        for _ in 0..steps {
-            let a = vnoise(x * scale, y * scale, p.seed) * TAU;
-            x += step_len * a.cos();
-            y += step_len * a.sin();
-            if x < 0.0 || y < 0.0 || x > p.width || y > p.height {
-                break;
+/// Is (x,y) within `min_d` of an already-placed streamline point? Checks the 3×3 cells around it in
+/// the separation grid (cells sized `sep`, so anything within `sep` lands in a neighbour cell).
+fn flow_crowded(grid: &[Vec<(f32, f32)>], cols: i32, rows: i32, sep: f32, x: f32, y: f32, min_d2: f32) -> bool {
+    let (cx, cy) = ((x / sep) as i32, (y / sep) as i32);
+    for gy in (cy - 1).max(0)..=(cy + 1).min(rows - 1) {
+        for gx in (cx - 1).max(0)..=(cx + 1).min(cols - 1) {
+            for &(px, py) in &grid[(gy * cols + gx) as usize] {
+                if (x - px).powi(2) + (y - py).powi(2) < min_d2 {
+                    return true;
+                }
             }
-            pl.push((x, y));
-        }
-        if pl.len() >= 2 {
-            out.push(poly(pl.into_iter().map(|(x, y)| pt(x, y)).collect()));
         }
     }
+    false
+}
+
+/// Evenly-spaced flow streamlines: seed on a jittered grid, integrate each seed both ways along the
+/// noise field, and stop / skip whenever a line would run within `~sep` of an existing one — so the
+/// lines tile the field instead of piling onto the same few attractors.
+fn flow(p: &Params) -> Vec<Stroke> {
+    let (w, h) = (p.width, p.height);
+    let n_target = p.lines.clamp(1, 4000) as f32;
+    let steps = p.steps.clamp(2, 4000) as usize;
+    let scale = p.noise_scale.clamp(0.001, 1.0);
+    // Spacing for ~n_target evenly-spaced lines over the area; step well under it for smooth curves.
+    let sep = (w * h / n_target).sqrt().max(0.5);
+    let step_len = (sep * 0.25).clamp(0.25, 1.5);
+    let min_d2 = (sep * 0.8).powi(2);
+    let (cols, rows) = ((w / sep) as i32 + 2, (h / sep) as i32 + 2);
+    let mut grid: Vec<Vec<(f32, f32)>> = vec![Vec::new(); (cols * rows) as usize];
+
+    let mut rng = Rng::new(p.seed);
+    // Jittered-grid candidate seeds (~sep apart), visited in a seeded-shuffled order for organic look.
+    let mut seeds: Vec<(f32, f32)> = Vec::new();
+    let mut sy = sep * 0.5;
+    while sy < h {
+        let mut sx = sep * 0.5;
+        while sx < w {
+            seeds.push((sx + (rng.f32() - 0.5) * sep, sy + (rng.f32() - 0.5) * sep));
+            sx += sep;
+        }
+        sy += sep;
+    }
+    for i in (1..seeds.len()).rev() {
+        seeds.swap(i, (rng.next() as usize) % (i + 1));
+    }
+
+    let mut out = Vec::new();
+    for (sx, sy) in seeds {
+        if sx < 0.0 || sy < 0.0 || sx > w || sy > h || flow_crowded(&grid, cols, rows, sep, sx, sy, min_d2) {
+            continue;
+        }
+        // Integrate one direction; `dir = -1` walks the field backwards. Returns points past the seed.
+        let walk = |dir: f32, grid: &[Vec<(f32, f32)>]| -> Vec<(f32, f32)> {
+            let (mut x, mut y) = (sx, sy);
+            let mut pts = Vec::new();
+            for _ in 0..steps {
+                let a = vnoise(x * scale, y * scale, p.seed) * TAU;
+                x += dir * step_len * a.cos();
+                y += dir * step_len * a.sin();
+                if x < 0.0 || y < 0.0 || x > w || y > h || flow_crowded(grid, cols, rows, sep, x, y, min_d2) {
+                    break;
+                }
+                pts.push((x, y));
+            }
+            pts
+        };
+        let back = walk(-1.0, &grid);
+        let fwd = walk(1.0, &grid);
+        let mut line: Vec<(f32, f32)> = back.into_iter().rev().collect();
+        line.push((sx, sy));
+        line.extend(fwd);
+        if line.len() < 2 {
+            continue;
+        }
+        for &(px, py) in &line {
+            if let Some(c) = flow_cell(px, py, sep, cols, rows) {
+                grid[c].push((px, py));
+            }
+        }
+        out.push(poly(line.into_iter().map(|(x, y)| pt(x, y)).collect()));
+    }
     out
+}
+
+fn flow_cell(x: f32, y: f32, sep: f32, cols: i32, rows: i32) -> Option<usize> {
+    let (cx, cy) = ((x / sep) as i32, (y / sep) as i32);
+    if cx < 0 || cy < 0 || cx >= cols || cy >= rows {
+        None
+    } else {
+        Some((cy * cols + cx) as usize)
+    }
 }
 
 #[cfg(test)]
