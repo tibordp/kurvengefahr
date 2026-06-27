@@ -1239,8 +1239,6 @@ function MachineSection() {
         onChange={(v) => setProfile({ penZ: { ...profile.penZ, up: v } })} />
       <Num label="Pen down Z" value={profile.penZ.down} step={0.1}
         onChange={(v) => setProfile({ penZ: { ...profile.penZ, down: v } })} />
-      <Num label="Dwell (ms)" value={profile.penZ.dwell} step={10}
-        onChange={(v) => setProfile({ penZ: { ...profile.penZ, dwell: v } })} />
 
       <SectionTitle title="Pen tip position relative to the nozzle. Shrinks the reachable area; offsets G-code coordinates.">
         Pen offset (vs nozzle)

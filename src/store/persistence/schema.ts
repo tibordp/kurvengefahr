@@ -81,11 +81,7 @@ export function sanitizeProfile(p: unknown): MachineProfile {
     bed: { width: num(p.bed?.width, base.bed.width), height: num(p.bed?.height, base.bed.height) },
     origin: p.origin === 'top-left' || p.origin === 'bottom-left' ? p.origin : base.origin,
     feeds: { travel: num(p.feeds?.travel, base.feeds.travel), draw: num(p.feeds?.draw, base.feeds.draw) },
-    penZ: {
-      up: num(p.penZ?.up, base.penZ.up),
-      down: num(p.penZ?.down, base.penZ.down),
-      dwell: num(p.penZ?.dwell, base.penZ.dwell),
-    },
+    penZ: { up: num(p.penZ?.up, base.penZ.up), down: num(p.penZ?.down, base.penZ.down) },
     penOffset: { x: num(p.penOffset?.x, 0), y: num(p.penOffset?.y, 0), z: num(p.penOffset?.z, 0) },
     pens,
     preamble: str(p.preamble, base.preamble),

@@ -85,19 +85,17 @@ export function emit(geom: Geometry, profile: MachineProfile, fiducial?: Fiducia
       const drawFeed = s.feed ?? feeds.draw
       const first = nozzle(s.points[0])
 
-      // Travel to the start (pen already up), then pen down (+ dwell for the spring to settle).
+      // Travel to the start (pen already up), then pen down.
       lines.push(`G0 X${first.x} Y${first.y} F${f3(feeds.travel)}`)
       lines.push(`G1 Z${zDown} F${f3(feeds.travel)}`)
-      if (penZ.dwell > 0) lines.push(`G4 P${penZ.dwell}`)
 
       for (let i = 1; i < s.points.length; i++) {
         const p = nozzle(s.points[i])
         lines.push(`G1 X${p.x} Y${p.y} F${f3(drawFeed)}`)
       }
 
-      // Pen up (+ dwell).
+      // Pen up.
       lines.push(`G0 Z${zUp}`)
-      if (penZ.dwell > 0) lines.push(`G4 P${penZ.dwell}`)
     }
   }
 

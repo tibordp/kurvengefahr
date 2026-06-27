@@ -112,8 +112,8 @@ export interface MachineProfile {
   origin: 'top-left' | 'bottom-left'
   /** Feed rates, mm/min. */
   feeds: { travel: number; draw: number }
-  /** Pen Z heights (mm) and dwell (ms) after each up/down move. */
-  penZ: { up: number; down: number; dwell: number }
+  /** Pen Z heights (mm) for up (clearance) and down (drawing). */
+  penZ: { up: number; down: number }
   /** Pen tip position relative to the nozzle, machine axes (mm). G-code commands the nozzle,
    *  so emitted coords = pen target − offset. Nonzero x/y shrink the reachable (drawable) area;
    *  z shifts the commanded Z. */
