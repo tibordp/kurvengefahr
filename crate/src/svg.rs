@@ -17,7 +17,7 @@ type Ring = Vec<P>;
 type Contours = Vec<Ring>;
 
 /// Flatten tolerance in mm (post-scale): max chord deviation when flattening Béziers.
-const TOL: f32 = 0.15;
+const TOL: f32 = crate::tess::SVG_FLATTEN_TOL;
 
 #[derive(serde::Deserialize)]
 #[serde(default)]

@@ -5,7 +5,7 @@
 use crate::geom::{Point, Stroke};
 
 /// Default chord tolerance (mm) for flattening curves — well below a pen's line width.
-const DEFAULT_TOL: f32 = 0.1;
+const DEFAULT_TOL: f32 = crate::tess::PATH_FLATTEN_TOL;
 
 fn pt(x: f32, y: f32) -> Point {
     Point { x, y, pressure: 1.0 }

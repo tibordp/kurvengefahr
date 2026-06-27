@@ -81,7 +81,10 @@ registry `generate()`. Non-obvious bits:
 - **Tool ≠ type:** the line/pen/freehand tools all create a `path` (`{nodes, closed}`, handles
   relative to anchor; zero-length handle ⇒ corner, so polyline + Bézier share one type).
 - **Tessellation + fill are Rust** (`crate/src/shapes.rs`, `hatch.rs`), called *synchronously* from
-  each `generate()` (main-thread WASM, like clip). After any Rust change, `npm run build:wasm`.
+  each `generate()` (main-thread WASM, like clip). After any Rust change, `npm run build:wasm`. All
+  the geometry **tolerances + tessellation resolution** (curve flattening, arc/circle/spline steps,
+  DXF simplify/weld, cleanup) live in one place: `crate/src/tess.rs` — tune fidelity vs point count
+  there, not at scattered call sites.
 - **Resize bakes scale into params** (real W/H, radii, node coords) via the registry `applyScale`
   hook, resetting `scaleX/Y=1`. Handwriting has no hook → it keeps scale in its transform. Corner
   radius is absolute mm and deliberately does NOT scale.

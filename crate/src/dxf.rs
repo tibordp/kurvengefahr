@@ -134,7 +134,8 @@ fn aci_to_rgb(i: i32) -> u32 {
 // ---- curve flattening --------------------------------------------------------------------------
 
 fn arc_steps(sweep: f64) -> usize {
-    ((sweep.abs() / (PI / 32.0)).ceil() as usize).clamp(2, 512)
+    use crate::tess::*;
+    ((sweep.abs() / ARC_STEP_RAD).ceil() as usize).clamp(ARC_MIN_SEGMENTS, ARC_MAX_SEGMENTS)
 }
 
 /// Append the arc from `p0` to `p1` with DXF `bulge` (= tan(included_angle / 4)); straight if ~0.
@@ -160,8 +161,9 @@ fn push_bulge(out: &mut Ring, p0: (f64, f64), p1: (f64, f64), bulge: f64) {
 }
 
 fn flatten_circle(cx: f64, cy: f64, r: f64) -> Ring {
-    (0..72).map(|i| {
-        let a = 2.0 * PI * i as f64 / 72.0;
+    let n = crate::tess::CIRCLE_SEGMENTS;
+    (0..n).map(|i| {
+        let a = 2.0 * PI * i as f64 / n as f64;
         (cx + r * a.cos(), cy + r * a.sin())
     }).collect()
 }
@@ -200,7 +202,7 @@ fn flatten_spline(degree: usize, knots: &[f64], ctrl: &[(f64, f64)], fit: &[(f64
         return if fit.len() >= 2 { fit.to_vec() } else { ctrl.to_vec() };
     }
     let (lo, hi) = (knots[p], knots[n]);
-    let steps = (n * 16).clamp(16, 2048);
+    let steps = (n * crate::tess::SPLINE_SAMPLES_PER_CTRL).clamp(crate::tess::SPLINE_MIN_SAMPLES, crate::tess::SPLINE_MAX_SAMPLES);
     (0..=steps).map(|i| {
         let t = (lo + (hi - lo) * i as f64 / steps as f64).clamp(lo, hi - 1e-9);
         deboor(p, knots, ctrl, t)
@@ -374,7 +376,19 @@ pub fn import(bytes: &[u8], params_json: &str) -> DxfImport {
         .map(|(pts, closed, rgb)| (pts.into_iter().map(|(x, y)| (x * s, -y * s)).collect(), closed, rgb))
         .collect();
     if p.merge {
-        mm = merge_chains(mm, 0.05);
+        mm = merge_chains(mm, crate::tess::DXF_WELD_TOL as f64);
+    }
+
+    // Curve flattening over-samples — a CAD export can be a sea of tiny splines, each sampled at a
+    // fixed step count (a 3-control-point spline → ~48 points). RDP-simplify every contour to a
+    // sub-pen-width tolerance so the point count tracks the actual shape, not the entity count.
+    // Visually lossless for a plotter (well under a pen width).
+    for (pts, _, _) in mm.iter_mut() {
+        if pts.len() > 2 {
+            let flat: Vec<f32> = pts.iter().flat_map(|&(x, y)| [x as f32, y as f32]).collect();
+            let kept = crate::shapes::simplify(&flat, crate::tess::DXF_SIMPLIFY_TOL);
+            *pts = kept.chunks_exact(2).map(|c| (c[0] as f64, c[1] as f64)).collect();
+        }
     }
 
     let mut out = Out { insunits, ..Out::default() };
@@ -508,3 +522,4 @@ mod tests {
         assert_eq!(res.inner.ring_closed, vec![1], "closed flag honoured");
     }
 }
+

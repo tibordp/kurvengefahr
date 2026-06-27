@@ -8,10 +8,10 @@ use super::{pt, stroke, Grid, Params, Rng};
 use crate::geom::{Point, Stroke};
 
 /// Streamline seeds per mm² at `detail = 1` (sparse — each seed spans a whole streamline).
-const SEED_DENSITY: f32 = 0.12;
+const SEED_DENSITY: f32 = crate::tess::RASTER_FLOW_SEED_DENSITY;
 const MAX_SEEDS: usize = 6000;
 /// Integration step (mm) and the inkness floor below which a streamline stops (leaves the subject).
-const STEP: f32 = 0.6;
+const STEP: f32 = crate::tess::RASTER_FLOW_STEP;
 const INK_FLOOR: f32 = 0.06;
 
 pub fn flow(grid: &Grid, p: &Params) -> Vec<Stroke> {

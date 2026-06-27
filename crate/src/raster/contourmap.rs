@@ -83,7 +83,7 @@ struct Chainer {
     segs: Vec<(usize, usize)>,
 }
 
-const Q: f32 = 1000.0; // quantize to 1µm so shared endpoints hash equal
+const Q: f32 = 1.0 / crate::tess::COINCIDENT_TOL; // 1µm — shared endpoints hash equal
 
 impl Chainer {
     fn point(&mut self, x: f32, y: f32) -> usize {

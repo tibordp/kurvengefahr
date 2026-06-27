@@ -7,7 +7,7 @@ use crate::geom::Point;
 use crate::geom::Stroke;
 
 /// March step along each scanline (mm).
-const STEP: f32 = 0.5;
+const STEP: f32 = crate::tess::RASTER_SCANLINE_STEP;
 
 pub fn scanlines(grid: &Grid, p: &Params) -> Vec<Stroke> {
     let spacing = p.spacing.max(0.4);

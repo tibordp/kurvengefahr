@@ -25,6 +25,7 @@ mod model;
 mod raster;
 mod shapes;
 mod svg;
+mod tess;
 mod text;
 mod typeset;
 

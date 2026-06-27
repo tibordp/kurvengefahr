@@ -7,7 +7,7 @@ use super::{pt, Grid, Params};
 use crate::geom::{Point, Stroke};
 
 /// Arc step along the spiral (mm).
-const STEP: f32 = 0.5;
+const STEP: f32 = crate::tess::RASTER_SPIRAL_STEP;
 
 pub fn spiral(grid: &Grid, p: &Params) -> Vec<Stroke> {
     let cx = grid.tw * 0.5;

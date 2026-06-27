@@ -10,7 +10,7 @@ use crate::geom::{Point, Stroke};
 use std::collections::HashMap;
 
 /// Quantization for coincidence tests: 1 µm grid (well below any pen width).
-const Q: f32 = 1000.0;
+const Q: f32 = 1.0 / crate::tess::COINCIDENT_TOL;
 type Key = (i64, i64);
 fn key(p: Point) -> Key {
     ((p.x * Q).round() as i64, (p.y * Q).round() as i64)
@@ -161,7 +161,7 @@ fn clean_pen(strokes: &[&Stroke], pen: u16) -> Vec<Stroke> {
 /// perpendicular deviation in mm; tiny so curves are preserved and only redundant points on straight
 /// runs (rect edges, RDP-flattened lines) are dropped.
 fn drop_collinear(pts: &[Point]) -> Vec<Point> {
-    const TOL: f32 = 2e-3;
+    const TOL: f32 = crate::tess::COLLINEAR_TOL;
     if pts.len() <= 2 {
         return pts.to_vec();
     }

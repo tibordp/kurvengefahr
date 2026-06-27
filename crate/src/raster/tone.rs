@@ -8,7 +8,7 @@ use crate::geom::{Point, Stroke};
 
 /// March step along each hatch line (mm). Fine enough to catch tone boundaries cleanly without
 /// generating excess vertices.
-const STEP: f32 = 0.4;
+const STEP: f32 = crate::tess::RASTER_HATCH_STEP;
 
 pub fn hatch(grid: &Grid, p: &Params) -> Vec<Stroke> {
     let levels = p.levels.clamp(1, MAX_LEVELS) as usize;

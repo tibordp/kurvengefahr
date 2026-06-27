@@ -6,7 +6,7 @@ use crate::geom::{Point, Stroke};
 
 type P = (f32, f32);
 
-const ELLIPSE_TOL: f32 = 0.1;
+const ELLIPSE_TOL: f32 = crate::tess::ELLIPSE_FILL_TOL;
 
 fn pt(x: f32, y: f32) -> Point {
     Point { x, y, pressure: 1.0 }

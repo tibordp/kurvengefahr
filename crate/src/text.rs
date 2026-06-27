@@ -13,7 +13,7 @@ const MONO: &[u8] = include_bytes!("../fonts/mono.ttf");
 
 /// Nominal Hershey em (full ascender→descender) so `size` reads like a normal font size.
 const HERSHEY_EM: f32 = 32.0;
-const FLATTEN_TOL: f32 = 0.15; // mm
+const FLATTEN_TOL: f32 = crate::tess::TEXT_FLATTEN_TOL; // mm
 
 fn default_size() -> f32 {
     10.0
