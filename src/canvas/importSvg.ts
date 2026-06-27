@@ -40,7 +40,7 @@ function hexRgb(hex: string): { r: number; g: number; b: number } {
 }
 
 /** Nearest palette pen to a packed 0xRRGGBB colour, by squared RGB distance. Returns its pen id. */
-function nearestPen(rgb: number, profile: MachineProfile): number {
+export function nearestPen(rgb: number, profile: MachineProfile): number {
   const r = (rgb >> 16) & 0xff
   const g = (rgb >> 8) & 0xff
   const b = rgb & 0xff

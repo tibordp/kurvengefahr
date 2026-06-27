@@ -1,8 +1,8 @@
 # Kurvengefahr
 
 A browser-based CAM tool for pen plotters. Compose on a virtual bed -- handwriting, text, vector
-shapes, imported SVG, traced photos, generative patterns -- preview the exact toolpath, and download
-G-code. Everything runs client-side; nothing is uploaded.
+shapes, imported SVG and DXF, traced photos, generative patterns -- preview the exact toolpath, and
+download G-code. Everything runs client-side; nothing is uploaded.
 
 **[Live app](https://kurven.ojdip.net)** -- installable PWA, works offline. Built for a Prusa MK4
 with a spring-loaded pen holder; the machine profile is editable.
@@ -21,9 +21,10 @@ with a spring-loaded pen holder; the machine profile is editable.
 - **Booleans** -- Union, subtract, intersect, and exclude on closed shapes, holes included.
 - **Generative** -- Parametric pattern generators: spirographs, L-system fractals, Truchet tiles,
   Voronoi diagrams, and noise flow fields, each fit to a box and reproducible per seed.
-- **SVG import** -- Vector art becomes native, editable paths. Overlapping fills are clipped to their
-  visible area so hidden regions don't plot, colors map to the nearest pen, and fill darkness sets
-  hatch density.
+- **Vector import** -- SVG and DXF become native, editable paths. For SVG, overlapping fills are
+  clipped to their visible area so hidden regions don't plot, colors map to the nearest pen, and fill
+  darkness sets hatch density. DXF imports lines, polylines (with bulges), arcs, circles, ellipses,
+  and splines as line art, colored by entity or layer.
 - **Raster tracing** -- Restyle an image as strokes: contour outlines, centerlines for line art (one
   stroke per line), topographic levels, hatching, scanlines, a single TSP tour, flow fields, or
   spirals, with live preview.
@@ -59,8 +60,8 @@ the page, clip to the reachable area, optimize stroke order, emit G-code), so ad
 never touches the machinery downstream.
 
 The app is client-only React, but all the geometry -- the handwriting model, font and text layout,
-shape and path math, polygon booleans, SVG parsing and occlusion, image tracing, generative patterns,
-clipping, and path optimization -- is Rust compiled to WebAssembly (the `kg_core` crate). The
+shape and path math, polygon booleans, SVG and DXF parsing, occlusion, image tracing, generative
+patterns, clipping, and path optimization -- is Rust compiled to WebAssembly (the `kg_core` crate). The
 handwriting model and image tracing run in Web Workers so the UI stays responsive.
 
 ## Building

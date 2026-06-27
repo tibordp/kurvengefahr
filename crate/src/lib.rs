@@ -17,6 +17,7 @@ mod boolean;
 mod cleanup;
 mod clip;
 mod compose;
+mod dxf;
 mod generative;
 mod geom;
 mod hatch;
@@ -249,6 +250,13 @@ pub fn boolean(
 #[wasm_bindgen]
 pub fn import_svg(bytes: &[u8], params: &str) -> svg::SvgImport {
     svg::import(bytes, params)
+}
+
+/// Parse a DXF → flattened polyline contours (line art) with per-entity colour, for the TS side to
+/// build `path` elements. `params` is JSON (`{target_size}`).
+#[wasm_bindgen]
+pub fn import_dxf(bytes: &[u8], params: &str) -> dxf::DxfImport {
+    dxf::import(bytes, params)
 }
 
 /// Vectorize an RGBA image (JS-decoded, row-major `width*height*4` bytes) into pen strokes, fit to

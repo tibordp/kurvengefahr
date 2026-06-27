@@ -8,6 +8,7 @@ import { importImage } from '../store/images'
 import { defaultRasterParams } from '../elements/raster'
 import { pickImageFile, pickFile } from '../output/download'
 import { useSvgImport } from '../store/svgImport'
+import { addDxfElements, defaultDxfImportOptions } from './importDxf'
 
 const isSvg = (f: File) => f.type === 'image/svg+xml' || /\.svg$/i.test(f.name)
 const isDxf = (f: File) => /\.dxf$/i.test(f.name)
@@ -21,7 +22,9 @@ export async function importFile(file: File): Promise<void> {
     return
   }
   if (isDxf(file)) {
-    alert('DXF import is coming soon.')
+    const bytes = new Uint8Array(await file.arrayBuffer())
+    const n = addDxfElements(bytes, defaultDxfImportOptions())
+    if (!n) alert('No supported entities found in that DXF (lines, polylines, arcs, circles, ellipses and splines are imported).')
     return
   }
   await addImageElement(file)

@@ -2,7 +2,8 @@
 
 Browser CAM for a pen plotter (Prusa MK4 + spring-loaded pen-holder toolhead: Z = pen up/down +
 pressure, X/Y = position). Client-only React/TS SPA. Generate G-code in the browser, download,
-plot. MVP input is handwriting; vector (SVG/DXF) and raster line-art are designed-for, not built.
+plot. Inputs: handwriting (the original MVP), text, vector shapes/paths, SVG and DXF import, raster
+stylization, and generative primitives — all reduced to the same `Stroke[]` IR.
 
 This file is the *why* and the non-obvious invariants — the stuff you can't grep. Mechanical detail
 (field lists, function names, arch numbers) is intentionally left to the code; don't re-document it

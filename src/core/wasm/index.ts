@@ -20,6 +20,7 @@ import init, {
   concentric,
   boolean,
   import_svg,
+  import_dxf,
   SvgImport,
   GeometryBuffers,
 } from '@wasm/kg_core.js'
@@ -49,6 +50,7 @@ export {
   concentric,
   boolean,
   import_svg,
+  import_dxf,
   SvgImport,
   GeometryBuffers,
 }

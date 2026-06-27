@@ -13,6 +13,7 @@ import {
   concentric,
   boolean,
   import_svg,
+  import_dxf,
   GeometryBuffers,
 } from './index'
 import { unflatten } from './serde'
@@ -144,6 +145,35 @@ export function importSvgRaw(bytes: Uint8Array, occlude: boolean, targetSize: nu
       rings.push({ points, closed: ringClosed[r] !== 0 })
     }
     out.push({ rings, rgb: colors[s], darkness: darkness[s], kind: kind[s] })
+  }
+  res.free()
+  return out
+}
+
+export interface DxfImportShape {
+  rings: SvgImportRing[]
+  /** Entity colour (ACI → packed 0xRRGGBB), else its layer's. */
+  rgb: number
+}
+
+/** Parse a DXF into per-entity polyline contours (mm, longest side scaled to `targetSize`, Y-flipped
+ *  to page orientation). Line art only -- colour → pen mapping is the caller's job. */
+export function importDxfRaw(bytes: Uint8Array, targetSize: number): DxfImportShape[] {
+  const res = import_dxf(bytes, JSON.stringify({ target_size: targetSize }))
+  const xy = res.xy
+  const ringStarts = res.ring_starts
+  const ringClosed = res.ring_closed
+  const shapeStarts = res.shape_starts
+  const colors = res.colors
+  const out: DxfImportShape[] = []
+  for (let s = 0; s < colors.length; s++) {
+    const rings: SvgImportRing[] = []
+    for (let r = shapeStarts[s]; r < shapeStarts[s + 1]; r++) {
+      const points: Point[] = []
+      for (let i = ringStarts[r]; i < ringStarts[r + 1]; i++) points.push({ x: xy[i * 2], y: xy[i * 2 + 1] })
+      rings.push({ points, closed: ringClosed[r] !== 0 })
+    }
+    out.push({ rings, rgb: colors[s] })
   }
   res.free()
   return out
