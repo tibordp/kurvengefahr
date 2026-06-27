@@ -127,8 +127,13 @@ export interface SvgImportShape {
 /** Parse + flatten + (optionally) occlude an SVG into per-shape multi-contour geometry (in mm,
  *  scaled so the longest side is `targetSize`). Geometry only — pen/hatch mapping is done by the
  *  caller. `occlude` subtracts upper filled shapes from those beneath. */
-export function importSvgRaw(bytes: Uint8Array, occlude: boolean, targetSize: number): SvgImportShape[] {
-  const res = import_svg(bytes, JSON.stringify({ occlude, target_size: targetSize }))
+export function importSvgRaw(
+  bytes: Uint8Array,
+  occlude: boolean,
+  targetSize: number,
+  pxToMm = 0,
+): SvgImportShape[] {
+  const res = import_svg(bytes, JSON.stringify({ occlude, target_size: targetSize, px_to_mm: pxToMm }))
   const xy = res.xy
   const ringStarts = res.ring_starts
   const ringClosed = res.ring_closed

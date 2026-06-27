@@ -21,7 +21,8 @@ with a spring-loaded pen holder; the machine profile is editable.
 - **Booleans** -- Union, subtract, intersect, and exclude on closed shapes, holes included.
 - **Generative** -- Parametric pattern generators: spirographs, L-system fractals, Truchet tiles,
   Voronoi diagrams, and noise flow fields, each fit to a box and reproducible per seed.
-- **Vector import** -- SVG and DXF become native, editable paths. For SVG, overlapping fills are
+- **Vector import** -- SVG and DXF become native, editable paths, sized to fit or imported at 1:1
+  (real size for physical units, or a chosen DPI for pixel art). For SVG, overlapping fills are
   clipped to their visible area so hidden regions don't plot, colors map to the nearest pen, and fill
   darkness sets hatch density. DXF imports lines, polylines (with bulges), arcs, circles, ellipses,
   and splines as line art at real-world size (units read from the header, overridable), colored by

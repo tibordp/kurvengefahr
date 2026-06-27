@@ -6,11 +6,25 @@ import { importSvgRaw, type SvgImportShape } from '../core/wasm/shapes'
 import { cornerNode, type Contour, type Hatch, type HatchPattern, type PathParams } from '../elements/shapes'
 import type { MachineProfile } from '../core/types'
 
+/** usvg resolves physical units to px at this dpi, so px → mm for a physical SVG is 25.4/96. */
+export const USVG_DPI = 96
+export const MM_PER_IN = 25.4
+
+/** Does the SVG declare a physical size (mm/cm/in/pt/pc) rather than pixels/user-units? Sniffed from
+ *  the root `<svg width="…">` so the import dialog can offer true 1:1 (no DPI needed). */
+export function svgIsPhysical(bytes: Uint8Array): boolean {
+  const head = new TextDecoder().decode(bytes.slice(0, 4096))
+  const m = head.match(/<svg\b[^>]*?\bwidth\s*=\s*["']\s*[\d.]+\s*(mm|cm|in|pt|pc)\s*["']/i)
+  return !!m
+}
+
 export interface SvgImportOptions {
   /** Subtract upper filled shapes from those beneath so hidden areas don't plot. */
   occlude: boolean
-  /** Longest side, in mm, to scale the import into. */
+  /** Longest side, in mm, to scale the import into (when `pxToMm` is 0). */
   targetSize: number
+  /** Millimetres per usvg px for 1:1 import; `0` = fit to `targetSize`. */
+  pxToMm: number
   /** Hatch pattern for filled shapes (`'none'` = import the outline only). */
   fillStyle: HatchPattern
   /** Base hatch spacing (mm) — the densest, used for a fully black fill. */
@@ -26,6 +40,7 @@ export interface SvgImportOptions {
 export const defaultSvgImportOptions = (): SvgImportOptions => ({
   occlude: true,
   targetSize: 150,
+  pxToMm: 0,
   fillStyle: 'lines',
   density: 0.8,
   mapDensity: true,
@@ -69,7 +84,7 @@ function hatchFor(shape: SvgImportShape, opts: SvgImportOptions): Hatch {
 
 /** Import an SVG's bytes as native path elements. Returns the number of elements created. */
 export function addSvgElements(bytes: Uint8Array, opts: SvgImportOptions): number {
-  const shapes = importSvgRaw(bytes, opts.occlude, opts.targetSize)
+  const shapes = importSvgRaw(bytes, opts.occlude, opts.targetSize, opts.pxToMm)
   if (!shapes.length) return 0
   const profile = useDoc.getState().profile
 

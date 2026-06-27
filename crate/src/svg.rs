@@ -26,10 +26,14 @@ struct Params {
     occlude: bool,
     /// Longest side, in mm, to scale the SVG into. `<= 0` keeps the SVG's user units as mm.
     target_size: f32,
+    /// Millimetres per usvg px, for 1:1 import. usvg resolves physical units to px at 96 dpi, so the
+    /// caller passes 25.4/96 for physical SVGs or 25.4/dpi for pixel ones. `> 0` overrides
+    /// `target_size`.
+    px_to_mm: f32,
 }
 impl Default for Params {
     fn default() -> Self {
-        Self { occlude: true, target_size: 200.0 }
+        Self { occlude: true, target_size: 200.0, px_to_mm: 0.0 }
     }
 }
 
@@ -225,7 +229,9 @@ pub fn import(bytes: &[u8], params_json: &str) -> SvgImport {
         Err(_) => return SvgImport { inner: Out::new() },
     };
     let size = tree.size();
-    let scale = if params.target_size > 0.0 {
+    let scale = if params.px_to_mm > 0.0 {
+        params.px_to_mm // 1:1 import (real-world size)
+    } else if params.target_size > 0.0 {
         params.target_size / size.width().max(size.height()).max(1e-3)
     } else {
         1.0

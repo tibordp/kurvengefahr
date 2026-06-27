@@ -5,7 +5,14 @@ import { useEffect, useMemo, useState } from 'react'
 import { Modal, Button, Field, SectionTitle, controlClass } from './primitives'
 import { useSvgImport } from '../store/svgImport'
 import { importSvgRaw } from '../core/wasm/shapes'
-import { addSvgElements, defaultSvgImportOptions, type SvgImportOptions } from '../canvas/importSvg'
+import {
+  addSvgElements,
+  defaultSvgImportOptions,
+  svgIsPhysical,
+  USVG_DPI,
+  MM_PER_IN,
+  type SvgImportOptions,
+} from '../canvas/importSvg'
 import type { HatchPattern } from '../elements/shapes'
 
 function NumberField({
@@ -57,31 +64,75 @@ export function SvgImportDialog() {
   const close = useSvgImport((s) => s.close)
   const [opts, setOpts] = useState<SvgImportOptions>(defaultSvgImportOptions)
   const set = (patch: Partial<SvgImportOptions>) => setOpts((o) => ({ ...o, ...patch }))
+  const [scaleMode, setScaleMode] = useState<'fit' | 'actual'>('fit')
+  const [dpi, setDpi] = useState(96)
 
-  // Shape count is independent of scale, so only occlusion changes it — keep size typing snappy.
-  const count = useMemo(() => {
-    if (!pending) return 0
+  // A physical SVG (width in mm/cm/in/…) can import truly 1:1; a pixel one needs a DPI to size it.
+  const physical = useMemo(() => (pending ? svgIsPhysical(pending.bytes) : false), [pending])
+  useEffect(() => {
+    if (pending) setScaleMode(svgIsPhysical(pending.bytes) ? 'actual' : 'fit')
+  }, [pending])
+
+  const pxToMm =
+    scaleMode === 'actual' ? (physical ? MM_PER_IN / USVG_DPI : MM_PER_IN / Math.max(1, dpi)) : 0
+
+  // Parse once for the count + real size; cheap enough to redo as options change.
+  const preview = useMemo(() => {
+    if (!pending) return null
     try {
-      return importSvgRaw(pending.bytes, opts.occlude, 100).length
+      return importSvgRaw(pending.bytes, opts.occlude, opts.targetSize, pxToMm)
     } catch {
-      return 0
+      return null
     }
-  }, [pending, opts.occlude])
+  }, [pending, opts.occlude, opts.targetSize, pxToMm])
+  const count = preview?.length ?? 0
+  const size = useMemo(() => {
+    if (!preview?.length) return null
+    let x0 = Infinity
+    let y0 = Infinity
+    let x1 = -Infinity
+    let y1 = -Infinity
+    for (const s of preview)
+      for (const r of s.rings)
+        for (const p of r.points) {
+          if (p.x < x0) x0 = p.x
+          if (p.y < y0) y0 = p.y
+          if (p.x > x1) x1 = p.x
+          if (p.y > y1) y1 = p.y
+        }
+    return { w: x1 - x0, h: y1 - y0 }
+  }, [preview])
 
   if (!pending) return null
 
   const filled = opts.fillStyle !== 'none'
   const onImport = () => {
-    addSvgElements(pending.bytes, { ...opts, groupName: pending.name.replace(/\.svg$/i, '') })
+    addSvgElements(pending.bytes, { ...opts, pxToMm, groupName: pending.name.replace(/\.svg$/i, '') })
     close()
   }
 
   return (
     <Modal title={`Import ${pending.name}`} onClose={close} className="w-[26rem]">
       <SectionTitle>Placement</SectionTitle>
-      <Field label="Size — longest side (mm)">
-        <NumberField value={opts.targetSize} min={1} onChange={(v) => set({ targetSize: v })} />
+      <Field label="Scale">
+        <select className={controlClass} value={scaleMode} onChange={(e) => setScaleMode(e.target.value as 'fit' | 'actual')}>
+          <option value="fit">Fit to size</option>
+          <option value="actual">Actual size (1:1)</option>
+        </select>
       </Field>
+      {scaleMode === 'fit' && (
+        <Field label="Size — longest side (mm)">
+          <NumberField value={opts.targetSize} min={1} onChange={(v) => set({ targetSize: v })} />
+        </Field>
+      )}
+      {scaleMode === 'actual' && !physical && (
+        <Field label="Resolution (DPI)">
+          <NumberField value={dpi} min={1} onChange={setDpi} />
+        </Field>
+      )}
+      {scaleMode === 'actual' && physical && (
+        <p className="text-xs text-muted">Physical units detected — imported 1:1.</p>
+      )}
       <Check
         label="Occlude hidden parts"
         checked={opts.occlude}
@@ -122,7 +173,9 @@ export function SvgImportDialog() {
       )}
 
       <p className="mt-3 text-xs text-muted">
-        {count > 0 ? `${count} shape${count === 1 ? '' : 's'} will be imported.` : 'No shapes found.'}
+        {count > 0
+          ? `${count} shape${count === 1 ? '' : 's'}${size ? ` · ${size.w.toFixed(1)} × ${size.h.toFixed(1)} mm` : ''}`
+          : 'No shapes found.'}
       </p>
       <div className="mt-4 flex justify-end gap-2">
         <Button variant="ghost" onClick={close}>
