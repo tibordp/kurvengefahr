@@ -16,10 +16,13 @@ use wasm_bindgen::prelude::*;
 #[serde(default)]
 struct Params {
     target_size: f32,
+    /// Chain open segments that share endpoints into polylines (CAD often exports thousands of loose
+    /// LINEs); without this a drawing becomes thousands of one-segment elements.
+    merge: bool,
 }
 impl Default for Params {
     fn default() -> Self {
-        Self { target_size: 150.0 }
+        Self { target_size: 150.0, merge: true }
     }
 }
 
@@ -356,13 +359,25 @@ pub fn import(bytes: &[u8], params_json: &str) -> DxfImport {
     let span = (x1 - x0).max(y1 - y0).max(1e-6);
     let scale = p.target_size as f64 / span;
 
+    // Scale + Y-flip into mm, then (optionally) chain shared-endpoint segments into polylines.
+    let mut mm: Vec<(Ring, bool, u32)> = rings
+        .into_iter()
+        .map(|(pts, closed, rgb)| (pts.into_iter().map(|(x, y)| (x * scale, -y * scale)).collect(), closed, rgb))
+        .collect();
+    if p.merge {
+        mm = merge_chains(mm, 0.05);
+    }
+
     let mut out = Out::default();
     out.ring_starts.push(0);
     out.shape_starts.push(0);
-    for (pts, closed, rgb) in rings {
+    for (pts, closed, rgb) in mm {
+        if pts.len() < 2 {
+            continue;
+        }
         for &(x, y) in &pts {
-            out.xy.push((x * scale) as f32);
-            out.xy.push((-y * scale) as f32); // Y-flip: DXF is Y-up, page is Y-down
+            out.xy.push(x as f32);
+            out.xy.push(y as f32);
         }
         out.ring_starts.push((out.xy.len() / 2) as u32);
         out.ring_closed.push(closed as u8);
@@ -372,6 +387,77 @@ pub fn import(bytes: &[u8], params_json: &str) -> DxfImport {
     DxfImport { inner: out }
 }
 
+/// Snap an endpoint to a `tol`-grid cell, for matching shared endpoints despite float noise.
+fn qkey(p: (f64, f64), tol: f64) -> (i64, i64) {
+    ((p.0 / tol).round() as i64, (p.1 / tol).round() as i64)
+}
+
+/// Chain open segments that share endpoints into longer polylines (per colour); closed contours pass
+/// through untouched. Greedy: grow each chain from both ends by any unused segment touching its tip.
+fn merge_chains(rings: Vec<(Ring, bool, u32)>, tol: f64) -> Vec<(Ring, bool, u32)> {
+    let mut out: Vec<(Ring, bool, u32)> = Vec::new();
+    let mut by_color: HashMap<u32, Vec<Ring>> = HashMap::new();
+    for (pts, closed, rgb) in rings {
+        if pts.len() < 2 {
+            continue;
+        }
+        if closed {
+            out.push((pts, closed, rgb));
+        } else {
+            by_color.entry(rgb).or_default().push(pts);
+        }
+    }
+    let mut colors: Vec<u32> = by_color.keys().copied().collect();
+    colors.sort_unstable();
+    for rgb in colors {
+        let segs = by_color.remove(&rgb).unwrap();
+        for chain in chain_polylines(&segs, tol) {
+            let closed = chain.len() > 2 && qkey(chain[0], tol) == qkey(*chain.last().unwrap(), tol);
+            out.push((chain, closed, rgb));
+        }
+    }
+    out
+}
+
+fn chain_polylines(segs: &[Ring], tol: f64) -> Vec<Ring> {
+    // endpoint cell -> list of (segment index, which end: 0 = start, 1 = last)
+    let mut ends: HashMap<(i64, i64), Vec<(usize, usize)>> = HashMap::new();
+    for (i, s) in segs.iter().enumerate() {
+        ends.entry(qkey(s[0], tol)).or_default().push((i, 0));
+        ends.entry(qkey(*s.last().unwrap(), tol)).or_default().push((i, 1));
+    }
+    let pick = |ends: &HashMap<(i64, i64), Vec<(usize, usize)>>, used: &[bool], k: (i64, i64)| {
+        ends.get(&k).and_then(|c| c.iter().copied().find(|&(si, _)| !used[si]))
+    };
+    let mut used = vec![false; segs.len()];
+    let mut out: Vec<Ring> = Vec::new();
+    for start in 0..segs.len() {
+        if used[start] {
+            continue;
+        }
+        used[start] = true;
+        let mut chain = segs[start].clone();
+        // Grow forward from the chain's tail.
+        while let Some((si, end)) = pick(&ends, &used, qkey(*chain.last().unwrap(), tol)) {
+            used[si] = true;
+            let seg = &segs[si];
+            let oriented: Ring = if end == 0 { seg.clone() } else { seg.iter().rev().copied().collect() };
+            chain.extend_from_slice(&oriented[1..]); // skip the duplicated shared point
+        }
+        // Grow backward from the chain's head.
+        while let Some((si, end)) = pick(&ends, &used, qkey(chain[0], tol)) {
+            used[si] = true;
+            let seg = &segs[si];
+            let oriented: Ring = if end == 1 { seg.clone() } else { seg.iter().rev().copied().collect() };
+            let mut next = oriented[..oriented.len() - 1].to_vec();
+            next.extend_from_slice(&chain);
+            chain = next;
+        }
+        out.push(chain);
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -379,10 +465,29 @@ mod tests {
     #[test]
     fn imports_a_line_and_circle() {
         let dxf = "0\nSECTION\n2\nENTITIES\n0\nLINE\n8\n0\n10\n0\n20\n0\n11\n10\n21\n0\n0\nCIRCLE\n8\n0\n10\n5\n20\n5\n40\n2\n0\nENDSEC\n0\nEOF\n";
-        let res = import(dxf.as_bytes(), r#"{"target_size":100}"#);
+        let res = import(dxf.as_bytes(), r#"{"target_size":100,"merge":false}"#);
         assert_eq!(res.inner.colors.len(), 2, "two entities → two shapes");
         assert_eq!(res.inner.ring_closed, vec![0, 1], "line open, circle closed");
         assert!(res.inner.xy.iter().all(|v| v.is_finite()));
+    }
+
+    #[test]
+    fn merges_chained_line_segments() {
+        // Four LINEs forming a square loop → one closed ring (instead of four elements).
+        let seg = |x0, y0, x1, y1| format!("0\nLINE\n8\n0\n10\n{x0}\n20\n{y0}\n11\n{x1}\n21\n{y1}\n");
+        let dxf = format!(
+            "0\nSECTION\n2\nENTITIES\n{}{}{}{}0\nENDSEC\n0\nEOF\n",
+            seg(0, 0, 10, 0),
+            seg(10, 0, 10, 10),
+            seg(10, 10, 0, 10),
+            seg(0, 10, 0, 0),
+        );
+        let res = import(dxf.as_bytes(), r#"{"target_size":100,"merge":true}"#);
+        assert_eq!(res.inner.colors.len(), 1, "four segments merge into one polyline");
+        assert_eq!(res.inner.ring_closed, vec![1], "the closed loop is detected");
+
+        let unmerged = import(dxf.as_bytes(), r#"{"target_size":100,"merge":false}"#);
+        assert_eq!(unmerged.inner.colors.len(), 4, "merge off keeps them separate");
     }
 
     #[test]

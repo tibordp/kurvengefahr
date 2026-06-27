@@ -158,8 +158,8 @@ export interface DxfImportShape {
 
 /** Parse a DXF into per-entity polyline contours (mm, longest side scaled to `targetSize`, Y-flipped
  *  to page orientation). Line art only -- colour → pen mapping is the caller's job. */
-export function importDxfRaw(bytes: Uint8Array, targetSize: number): DxfImportShape[] {
-  const res = import_dxf(bytes, JSON.stringify({ target_size: targetSize }))
+export function importDxfRaw(bytes: Uint8Array, targetSize: number, merge: boolean): DxfImportShape[] {
+  const res = import_dxf(bytes, JSON.stringify({ target_size: targetSize, merge }))
   const xy = res.xy
   const ringStarts = res.ring_starts
   const ringClosed = res.ring_closed

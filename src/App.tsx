@@ -4,6 +4,7 @@ import { ToolSidebar } from './ui/ToolSidebar'
 import { Inspector } from './ui/Inspector'
 import { HelpDialog } from './ui/HelpDialog'
 import { SvgImportDialog } from './ui/SvgImportDialog'
+import { DxfImportDialog } from './ui/DxfImportDialog'
 import { ExportDialog } from './ui/ExportDialog'
 import { CommandPalette } from './ui/CommandPalette'
 import { Canvas } from './canvas/Canvas'
@@ -116,6 +117,7 @@ export function App() {
       <Inspector />
       <HelpDialog />
       <SvgImportDialog />
+      <DxfImportDialog />
       <ExportDialog />
       <CommandPalette />
     </div>

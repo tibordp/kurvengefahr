@@ -11,15 +11,18 @@ export interface DxfImportOptions {
   targetSize: number
   /** Map each entity colour to the nearest palette pen (else everything on pen 0). */
   colorToPen: boolean
+  /** Chain segments that share endpoints into polylines, so a drawing exported as thousands of loose
+   *  LINEs becomes a handful of paths instead of thousands of elements. */
+  merge: boolean
   /** Name for the group the imported entities are collected under. */
   groupName?: string
 }
 
-export const defaultDxfImportOptions = (): DxfImportOptions => ({ targetSize: 150, colorToPen: true })
+export const defaultDxfImportOptions = (): DxfImportOptions => ({ targetSize: 150, colorToPen: true, merge: true })
 
 /** Import a DXF's bytes as native path elements. Returns the number of elements created. */
 export function addDxfElements(bytes: Uint8Array, opts: DxfImportOptions): number {
-  const shapes = importDxfRaw(bytes, opts.targetSize)
+  const shapes = importDxfRaw(bytes, opts.targetSize, opts.merge)
   if (!shapes.length) return 0
   const profile = useDoc.getState().profile
 

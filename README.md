@@ -24,7 +24,8 @@ with a spring-loaded pen holder; the machine profile is editable.
 - **Vector import** -- SVG and DXF become native, editable paths. For SVG, overlapping fills are
   clipped to their visible area so hidden regions don't plot, colors map to the nearest pen, and fill
   darkness sets hatch density. DXF imports lines, polylines (with bulges), arcs, circles, ellipses,
-  and splines as line art, colored by entity or layer.
+  and splines as line art, colored by entity or layer, merging connected segments into polylines so a
+  drawing exported as thousands of loose lines becomes a handful of paths.
 - **Raster tracing** -- Restyle an image as strokes: contour outlines, centerlines for line art (one
   stroke per line), topographic levels, hatching, scanlines, a single TSP tour, flow fields, or
   spirals, with live preview.
