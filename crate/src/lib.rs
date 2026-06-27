@@ -14,6 +14,7 @@
 //!   - `optimize` — reorder strokes (chain-aware, per-pen greedy nearest-neighbour).
 
 mod boolean;
+mod cleanup;
 mod clip;
 mod compose;
 mod geom;
@@ -280,6 +281,8 @@ pub fn optimize(
     pen_order: &[u16],
 ) -> GeometryBuffers {
     let strokes = decode(xy, pressure, offsets, pen, reversible, group);
+    // Cleanup first (dedupe / chain / collinear on free strokes), then order to minimise travel.
+    let strokes = cleanup::cleanup(&strokes);
     GeometryBuffers::from_strokes(&order_greedy(&strokes, start_x, start_y, pen_order))
 }
 
@@ -474,7 +477,9 @@ fn order_greedy(strokes: &[Stroke], start_x: f32, start_y: f32, pen_order: &[u16
     }
 
     for &pen in &order {
-        // Exhaust this pen with greedy nearest-neighbour before changing pens.
+        let pen_start = cursor;
+        // Greedy nearest-neighbour over this pen's units → an initial sequence.
+        let mut seq: Vec<usize> = Vec::new();
         loop {
             let mut best: Option<(usize, Pick, f32)> = None;
             for (i, u) in units.iter().enumerate() {
@@ -491,11 +496,76 @@ fn order_greedy(strokes: &[Stroke], start_x: f32, start_y: f32, pen_order: &[u16
                 None => break,
             };
             used[idx] = true;
+            cursor = unit_exit(&units[idx], strokes, pick);
+            seq.push(idx);
+        }
+        // Refine with Or-opt (relocate single units), then emit the result from the pen's start.
+        let seq = or_opt(seq, &units, strokes, pen_start);
+        cursor = pen_start;
+        for idx in seq {
+            let (pick, _) = reach(&units[idx], strokes, cursor);
             cursor = emit_unit(&units[idx], strokes, pick, &mut out);
         }
     }
 
     out
+}
+
+/// The pen's resting position after a unit is plotted with `pick` (without emitting it).
+fn unit_exit(u: &Unit, strokes: &[Stroke], pick: Pick) -> (f32, f32) {
+    match pick {
+        Pick::Closed(start) => {
+            let p = &strokes[u.strokes[0]].points[start];
+            (p.x, p.y)
+        }
+        Pick::Flip(true) => u.entry,
+        Pick::Flip(false) => u.exit,
+    }
+}
+
+/// Or-opt: relocate one unit at a time to its best position, re-choosing each unit's orientation
+/// (flip / closed-loop re-root) from its new predecessor. A cheap, robust improvement on the greedy
+/// tour that respects unit directionality. Bounded so a huge job falls back to greedy-only.
+fn or_opt(seq: Vec<usize>, units: &[Unit], strokes: &[Stroke], start: (f32, f32)) -> Vec<usize> {
+    let n = seq.len();
+    if n < 3 || n > 400 {
+        return seq;
+    }
+    let cost = |order: &[usize]| -> f32 {
+        let mut cursor = start;
+        let mut t = 0.0;
+        for &ui in order {
+            let (pick, c) = reach(&units[ui], strokes, cursor);
+            t += c.sqrt();
+            cursor = unit_exit(&units[ui], strokes, pick);
+        }
+        t
+    };
+    let mut seq = seq;
+    let mut best = cost(&seq);
+    for _ in 0..4 {
+        let mut improved = false;
+        for p in 0..seq.len() {
+            for q in 0..=seq.len() {
+                if q == p || q == p + 1 {
+                    continue; // same position
+                }
+                let mut cand = seq.clone();
+                let u = cand.remove(p);
+                cand.insert(if q > p { q - 1 } else { q }, u);
+                let c = cost(&cand);
+                if c + 1e-6 < best {
+                    seq = cand;
+                    best = c;
+                    improved = true;
+                }
+            }
+        }
+        if !improved {
+            break;
+        }
+    }
+    seq
 }
 
 #[cfg(test)]

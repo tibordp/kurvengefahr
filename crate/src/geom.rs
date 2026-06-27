@@ -14,6 +14,7 @@ pub struct Point {
     pub pressure: f32,
 }
 
+#[derive(Clone)]
 pub struct Stroke {
     pub points: Vec<Point>,
     pub pen: u16,
