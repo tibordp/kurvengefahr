@@ -8,6 +8,7 @@ import {
   simplify_polyline,
   split_cubic,
   text,
+  generative,
   hatch,
   concentric,
   boolean,
@@ -59,6 +60,11 @@ export function simplifyPolyline(xy: Float32Array, tol: number): Float32Array {
  *  align}. single mode → centreline strokes; outline mode → closed glyph contours. */
 export function textGeometry(paramsJson: string): Geometry {
   return decode(text(paramsJson))
+}
+
+/** Generate a parametric pattern (kind = spirograph/lsystem/truchet/voronoi/flow), fit to a box. */
+export function generativeGeometry(paramsJson: string): Geometry {
+  return decode(generative(paramsJson))
 }
 
 /** Split the cubic between two path nodes at `t` (de Casteljau), for inserting a node mid-segment.

@@ -8,6 +8,7 @@ import { dropFromCache, generateLocal } from '../elements/registry'
 import { defaultHandwritingParams } from '../elements/handwriting'
 import '../elements/shapes' // side-effect: registers rect/ellipse/path before persistence boot
 import '../elements/text' // side-effect: registers the text element before persistence boot
+import '../elements/generative' // side-effect: registers the generative element before persistence boot
 import '../elements/raster' // side-effect: registers the raster image type before persistence boot
 import { PRUSA_MK4, findBuiltinProfile } from './profiles'
 import { useLibrary } from './library'

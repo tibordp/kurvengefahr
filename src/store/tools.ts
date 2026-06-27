@@ -13,6 +13,7 @@ export type Tool =
   | 'ellipse'
   | 'pen'
   | 'freehand'
+  | 'generative'
   | 'fiducial'
 
 interface ToolsStore {

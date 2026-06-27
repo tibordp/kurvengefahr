@@ -11,6 +11,7 @@ import {
   Circle,
   PenTool,
   Pencil,
+  Sparkles,
   Crosshair,
   type LucideIcon,
 } from 'lucide-react'
@@ -32,6 +33,7 @@ export const TOOLS: { tool: Tool; icon: LucideIcon; label: string; key: string }
   { tool: 'ellipse', icon: Circle, label: 'Ellipse', key: 'O' },
   { tool: 'pen', icon: PenTool, label: 'Pen (Bézier)', key: 'P' },
   { tool: 'freehand', icon: Pencil, label: 'Freehand', key: 'F' },
+  { tool: 'generative', icon: Sparkles, label: 'Generative', key: 'G' },
   { tool: 'fiducial', icon: Crosshair, label: 'Fiducial (align point)', key: 'X' },
 ]
 

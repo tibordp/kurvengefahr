@@ -17,6 +17,7 @@ mod boolean;
 mod cleanup;
 mod clip;
 mod compose;
+mod generative;
 mod geom;
 mod hatch;
 mod model;
@@ -170,6 +171,14 @@ pub fn tessellate_path(nodes: &[f32], contour_starts: &[u32], closed: &[u8], tol
         }));
     }
     GeometryBuffers::from_strokes(&strokes)
+}
+
+/// Generate a parametric pattern (spirograph / L-system / Truchet / Voronoi / flow field) into
+/// strokes, fit to a width×height box (mm). `params` is JSON; `kind` selects the generator.
+/// Deterministic per `seed`.
+#[wasm_bindgen]
+pub fn generative(params: &str) -> GeometryBuffers {
+    GeometryBuffers::from_strokes(&generative::generate(params))
 }
 
 /// Lay out text as strokes. `params` is JSON (`{text, mode, font, size, letter_spacing,

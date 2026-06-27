@@ -43,6 +43,13 @@ import {
   type TextMode,
   type TextAlign,
 } from '../elements/text'
+import {
+  GEN_KINDS,
+  LSYSTEM_PRESETS,
+  SEEDED_KINDS,
+  type GenerativeParams,
+  type GenKind,
+} from '../elements/generative'
 import { Button, IconButton, Field, SectionTitle, Banner, controlClass, textareaClass, cx } from './primitives'
 import { MOD_KEY } from './shortcuts'
 import { ElementsTree } from './ElementsTree'
@@ -324,6 +331,78 @@ function EllipseInspector({ id, params }: { id: string; params: EllipseParams })
       <Num label="Radius X (mm)" value={params.rx} step={1} onChange={(v) => up({ rx: Math.max(0, v) })} />
       <Num label="Radius Y (mm)" value={params.ry} step={1} onChange={(v) => up({ ry: Math.max(0, v) })} />
       <HatchControls hatch={params.hatch} onChange={(h) => up({ hatch: h })} />
+    </>
+  )
+}
+
+function GenerativeInspector({ id, params }: { id: string; params: GenerativeParams }) {
+  const setParams = useDoc((s) => s.setParams)
+  const up = (patch: Partial<GenerativeParams>) => setParams(id, { ...params, ...patch })
+  const k = params.kind
+  return (
+    <>
+      <SectionTitle>Generative</SectionTitle>
+      <Field label="Pattern">
+        <select className={controlClass} value={k} onChange={(e) => up({ kind: e.target.value as GenKind })}>
+          {GEN_KINDS.map((g) => (
+            <option key={g.key} value={g.key}>
+              {g.name}
+            </option>
+          ))}
+        </select>
+      </Field>
+      <Num label="Width (mm)" value={params.width} step={5} onChange={(v) => up({ width: Math.max(1, v) })} />
+      <Num label="Height (mm)" value={params.height} step={5} onChange={(v) => up({ height: Math.max(1, v) })} />
+
+      {k === 'spirograph' && (
+        <>
+          <SliderNum label="Outer radius" min={5} max={120} step={1} value={params.outerR} onChange={(v) => up({ outerR: v })} />
+          <SliderNum label="Inner radius" min={2} max={120} step={1} value={params.innerR} onChange={(v) => up({ innerR: v })} />
+          <SliderNum label="Pen offset" min={0} max={120} step={1} value={params.penOffset} onChange={(v) => up({ penOffset: v })} />
+        </>
+      )}
+      {k === 'lsystem' && (
+        <>
+          <Field label="Curve">
+            <select className={controlClass} value={params.preset} onChange={(e) => up({ preset: e.target.value })}>
+              {LSYSTEM_PRESETS.map((pre) => (
+                <option key={pre} value={pre}>
+                  {pre[0].toUpperCase() + pre.slice(1)}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <SliderNum label="Iterations" min={0} max={8} step={1} value={params.iterations} int onChange={(v) => up({ iterations: v })} />
+          <SliderNum label="Angle (°)" min={0} max={180} step={1} value={params.angle} hardMax onChange={(v) => up({ angle: v })} />
+        </>
+      )}
+      {k === 'truchet' && (
+        <>
+          <SliderNum label="Cell (mm)" min={3} max={40} step={1} value={params.cell} onChange={(v) => up({ cell: v })} />
+          <Field label="Tile">
+            <select className={controlClass} value={params.style} onChange={(e) => up({ style: e.target.value })}>
+              <option value="arcs">Arcs</option>
+              <option value="lines">Diagonals</option>
+            </select>
+          </Field>
+        </>
+      )}
+      {k === 'voronoi' && (
+        <SliderNum label="Points" min={3} max={1500} step={1} value={params.points} int onChange={(v) => up({ points: v })} />
+      )}
+      {k === 'flow' && (
+        <>
+          <SliderNum label="Lines" min={1} max={2000} step={1} value={params.lines} int onChange={(v) => up({ lines: v })} />
+          <SliderNum label="Length (steps)" min={2} max={2000} step={1} value={params.steps} int onChange={(v) => up({ steps: v })} />
+          <SliderNum label="Detail" min={0.005} max={0.2} step={0.005} value={params.noiseScale} onChange={(v) => up({ noiseScale: v })} />
+        </>
+      )}
+
+      {SEEDED_KINDS.has(k) && (
+        <Button className="mt-3 w-full" title="Re-roll the random arrangement" onClick={() => up({ seed: Math.floor(Math.random() * 1e9) })}>
+          <Dices size={15} /> Re-roll
+        </Button>
+      )}
     </>
   )
 }
@@ -881,6 +960,9 @@ function ElementSection() {
         <EllipseInspector id={element.id} params={element.params as EllipseParams} />
       )}
       {element.type === 'text' && <TextInspector id={element.id} params={element.params as TextParams} />}
+      {element.type === 'generative' && (
+        <GenerativeInspector id={element.id} params={element.params as GenerativeParams} />
+      )}
       {element.type === 'path' && <PathInspector id={element.id} params={element.params as PathParams} />}
       {element.type === 'raster' && <RasterInspector id={element.id} params={element.params as RasterParams} />}
 
