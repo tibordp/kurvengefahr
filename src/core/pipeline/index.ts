@@ -8,7 +8,7 @@
 //
 // The invalidation taxonomy maps onto these: text/params → re-generate; transform → re-place;
 // feeds/preamble/Z → re-emit only.
-import type { DocElement, Fiducial, Geometry, MachineProfile } from '../types'
+import type { DocElement, Fiducial, Geometry, MachineProfile, Point } from '../types'
 import { generateLocal, isElementLocked, isMultiPen } from '../../elements/registry'
 import { place } from './place'
 import { applyFilters, type StrokeFilter } from './filters'
@@ -37,13 +37,61 @@ export function buildPageGeometry(
   for (const el of elements) {
     const placed = place(generateLocal(el), el.transform)
     const filtered = applyFilters(placed, filters)
-    const stamp = isMultiPen(el.type) ? (s: (typeof filtered)[number]) => s.pen : () => el.pen
+    const styled = el.dash && el.dash.dash > 0 && el.dash.gap > 0 ? dashGeometry(filtered, el.dash.dash, el.dash.gap) : filtered
+    const stamp = isMultiPen(el.type) ? (s: (typeof styled)[number]) => s.pen : () => el.pen
     if (isElementLocked(el.type, el.params)) {
       chainId++
-      for (const s of filtered) out.push({ ...s, pen: stamp(s), group: chainId, reversible: false })
+      for (const s of styled) out.push({ ...s, pen: stamp(s), group: chainId, reversible: false })
     } else {
-      for (const s of filtered) out.push({ ...s, pen: stamp(s) })
+      for (const s of styled) out.push({ ...s, pen: stamp(s) })
     }
+  }
+  return out
+}
+
+/** Break each stroke into `dash`-long marks separated by `gap` (mm), walking it by arc length. The
+ *  on/off phase carries across vertices so the dashing is continuous along the whole polyline. */
+function dashGeometry(strokes: Geometry, dash: number, gap: number): Geometry {
+  const period = dash + gap
+  const out: Geometry = []
+  const lerp = (a: Point, b: Point, u: number): Point => ({
+    x: a.x + (b.x - a.x) * u,
+    y: a.y + (b.y - a.y) * u,
+    pressure: a.pressure,
+  })
+  for (const s of strokes) {
+    if (s.points.length < 2) {
+      out.push(s)
+      continue
+    }
+    let phase = 0
+    let cur: Point[] = []
+    const flush = () => {
+      if (cur.length >= 2) out.push({ ...s, points: cur })
+      cur = []
+    }
+    for (let i = 1; i < s.points.length; i++) {
+      const a = s.points[i - 1]
+      const b = s.points[i]
+      const segLen = Math.hypot(b.x - a.x, b.y - a.y)
+      if (segLen < 1e-9) continue
+      let t = 0
+      let guard = 0
+      while (t < segLen - 1e-9 && guard++ < 1_000_000) {
+        const on = phase < dash - 1e-9
+        const boundary = on ? dash - phase : period - phase
+        const take = Math.min(boundary, segLen - t)
+        if (on) {
+          if (cur.length === 0) cur.push(lerp(a, b, t / segLen))
+          cur.push(lerp(a, b, (t + take) / segLen))
+        }
+        t += take
+        phase += take
+        if (phase >= period - 1e-9) phase -= period
+        if (on && phase >= dash - 1e-9) flush() // turned off at a dash boundary
+      }
+    }
+    flush()
   }
   return out
 }

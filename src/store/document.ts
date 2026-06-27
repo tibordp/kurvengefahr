@@ -213,6 +213,8 @@ interface DocStore {
   setTransform: (id: string, patch: Partial<Transform>) => void
   /** Assign an element's pen. Not a param — invalidates only Place/Emit (no regenerate). */
   setPen: (id: string, pen: PenId) => void
+  /** Set (or clear, with null) an element's dashed-stroke style. Re-place/re-emit only. */
+  setDash: (id: string, dash: { dash: number; gap: number } | null) => void
   /** Assign every selected element to a pen. */
   setPenSelected: (pen: PenId) => void
   /** Place / move / clear the document fiducial (page-space mm). Re-emit only (no geometry). */
@@ -558,6 +560,13 @@ export const useDoc = create<DocStore>((set) => ({
   setPen: (id, pen) =>
     set((state) => ({
       elements: state.elements.map((e) => (e.id === id ? { ...e, pen } : e)),
+    })),
+
+  setDash: (id, dash) =>
+    set((state) => ({
+      elements: state.elements.map((e) =>
+        e.id === id ? (dash ? { ...e, dash } : (({ dash: _drop, ...rest }) => rest)(e)) : e,
+      ),
     })),
 
   setPenSelected: (pen) =>

@@ -936,6 +936,7 @@ function ElementSection() {
   )
   const setTransform = useDoc((s) => s.setTransform)
   const setPen = useDoc((s) => s.setPen)
+  const setDash = useDoc((s) => s.setDash)
   const removeElement = useDoc((s) => s.removeElement)
   const convertToPath = useDoc((s) => s.convertToPath)
 
@@ -985,6 +986,24 @@ function ElementSection() {
         <>
           <SectionTitle>Pen</SectionTitle>
           <PenSelect value={element.pen} onChange={(pen) => setPen(element.id, pen)} />
+        </>
+      )}
+
+      <SectionTitle>Stroke</SectionTitle>
+      <Field label="Dashed">
+        <input
+          type="checkbox"
+          className="h-4 w-4 justify-self-start"
+          checked={!!element.dash}
+          onChange={(e) => setDash(element.id, e.target.checked ? { dash: 2, gap: 2 } : null)}
+        />
+      </Field>
+      {element.dash && (
+        <>
+          <Num label="Dash (mm)" value={element.dash.dash} step={0.5}
+            onChange={(v) => setDash(element.id, { dash: Math.max(0.1, v), gap: element.dash!.gap })} />
+          <Num label="Gap (mm)" value={element.dash.gap} step={0.5}
+            onChange={(v) => setDash(element.id, { dash: element.dash!.dash, gap: Math.max(0.1, v) })} />
         </>
       )}
 

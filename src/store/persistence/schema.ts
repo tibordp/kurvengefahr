@@ -118,6 +118,9 @@ function sanitizeElements(arr: unknown): DocElement[] {
       pen: num(e.pen, num(legacyPen, 0)),
       ...(typeof e.groupId === 'string' ? { groupId: e.groupId } : {}),
       ...(typeof e.name === 'string' ? { name: e.name } : {}),
+      ...(isObj(e.dash) && typeof e.dash.dash === 'number' && typeof e.dash.gap === 'number'
+        ? { dash: { dash: Math.max(0, e.dash.dash), gap: Math.max(0, e.dash.gap) } }
+        : {}),
     })
   }
   return out

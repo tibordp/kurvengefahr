@@ -71,6 +71,10 @@ export interface DocElement<TParams = unknown> {
   groupId?: string
   /** Optional user-given display name for the Elements tree; falls back to a derived label. */
   name?: string
+  /** Optional dashed stroke style (mm): each stroke is broken into `dash`-long marks separated by
+   *  `gap`. Like `pen`/`transform`, it's applied downstream (in `buildPageGeometry`) — a cheap
+   *  re-place/re-emit, never a regenerate. Absent = solid. */
+  dash?: { dash: number; gap: number }
 }
 
 /** A flat (non-nesting) organizational group of elements, shown as a collapsible node in the
