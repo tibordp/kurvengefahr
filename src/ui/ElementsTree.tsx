@@ -3,7 +3,12 @@
 // collapsed group. Selection here drives the same store as clicking the canvas, both ways. Built for
 // many elements (SVG import drops its shapes into one collapsed group): collapse, search, multi-
 // select with shift-range and cmd-toggle, group / ungroup, and inline rename.
-import { useRef, useState } from 'react'
+//
+// Perf: the document/groups/query → row-list computation is memoized, the per-element rows are a
+// memoized component, and handlers are stable — so a generation tick (which re-renders the whole
+// tree via the shared `genStatus`) or a selection change re-renders only the rows that actually
+// changed, not every row.
+import { memo, useCallback, useMemo, useRef, useState } from 'react'
 import {
   ChevronRight,
   ChevronDown,
@@ -79,6 +84,101 @@ function statusBadge(phase: string | undefined, dirty: boolean): { text: string;
   return { text: '', warn: false, busy: false }
 }
 
+interface RowHandlers {
+  onClick: (id: string, e: { shiftKey: boolean; metaKey: boolean; ctrlKey: boolean }) => void
+  onHover: (id: string | null) => void
+  onDelete: (id: string) => void
+  onStartRename: (id: string) => void
+  onCommitName: (id: string, val: string) => void
+  onCancelRename: () => void
+}
+
+interface RowProps extends RowHandlers {
+  el: DocElement
+  nested: boolean
+  label: string
+  selected: boolean
+  color: string
+  penTitle: string
+  badgeText: string
+  badgeWarn: boolean
+  badgeBusy: boolean
+  badgeTitle: string
+  editing: boolean
+}
+
+/** One element row. Memoized on its (primitive) props, so a re-render of the whole tree — e.g. a
+ *  per-word generation tick — only re-renders rows whose data actually changed. */
+const ElementRow = memo(function ElementRow(p: RowProps) {
+  const { el } = p
+  const Icon = TYPE_ICON[el.type] ?? Spline
+  return (
+    <li
+      className={cx(
+        'group flex cursor-pointer items-center gap-2 rounded-md border px-2 py-1.5 text-sm transition-colors',
+        p.nested && 'ml-4',
+        p.selected ? 'border-accent-border bg-accent-subtle' : 'border-transparent hover:bg-bg',
+      )}
+      onMouseEnter={() => p.onHover(el.id)}
+      onMouseLeave={() => p.onHover(null)}
+      onClick={(e) => p.onClick(el.id, e)}
+    >
+      <Icon size={14} className="shrink-0 text-faint" />
+      <span
+        className="h-3 w-3 shrink-0 rounded-full border border-border"
+        style={{ backgroundColor: p.color }}
+        title={p.penTitle}
+      />
+      {p.editing ? (
+        <input
+          autoFocus
+          defaultValue={p.label}
+          className="min-w-0 flex-1 rounded bg-surface px-1 text-sm text-text outline-none ring-1 ring-accent/50"
+          onClick={(e) => e.stopPropagation()}
+          onBlur={(e) => p.onCommitName(el.id, e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+            if (e.key === 'Escape') p.onCancelRename()
+          }}
+        />
+      ) : (
+        <span
+          className="min-w-0 flex-1 truncate"
+          onDoubleClick={(e) => {
+            e.stopPropagation()
+            p.onStartRename(el.id)
+          }}
+        >
+          {p.label}
+        </span>
+      )}
+      {p.badgeText && (
+        <span
+          className={cx('text-2xs leading-none', p.badgeBusy && 'animate-pulse', p.badgeWarn ? 'text-accent-text' : 'text-muted')}
+          title={p.badgeTitle}
+        >
+          {p.badgeText}
+        </span>
+      )}
+      <button
+        className="rounded p-1 text-faint opacity-60 transition-colors hover:bg-surface hover:text-accent-text sm:opacity-0 sm:group-hover:opacity-100"
+        title="Delete"
+        aria-label="Delete element"
+        onClick={(e) => {
+          e.stopPropagation()
+          p.onDelete(el.id)
+        }}
+      >
+        <Trash2 size={14} />
+      </button>
+    </li>
+  )
+})
+
+type Row =
+  | { kind: 'element'; el: DocElement }
+  | { kind: 'group'; id: string; name: string; members: DocElement[]; count: number; expanded: boolean }
+
 export function ElementsTree() {
   const elements = useDoc((s) => s.elements)
   const groups = useDoc((s) => s.groups)
@@ -99,68 +199,82 @@ export function ElementsTree() {
   const [editing, setEditing] = useState<{ kind: 'element' | 'group'; id: string } | null>(null)
   const anchor = useRef<string | null>(null)
 
-  if (elements.length === 0) return null
+  // Row list depends only on the document + filter — memoized so a selection change or a generation
+  // tick (which re-renders this component) doesn't recompute the whole O(n) grouping.
+  const { rows, flatIds } = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    const groupsById = new Map(groups.map((g) => [g.id, g]))
+    const matchesEl = (el: DocElement) => !q || labelOf(el).toLowerCase().includes(q) || el.type.includes(q)
 
-  const q = query.trim().toLowerCase()
-  const sel = new Set(selectedIds)
-  const groupsById = new Map(groups.map((g) => [g.id, g]))
-  const colorFor = (pen: number) => pens.find((p) => p.id === pen)?.color ?? '#1a1a1a'
-
-  const matchesEl = (el: DocElement) => !q || labelOf(el).toLowerCase().includes(q) || el.type.includes(q)
-
-  // Members per group, in element-array order.
-  const membersByGroup = new Map<string, DocElement[]>()
-  for (const el of elements) {
-    if (el.groupId && groupsById.has(el.groupId)) {
-      const arr = membersByGroup.get(el.groupId) ?? []
-      arr.push(el)
-      membersByGroup.set(el.groupId, arr)
-    }
-  }
-
-  // Display rows: top-level order = first appearance of each element/group in the array. Search
-  // forces groups open and hides non-matching rows.
-  type Row =
-    | { kind: 'element'; el: DocElement }
-    | { kind: 'group'; id: string; name: string; members: DocElement[]; expanded: boolean }
-  const rows: Row[] = []
-  const seenGroup = new Set<string>()
-  for (const el of elements) {
-    if (el.groupId && groupsById.has(el.groupId)) {
-      const g = groupsById.get(el.groupId)!
-      if (seenGroup.has(g.id)) continue
-      seenGroup.add(g.id)
-      const all = membersByGroup.get(g.id)!
-      const members = q ? all.filter(matchesEl) : all
-      const groupMatches = !q || g.name.toLowerCase().includes(q)
-      if (q && !groupMatches && members.length === 0) continue
-      rows.push({ kind: 'group', id: g.id, name: g.name, members, expanded: q ? true : !g.collapsed })
-    } else if (matchesEl(el)) {
-      rows.push({ kind: 'element', el })
-    }
-  }
-
-  // Flattened element ids in display order — the axis for shift-range selection.
-  const flatIds: string[] = []
-  for (const r of rows) {
-    if (r.kind === 'element') flatIds.push(r.el.id)
-    else if (r.expanded) for (const m of r.members) flatIds.push(m.id)
-  }
-
-  const clickElement = (id: string, e: { shiftKey: boolean; metaKey: boolean; ctrlKey: boolean }) => {
-    if (e.shiftKey && anchor.current) {
-      const a = flatIds.indexOf(anchor.current)
-      const b = flatIds.indexOf(id)
-      if (a >= 0 && b >= 0) {
-        const [lo, hi] = a < b ? [a, b] : [b, a]
-        selectMany(flatIds.slice(lo, hi + 1))
-        return
+    const membersByGroup = new Map<string, DocElement[]>()
+    for (const el of elements) {
+      if (el.groupId && groupsById.has(el.groupId)) {
+        const arr = membersByGroup.get(el.groupId) ?? []
+        arr.push(el)
+        membersByGroup.set(el.groupId, arr)
       }
     }
-    if (e.metaKey || e.ctrlKey) select(id, true)
-    else select(id, false)
-    anchor.current = id
-  }
+
+    const out: Row[] = []
+    const seenGroup = new Set<string>()
+    for (const el of elements) {
+      if (el.groupId && groupsById.has(el.groupId)) {
+        const g = groupsById.get(el.groupId)!
+        if (seenGroup.has(g.id)) continue
+        seenGroup.add(g.id)
+        const all = membersByGroup.get(g.id)!
+        const members = q ? all.filter(matchesEl) : all
+        const groupMatches = !q || g.name.toLowerCase().includes(q)
+        if (q && !groupMatches && members.length === 0) continue
+        out.push({ kind: 'group', id: g.id, name: g.name, members, count: all.length, expanded: q ? true : !g.collapsed })
+      } else if (matchesEl(el)) {
+        out.push({ kind: 'element', el })
+      }
+    }
+
+    const flat: string[] = []
+    for (const r of out) {
+      if (r.kind === 'element') flat.push(r.el.id)
+      else if (r.expanded) for (const m of r.members) flat.push(m.id)
+    }
+    return { rows: out, flatIds: flat }
+  }, [elements, groups, query])
+
+  // flatIds via a ref so the click handler can stay stable (shift-range reads the latest order).
+  const flatIdsRef = useRef<string[]>(flatIds)
+  flatIdsRef.current = flatIds
+
+  const onRowClick = useCallback(
+    (id: string, e: { shiftKey: boolean; metaKey: boolean; ctrlKey: boolean }) => {
+      const ids = flatIdsRef.current
+      if (e.shiftKey && anchor.current) {
+        const a = ids.indexOf(anchor.current)
+        const b = ids.indexOf(id)
+        if (a >= 0 && b >= 0) {
+          const [lo, hi] = a < b ? [a, b] : [b, a]
+          selectMany(ids.slice(lo, hi + 1))
+          return
+        }
+      }
+      if (e.metaKey || e.ctrlKey) select(id, true)
+      else select(id, false)
+      anchor.current = id
+    },
+    [select, selectMany],
+  )
+  const onStartRename = useCallback((id: string) => setEditing({ kind: 'element', id }), [])
+  const onCommitName = useCallback((id: string, val: string) => {
+    setElementName(id, val.trim())
+    setEditing(null)
+  }, [setElementName])
+  const onCancelRename = useCallback(() => setEditing(null), [])
+  const handlers: RowHandlers = { onClick: onRowClick, onHover: setHover, onDelete: removeElement, onStartRename, onCommitName, onCancelRename }
+
+  if (elements.length === 0) return null
+
+  const sel = new Set(selectedIds)
+  const colorFor = (pen: number) => pens.find((p) => p.id === pen)?.color ?? '#1a1a1a'
+  const penName = (pen: number) => pens.find((p) => p.id === pen)?.name ?? pen
 
   const clickGroup = (members: DocElement[], e: { metaKey: boolean; ctrlKey: boolean }) => {
     const ids = members.map((m) => m.id)
@@ -178,84 +292,26 @@ export function ElementsTree() {
   const canGroup = selectedEls.length >= 2
   const ungroupIds = [...new Set(selectedEls.map((e) => e.groupId).filter((g): g is string => !!g))]
 
-  const commitName = (val: string) => {
-    if (!editing) return
-    const name = val.trim()
-    if (editing.kind === 'group') renameGroup(editing.id, name || 'Group')
-    else setElementName(editing.id, name)
-    setEditing(null)
-  }
-
-  const NameCell = ({ kind, id, label }: { kind: 'element' | 'group'; id: string; label: string }) =>
-    editing && editing.kind === kind && editing.id === id ? (
-      <input
-        autoFocus
-        defaultValue={label}
-        className="min-w-0 flex-1 rounded bg-surface px-1 text-sm text-text outline-none ring-1 ring-accent/50"
-        onClick={(e) => e.stopPropagation()}
-        onBlur={(e) => commitName(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
-          if (e.key === 'Escape') setEditing(null)
-        }}
-      />
-    ) : (
-      <span
-        className="min-w-0 flex-1 truncate"
-        onDoubleClick={(e) => {
-          e.stopPropagation()
-          setEditing({ kind, id })
-        }}
-      >
-        {label}
-      </span>
-    )
-
-  const ElementRow = ({ el, nested }: { el: DocElement; nested?: boolean }) => {
+  const renderElement = (el: DocElement, nested: boolean) => {
     const g = genStatus[el.id]
     const dirty = !g && needsManualRegen(el.id, el.type, el.params)
     const badge = statusBadge(g?.phase, dirty)
-    const Icon = TYPE_ICON[el.type] ?? Spline
-    const selected = sel.has(el.id)
     return (
-      <li
+      <ElementRow
         key={el.id}
-        className={cx(
-          'group flex cursor-pointer items-center gap-2 rounded-md border px-2 py-1.5 text-sm transition-colors',
-          nested && 'ml-4',
-          selected ? 'border-accent-border bg-accent-subtle' : 'border-transparent hover:bg-bg',
-        )}
-        onMouseEnter={() => setHover(el.id)}
-        onMouseLeave={() => setHover(null)}
-        onClick={(e) => clickElement(el.id, e)}
-      >
-        <Icon size={14} className="shrink-0 text-faint" />
-        <span
-          className="h-3 w-3 shrink-0 rounded-full border border-border"
-          style={{ backgroundColor: colorFor(el.pen) }}
-          title={`Pen: ${pens.find((p) => p.id === el.pen)?.name ?? el.pen}`}
-        />
-        {NameCell({ kind: 'element', id: el.id, label: labelOf(el) })}
-        {badge.text && (
-          <span
-            className={cx('text-2xs leading-none', badge.busy && 'animate-pulse', badge.warn ? 'text-accent-text' : 'text-muted')}
-            title={g?.phase ?? (dirty ? 'edited' : '')}
-          >
-            {badge.text}
-          </span>
-        )}
-        <button
-          className="rounded p-1 text-faint opacity-60 transition-colors hover:bg-surface hover:text-accent-text sm:opacity-0 sm:group-hover:opacity-100"
-          title="Delete"
-          aria-label="Delete element"
-          onClick={(e) => {
-            e.stopPropagation()
-            removeElement(el.id)
-          }}
-        >
-          <Trash2 size={14} />
-        </button>
-      </li>
+        el={el}
+        nested={nested}
+        label={labelOf(el)}
+        selected={sel.has(el.id)}
+        color={colorFor(el.pen)}
+        penTitle={`Pen: ${penName(el.pen)}`}
+        badgeText={badge.text}
+        badgeWarn={badge.warn}
+        badgeBusy={badge.busy}
+        badgeTitle={g?.phase ?? (dirty ? 'edited' : '')}
+        editing={editing?.kind === 'element' && editing.id === el.id}
+        {...handlers}
+      />
     )
   }
 
@@ -306,10 +362,11 @@ export function ElementsTree() {
           below the fold — the Elements header + filter above stay pinned. */}
       <ul className="-mr-1 flex max-h-[45vh] flex-col gap-0.5 overflow-y-auto pr-1">
         {rows.map((r) => {
-          if (r.kind === 'element') return ElementRow({ el: r.el })
+          if (r.kind === 'element') return renderElement(r.el, false)
           const ids = r.members.map((m) => m.id)
           const allSel = ids.length > 0 && ids.every((i) => sel.has(i))
           const someSel = !allSel && ids.some((i) => sel.has(i))
+          const isEditing = editing?.kind === 'group' && editing.id === r.id
           return (
             <li key={r.id} className="flex flex-col gap-0.5">
               <div
@@ -329,14 +386,39 @@ export function ElementsTree() {
                   aria-label={r.expanded ? 'Collapse group' : 'Expand group'}
                   onClick={(e) => {
                     e.stopPropagation()
-                    if (!q) setGroupCollapsed(r.id, r.expanded)
+                    if (!query.trim()) setGroupCollapsed(r.id, r.expanded)
                   }}
                 >
                   {r.expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                 </button>
                 <Folder size={14} className="shrink-0 text-faint" />
-                {NameCell({ kind: 'group', id: r.id, label: r.name })}
-                <span className="shrink-0 text-2xs text-faint">{membersByGroup.get(r.id)?.length ?? 0}</span>
+                {isEditing ? (
+                  <input
+                    autoFocus
+                    defaultValue={r.name}
+                    className="min-w-0 flex-1 rounded bg-surface px-1 text-sm text-text outline-none ring-1 ring-accent/50"
+                    onClick={(e) => e.stopPropagation()}
+                    onBlur={(e) => {
+                      renameGroup(r.id, e.target.value.trim() || 'Group')
+                      setEditing(null)
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+                      if (e.key === 'Escape') setEditing(null)
+                    }}
+                  />
+                ) : (
+                  <span
+                    className="min-w-0 flex-1 truncate"
+                    onDoubleClick={(e) => {
+                      e.stopPropagation()
+                      setEditing({ kind: 'group', id: r.id })
+                    }}
+                  >
+                    {r.name}
+                  </span>
+                )}
+                <span className="shrink-0 text-2xs text-faint">{r.count}</span>
                 <button
                   className="rounded p-1 text-faint opacity-60 transition-colors hover:bg-surface hover:text-text sm:opacity-0 sm:group-hover:opacity-100"
                   title="Ungroup"
@@ -349,9 +431,7 @@ export function ElementsTree() {
                   <Ungroup size={14} />
                 </button>
               </div>
-              {r.expanded && (
-                <ul className="flex flex-col gap-0.5">{r.members.map((m) => ElementRow({ el: m, nested: true }))}</ul>
-              )}
+              {r.expanded && <ul className="flex flex-col gap-0.5">{r.members.map((m) => renderElement(m, true))}</ul>}
             </li>
           )
         })}
