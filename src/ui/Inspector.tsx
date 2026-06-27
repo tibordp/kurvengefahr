@@ -20,6 +20,7 @@ import {
   Monitor,
   Dices,
   Spline,
+  Link2,
 } from 'lucide-react'
 import { useDoc, type AlignEdge } from '../store/document'
 import { useUI } from '../store/ui'
@@ -802,6 +803,7 @@ function MultiSelectSection({ count }: { count: number }) {
   const duplicateSelected = useDoc((s) => s.duplicateSelected)
   const setPenSelected = useDoc((s) => s.setPenSelected)
   const booleanSelected = useDoc((s) => s.booleanSelected)
+  const joinSelected = useDoc((s) => s.joinSelected)
   const convertToPath = useDoc((s) => s.convertToPath)
   const simplifySelected = useDoc((s) => s.simplifySelected)
   const nonPathCount = useDoc(
@@ -886,6 +888,13 @@ function MultiSelectSection({ count }: { count: number }) {
           )}
         </div>
       )}
+      <Button
+        className="mt-1 w-full"
+        title="Join the selection into one path (a compound path; keeps Bézier curves). Touching ends weld at plot time."
+        onClick={() => joinSelected()}
+      >
+        <Link2 size={15} /> Join into one path
+      </Button>
       <div className="mt-3">
         <PenSelect value={commonPen} onChange={(pen) => setPenSelected(pen)} />
       </div>

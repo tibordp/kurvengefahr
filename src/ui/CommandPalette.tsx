@@ -55,6 +55,7 @@ function buildCommands(): Command[] {
     add('cut', 'Cut', 'Edit', () => void cutSelectionToClipboard())
   }
   add('paste', 'Paste', 'Edit', () => void pasteFromClipboard())
+  if (sel.length >= 2) add('join', 'Join into one path', 'Combine', doc.joinSelected)
   if (sel.length >= 2) add('group', 'Group selection', 'Arrange', () => doc.createGroup(doc.selectedIds))
   if (groupIds.length) add('ungroup', 'Ungroup', 'Arrange', () => groupIds.forEach(doc.ungroup))
   if (sel.some((e) => e.type !== 'path')) add('to-path', 'Convert to path', 'Arrange', () => doc.convertToPath())

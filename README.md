@@ -18,7 +18,8 @@ with a spring-loaded pen holder; the machine profile is editable.
 - **Shapes and paths** -- Rectangles, ellipses, lines, Bézier paths, and freehand. Edit points and
   curve handles on the canvas: add/delete nodes, rubber-band and multi-select, drag several at once,
   toggle corner/smooth, break handle symmetry.
-- **Booleans** -- Union, subtract, intersect, and exclude on closed shapes, holes included.
+- **Booleans & join** -- Union, subtract, intersect, and exclude on closed shapes (holes included),
+  or join several elements into one editable compound path (Bézier curves preserved).
 - **Generative** -- Parametric pattern generators: spirographs, L-system fractals, Truchet tiles,
   Voronoi diagrams, and noise flow fields, each fit to a box and reproducible per seed.
 - **Vector import** -- SVG and DXF become native, editable paths, sized to fit or imported at 1:1

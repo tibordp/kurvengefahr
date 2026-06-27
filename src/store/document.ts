@@ -12,7 +12,7 @@ import '../elements/generative' // side-effect: registers the generative element
 import '../elements/raster' // side-effect: registers the raster image type before persistence boot
 import { PRUSA_MK4, findBuiltinProfile } from './profiles'
 import { useLibrary } from './library'
-import { place } from '../core/pipeline/place'
+import { place, transformToMatrix, type Matrix } from '../core/pipeline/place'
 import type { DocSnapshot } from './persistence/schema'
 import type { Geometry, Point } from '../core/types'
 import { cornerNode, defaultHatch, pathOutlineStrokes } from '../elements/shapes'
@@ -135,6 +135,26 @@ function elementToPath(el: DocElement): DocElement | null {
   }
 }
 
+/** Bake an affine into a path node: full transform on the anchor, linear part on the handle vectors
+ *  (which are relative, so no translation). */
+function bakeNode(m: Matrix, n: PathNode): PathNode {
+  return {
+    x: m[0] * n.x + m[2] * n.y + m[4],
+    y: m[1] * n.x + m[3] * n.y + m[5],
+    hinX: m[0] * n.hinX + m[2] * n.hinY,
+    hinY: m[1] * n.hinX + m[3] * n.hinY,
+    houtX: m[0] * n.houtX + m[2] * n.houtY,
+    houtY: m[1] * n.houtX + m[3] * n.houtY,
+  }
+}
+
+/** An element's contours in its own local space (paths directly; others via {@link elementToPath}). */
+function localContours(el: DocElement): Contour[] | null {
+  if (el.type === 'path') return (el.params as PathParams).contours
+  const p = elementToPath(el)
+  return p ? (p.params as PathParams).contours : null
+}
+
 /** Drop groups left with no members (e.g. after deleting their last element). */
 function pruneGroups(elements: DocElement[], groups: Group[]): Group[] {
   const used = new Set<string>()
@@ -193,6 +213,10 @@ interface DocStore {
   /** Combine selected closed shapes (rect/ellipse/closed path) with a boolean op (0 union,
    *  1 intersect, 2 difference, 3 xor), replacing them with one multi-contour path. One undo step. */
   booleanSelected: (op: number) => void
+  /** Combine the selected elements into one multi-contour `path` (a compound path), baking each
+   *  element's transform into its nodes so Bézier curves are preserved. Like booleans but open paths
+   *  too; touching ends are welded by the optimizer at plot time. */
+  joinSelected: () => void
   /** Add pasted elements (fresh ids, slight offset, group membership dropped); selects them and
    *  returns the new ids. Clipboard I/O lives in `store/clipboard.ts` (the real system clipboard). */
   addPasted: (elements: DocElement[]) => string[]
@@ -460,6 +484,37 @@ export const useDoc = create<DocStore>((set) => ({
         groups: pruneGroups(elements, state.groups),
         selectedIds: [newEl.id],
       }
+    }),
+
+  joinSelected: () =>
+    set((state) => {
+      const sel = state.elements.filter((e) => state.selectedIds.includes(e.id))
+      if (sel.length < 2) return {}
+      // Bake every element's transform into its nodes and collect the contours into one path.
+      const contours: Contour[] = []
+      for (const el of sel) {
+        const cs = localContours(el)
+        if (!cs) continue
+        const m = transformToMatrix(el.transform)
+        for (const c of cs) {
+          if (c.nodes.length < 2) continue
+          contours.push({ nodes: c.nodes.map((n) => bakeNode(m, n)), closed: c.closed })
+        }
+      }
+      if (!contours.length) return {}
+
+      const top = sel[sel.length - 1]
+      const newEl: DocElement = {
+        id: crypto.randomUUID(),
+        type: 'path',
+        transform: { ...IDENTITY_TRANSFORM },
+        params: { contours, hatch: hatchOf(top) } as PathParams,
+        pen: top.pen,
+      }
+      const removed = new Set(sel.map((e) => e.id))
+      removed.forEach(dropFromCache)
+      const elements = [...state.elements.filter((e) => !removed.has(e.id)), newEl]
+      return { elements, groups: pruneGroups(elements, state.groups), selectedIds: [newEl.id] }
     }),
 
   addPasted: (els) => {
