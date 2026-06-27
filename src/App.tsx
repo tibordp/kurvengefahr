@@ -14,25 +14,56 @@ import { useDoc } from './store/document'
 import { useUI } from './store/ui'
 import { syncGeneration } from './core/generation'
 import { addImageElement } from './canvas/importImage'
+import { serializeSelection, parseClipboard, pasteElements } from './store/clipboard'
 
-/** Paste an image from the clipboard → a new raster element. Ignored while a text field is focused
- *  (the field gets the paste). `getAsFile()` + `preventDefault()` run synchronously in the handler;
- *  the actual import is async. */
-function usePasteImage() {
+/** Copy / cut / paste through the **real system clipboard** (the native events are the only place
+ *  with synchronous clipboard access), so it works across documents, tabs and windows. Copy/cut
+ *  serialize the selection as marked text; paste handles our marked elements AND/OR a clipboard image
+ *  (→ a raster element) — when both are present you get both. Ignored while a text field is focused
+ *  (the field gets the native copy/paste). */
+function useSystemClipboard() {
   useEffect(() => {
-    const onPaste = (e: ClipboardEvent) => {
+    const typing = () => {
       const t = document.activeElement as HTMLElement | null
-      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return
+      return !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)
+    }
+    const writeSelection = (e: ClipboardEvent): boolean => {
+      const data = serializeSelection()
+      if (!data) return false
+      e.clipboardData?.setData('text/plain', data)
+      e.preventDefault()
+      return true
+    }
+    const onCopy = (e: ClipboardEvent) => {
+      if (!typing()) writeSelection(e)
+    }
+    const onCut = (e: ClipboardEvent) => {
+      if (!typing() && writeSelection(e)) useDoc.getState().removeSelected()
+    }
+    const onPaste = (e: ClipboardEvent) => {
+      if (typing()) return
+      const els = parseClipboard(e.clipboardData?.getData('text/plain'))
       const item = Array.from(e.clipboardData?.items ?? []).find(
         (it) => it.kind === 'file' && it.type.startsWith('image/'),
       )
-      const file = item?.getAsFile()
-      if (!file) return
+      const file = item?.getAsFile() ?? null
+      if (!els && !file) return // nothing for us — let the browser handle it
       e.preventDefault()
-      void addImageElement(file)
+      const ids = els ? pasteElements(els) : []
+      if (file)
+        void addImageElement(file).then((id) => {
+          // Select the pasted image alongside the pasted elements, not instead of them.
+          if (id) useDoc.getState().selectMany([...ids, id])
+        })
     }
+    window.addEventListener('copy', onCopy)
+    window.addEventListener('cut', onCut)
     window.addEventListener('paste', onPaste)
-    return () => window.removeEventListener('paste', onPaste)
+    return () => {
+      window.removeEventListener('copy', onCopy)
+      window.removeEventListener('cut', onCut)
+      window.removeEventListener('paste', onPaste)
+    }
   }, [])
 }
 
@@ -49,7 +80,7 @@ function useGenerationManager() {
 export function App() {
   useShortcuts()
   useGenerationManager()
-  usePasteImage()
+  useSystemClipboard()
   const inspectorOpen = useUI((s) => s.inspectorOpen)
   const setInspectorOpen = useUI((s) => s.setInspectorOpen)
 

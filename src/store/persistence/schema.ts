@@ -97,7 +97,7 @@ export function sanitizeProfile(p: unknown): MachineProfile {
 
 /** Coerce an array into valid DocElements. Unknown element types (e.g. from a newer app) are dropped
  *  with a warning; element params are sanitized by the type's own registered sanitizer. */
-function sanitizeElements(arr: unknown): DocElement[] {
+export function sanitizeElements(arr: unknown): DocElement[] {
   if (!Array.isArray(arr)) return []
   const out: DocElement[] = []
   for (const e of arr) {

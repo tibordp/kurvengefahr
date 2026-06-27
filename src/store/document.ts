@@ -21,10 +21,6 @@ import { rectGeometry, ellipseGeometry, booleanGeometry, simplifyPolyline, type 
 
 let seedCounter = 1
 
-// In-memory clipboard for copy/cut/paste. Module-level so it survives switching documents within a
-// tab (paste into another doc). Holds deep clones; paste re-clones with fresh ids.
-let clipboard: DocElement[] = []
-
 export type AlignEdge = 'left' | 'centerX' | 'right' | 'top' | 'centerY' | 'bottom'
 
 interface BBox {
@@ -197,12 +193,9 @@ interface DocStore {
   /** Combine selected closed shapes (rect/ellipse/closed path) with a boolean op (0 union,
    *  1 intersect, 2 difference, 3 xor), replacing them with one multi-contour path. One undo step. */
   booleanSelected: (op: number) => void
-  /** Copy the selected elements to the in-tab clipboard (works across documents). */
-  copySelected: () => void
-  /** Copy + delete the selection. */
-  cutSelected: () => void
-  /** Paste the clipboard into this document (fresh ids, slight offset); selects the pasted copies. */
-  paste: () => void
+  /** Add pasted elements (fresh ids, slight offset, group membership dropped); selects them and
+   *  returns the new ids. Clipboard I/O lives in `store/clipboard.ts` (the real system clipboard). */
+  addPasted: (elements: DocElement[]) => string[]
   /** Convert the given (or selected) non-path elements into editable `path` elements. */
   convertToPath: (ids?: string[]) => void
   /** Ramer–Douglas–Peucker ("rubber-band") simplify of the selected paths' contours, tolerance mm. */
@@ -470,35 +463,19 @@ export const useDoc = create<DocStore>((set) => ({
       }
     }),
 
-  copySelected: () =>
-    set((state) => {
-      clipboard = state.elements.filter((e) => state.selectedIds.includes(e.id)).map((e) => structuredClone(e))
-      return {}
-    }),
-
-  cutSelected: () =>
-    set((state) => {
-      const sel = new Set(state.selectedIds)
-      if (!sel.size) return {}
-      clipboard = state.elements.filter((e) => sel.has(e.id)).map((e) => structuredClone(e))
-      sel.forEach(dropFromCache)
-      const elements = state.elements.filter((e) => !sel.has(e.id))
-      return { elements, groups: pruneGroups(elements, state.groups), selectedIds: [] }
-    }),
-
-  paste: () =>
-    set((state) => {
-      if (!clipboard.length) return {}
-      const created: DocElement[] = clipboard.map((e) => {
-        const { groupId: _drop, ...rest } = structuredClone(e)
-        return {
-          ...rest,
-          id: crypto.randomUUID(),
-          transform: { ...rest.transform, x: rest.transform.x + 5, y: rest.transform.y + 5 },
-        }
-      })
-      return { elements: [...state.elements, ...created], selectedIds: created.map((c) => c.id) }
-    }),
+  addPasted: (els) => {
+    if (!els.length) return []
+    const created: DocElement[] = els.map((e) => {
+      const { id: _id, groupId: _drop, ...rest } = structuredClone(e)
+      return {
+        ...rest,
+        id: crypto.randomUUID(),
+        transform: { ...rest.transform, x: rest.transform.x + 5, y: rest.transform.y + 5 },
+      }
+    })
+    set((state) => ({ elements: [...state.elements, ...created], selectedIds: created.map((c) => c.id) }))
+    return created.map((c) => c.id)
+  },
 
   convertToPath: (ids) =>
     set((state) => {

@@ -34,16 +34,17 @@ export async function importContentFile(): Promise<void> {
 }
 
 /** Store an image (File or Blob — clipboard images arrive as Blobs) and add a raster element for it. */
-export async function addImageElement(source: File | Blob): Promise<void> {
+export async function addImageElement(source: File | Blob): Promise<string | null> {
   try {
     const { imageId, width, height } = await importImage(source)
     const longest = Math.max(width, height) || 1
     const s = 100 / longest
     const tw = Math.max(1, width * s)
     const th = Math.max(1, height * s)
-    useDoc.getState().addElement('raster', defaultRasterParams(imageId, width, height, tw, th), { x: 20, y: 20 })
+    return useDoc.getState().addElement('raster', defaultRasterParams(imageId, width, height, tw, th), { x: 20, y: 20 })
   } catch {
     alert('Could not import that image.')
+    return null
   }
 }
 

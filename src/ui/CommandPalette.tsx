@@ -12,6 +12,7 @@ import { useExportDialog } from '../store/exportDialog'
 import { undo, redo } from '../store/history'
 import { exportGcode } from '../output/export'
 import { importContentFile } from '../canvas/importImage'
+import { copySelectionToClipboard, cutSelectionToClipboard, pasteFromClipboard } from '../store/clipboard'
 import { TOOLS } from './shortcuts'
 import { controlClass, cx } from './primitives'
 import type { PathParams } from '../elements/shapes'
@@ -50,9 +51,10 @@ function buildCommands(): Command[] {
     add('dup', 'Duplicate selection', 'Edit', doc.duplicateSelected)
     add('dup-new', 'Duplicate to new document', 'Edit', useDocuments.getState().duplicateSelectionToNewDoc)
     add('delete', 'Delete selection', 'Edit', doc.removeSelected)
-    add('copy', 'Copy', 'Edit', doc.copySelected)
+    add('copy', 'Copy', 'Edit', () => void copySelectionToClipboard())
+    add('cut', 'Cut', 'Edit', () => void cutSelectionToClipboard())
   }
-  add('paste', 'Paste', 'Edit', doc.paste)
+  add('paste', 'Paste', 'Edit', () => void pasteFromClipboard())
   if (sel.length >= 2) add('group', 'Group selection', 'Arrange', () => doc.createGroup(doc.selectedIds))
   if (groupIds.length) add('ungroup', 'Ungroup', 'Arrange', () => groupIds.forEach(doc.ungroup))
   if (sel.some((e) => e.type !== 'path')) add('to-path', 'Convert to path', 'Arrange', () => doc.convertToPath())

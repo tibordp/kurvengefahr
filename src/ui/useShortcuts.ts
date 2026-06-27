@@ -72,19 +72,9 @@ export function useShortcuts(): void {
         return
       }
 
-      // Clipboard (in-tab, works across documents).
-      if ((e.metaKey || e.ctrlKey) && (e.key === 'c' || e.key === 'C')) {
-        useDoc.getState().copySelected()
-        return
-      }
-      if ((e.metaKey || e.ctrlKey) && (e.key === 'x' || e.key === 'X')) {
-        useDoc.getState().cutSelected()
-        return
-      }
-      if ((e.metaKey || e.ctrlKey) && (e.key === 'v' || e.key === 'V')) {
-        useDoc.getState().paste()
-        return
-      }
+      // Copy / cut / paste run through the native clipboard events (App's `useSystemClipboard`) — the
+      // only place with synchronous system-clipboard access — so they hit the real OS clipboard and
+      // work across documents, tabs and windows. Nothing to do here.
 
       // Space toggles preview playback (only while the preview transport is active). If a button
       // has focus, let its native Space-activation handle it instead (avoids a double-toggle).
