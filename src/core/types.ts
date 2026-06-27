@@ -75,6 +75,13 @@ export interface DocElement<TParams = unknown> {
    *  `gap`. Like `pen`/`transform`, it's applied downstream (in `buildPageGeometry`) — a cheap
    *  re-place/re-emit, never a regenerate. Absent = solid. */
   dash?: { dash: number; gap: number }
+  /** Clip-to-shape membership: this element belongs to the `clip` element with this id. Its
+   *  `transform` is then **relative to that clip's local space** (so the clip's transform composes
+   *  onto it — clips nest). The clip renders/plots only the part of its members inside the mask. */
+  clipParent?: string
+  /** When set on a clip member, this element is the clip's **mask**: it makes no marks (its closed
+   *  contours bound the clip) but stays a real, editable element so unclip can restore it. */
+  clipRole?: 'mask'
 }
 
 /** A flat (non-nesting) organizational group of elements, shown as a collapsible node in the

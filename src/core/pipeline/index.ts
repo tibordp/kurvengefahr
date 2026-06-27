@@ -16,6 +16,7 @@ import { optimizeGeometry } from './optimize'
 import { emit } from './emit'
 import { penParkInPage } from './toMachine'
 import { clipToRegion, drawableRegion } from './clip'
+import { clipLocalGeometry } from './clipGeometry'
 
 /** Build page-space geometry for the whole document (generate + place + filters).
  *
@@ -34,7 +35,26 @@ export function buildPageGeometry(
 ): Geometry {
   const out: Geometry = []
   let chainId = 0
+  // Clip members (mask + clipped children) are handled via their clip, not at the top level.
+  // Guard on the clip actually existing, so an orphaned member (clip deleted) still renders.
+  const clipIds = new Set(elements.filter((e) => e.type === 'clip').map((e) => e.id))
+  const membersOf = new Map<string, DocElement[]>()
+  const memberIds = new Set<string>()
   for (const el of elements) {
+    if (el.clipParent && clipIds.has(el.clipParent)) {
+      memberIds.add(el.id)
+      const arr = membersOf.get(el.clipParent) ?? []
+      arr.push(el)
+      membersOf.set(el.clipParent, arr)
+    }
+  }
+  for (const el of elements) {
+    if (memberIds.has(el.id)) continue // emitted via its clip
+    if (el.type === 'clip') {
+      // Geometry (children clipped to the mask) is already multi-pen; just place it on the page.
+      for (const s of place(clipLocalGeometry(el, membersOf), el.transform)) out.push({ ...s })
+      continue
+    }
     const placed = place(generateLocal(el), el.transform)
     const filtered = applyFilters(placed, filters)
     const styled = el.dash && el.dash.dash > 0 && el.dash.gap > 0 ? dashGeometry(filtered, el.dash.dash, el.dash.gap) : filtered

@@ -1,6 +1,6 @@
 // Stage: element-local mm → page mm, via the element's affine transform.
 // Cheap reparametrization — changing a transform invalidates only this, never `generate()`.
-import type { Geometry, Point, Stroke, Transform } from '../types'
+import type { DocElement, Geometry, Point, Stroke, Transform } from '../types'
 
 /** 2×3 affine as [a, b, c, d, e, f] mapping (x,y) → (a·x + c·y + e, b·x + d·y + f).
  *  Same column convention as CanvasRenderingContext2D / Konva. */
@@ -21,6 +21,65 @@ export function transformToMatrix(t: Transform): Matrix {
     t.x,
     t.y,
   ]
+}
+
+/** Compose two affines: the result applies `b` first, then `a` (a·b). */
+export function multiplyMatrix(a: Matrix, b: Matrix): Matrix {
+  return [
+    a[0] * b[0] + a[2] * b[1],
+    a[1] * b[0] + a[3] * b[1],
+    a[0] * b[2] + a[2] * b[3],
+    a[1] * b[2] + a[3] * b[3],
+    a[0] * b[4] + a[2] * b[5] + a[4],
+    a[1] * b[4] + a[3] * b[5] + a[5],
+  ]
+}
+
+/** Decompose an affine back into translate·rotate·scale (drops any shear — exact for
+ *  translate/rotate/uniform-scale, the common case). Inverse of {@link transformToMatrix}. */
+export function matrixToTransform(m: Matrix): Transform {
+  const [a, b, c, d, e, f] = m
+  const scaleX = Math.hypot(a, b)
+  const det = a * d - b * c
+  const scaleY = scaleX > 1e-9 ? det / scaleX : Math.hypot(c, d)
+  return { x: e, y: f, rotation: (Math.atan2(b, a) * 180) / Math.PI, scaleX, scaleY }
+}
+
+/** Bake a parent transform onto a child (parent ∘ child) as one decomposed transform. */
+export function composeTransforms(parent: Transform, child: Transform): Transform {
+  return matrixToTransform(multiplyMatrix(transformToMatrix(parent), transformToMatrix(child)))
+}
+
+function invertMatrix(m: Matrix): Matrix {
+  const [a, b, c, d, e, f] = m
+  const det = a * d - b * c
+  if (Math.abs(det) < 1e-12) return [1, 0, 0, 1, 0, 0]
+  const ia = d / det
+  const ib = -b / det
+  const ic = -c / det
+  const id = a / det
+  return [ia, ib, ic, id, -(ia * e + ic * f), -(ib * e + id * f)]
+}
+
+/** The inverse of a transform (as a decomposed transform). */
+export function invertTransform(t: Transform): Transform {
+  return matrixToTransform(invertMatrix(transformToMatrix(t)))
+}
+
+/** A clip member's transform is relative to its clip's local space; compose up the `clipParent`
+ *  chain to get its true page transform (so it can be rendered/edited in place). */
+export function effectiveTransform(el: DocElement, byId: Map<string, DocElement>): Transform {
+  let t = el.transform
+  let pid = el.clipParent
+  const seen = new Set<string>()
+  while (pid && !seen.has(pid)) {
+    seen.add(pid)
+    const clip = byId.get(pid)
+    if (!clip) break
+    t = composeTransforms(clip.transform, t)
+    pid = clip.clipParent
+  }
+  return t
 }
 
 export function applyMatrix(m: Matrix, p: Point): Point {

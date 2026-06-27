@@ -17,7 +17,10 @@ import { isKnownType, sanitizeParams } from '../../elements/registry'
 // v2: `path` params went multi-contour ({nodes,closed} → {contours:[{nodes,closed}]}). No migration
 // step is needed — the path sanitizer coerces the old single-contour shape — but the bump makes an
 // older app reject v2 docs as `unsupported` instead of silently dropping their paths.
-export const CURRENT_DOC_SCHEMA = 2
+// v3: clip-to-shape — a `clip` element type plus optional `clipParent`/`clipRole` tags. Additive
+// optional fields backfill via the sanitizers, so no migration step; the bump just fences off older
+// apps that don't know how to render clips.
+export const CURRENT_DOC_SCHEMA = 3
 export const CURRENT_LIBRARY_SCHEMA = 1
 
 export const DOC_FILE_KIND = 'kurvengefahr/document'
@@ -117,6 +120,8 @@ export function sanitizeElements(arr: unknown): DocElement[] {
       ...(isObj(e.dash) && typeof e.dash.dash === 'number' && typeof e.dash.gap === 'number'
         ? { dash: { dash: Math.max(0, e.dash.dash), gap: Math.max(0, e.dash.gap) } }
         : {}),
+      ...(typeof e.clipParent === 'string' ? { clipParent: e.clipParent } : {}),
+      ...(e.clipRole === 'mask' ? { clipRole: 'mask' as const } : {}),
     })
   }
   return out
@@ -144,7 +149,18 @@ function sanitizeFiducial(f: unknown): Fiducial | null {
 
 export function sanitizeSnapshot(raw: unknown): DocSnapshot {
   const o = isObj(raw) ? raw : {}
-  const elements = sanitizeElements(o.elements)
+  let elements = sanitizeElements(o.elements)
+  // Reconcile clips: drop a clipParent/clipRole whose clip element is gone, then drop any clip left
+  // with no members — so the pipeline never skips an orphaned member or renders an empty clip.
+  const clipIds = new Set(elements.filter((e) => e.type === 'clip').map((e) => e.id))
+  for (const e of elements)
+    if (e.clipParent && !clipIds.has(e.clipParent)) {
+      delete e.clipParent
+      delete e.clipRole
+    }
+  const clipsWithMembers = new Set<string>()
+  for (const e of elements) if (e.clipParent) clipsWithMembers.add(e.clipParent)
+  elements = elements.filter((e) => e.type !== 'clip' || clipsWithMembers.has(e.id))
   const ids = new Set(elements.map((e) => e.id))
   // Back-compat: a pre-multi-select doc stored a single `selectedId`.
   const rawIds = Array.isArray(o.selectedIds)

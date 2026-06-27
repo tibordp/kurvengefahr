@@ -10,9 +10,11 @@ import '../elements/shapes' // side-effect: registers rect/ellipse/path before p
 import '../elements/text' // side-effect: registers the text element before persistence boot
 import '../elements/generative' // side-effect: registers the generative element before persistence boot
 import '../elements/raster' // side-effect: registers the raster image type before persistence boot
+import '../elements/clip' // side-effect: registers the clip container element before persistence boot
 import { PRUSA_MK4, findBuiltinProfile } from './profiles'
 import { useLibrary } from './library'
-import { place, transformToMatrix, type Matrix } from '../core/pipeline/place'
+import { place, transformToMatrix, composeTransforms, type Matrix } from '../core/pipeline/place'
+import { clipLocalGeometry } from '../core/pipeline/clipGeometry'
 import type { DocSnapshot } from './persistence/schema'
 import type { Geometry, Point } from '../core/types'
 import { cornerNode, defaultHatch, pathOutlineStrokes, weldContours } from '../elements/shapes'
@@ -162,6 +164,25 @@ function pruneGroups(elements: DocElement[], groups: Group[]): Group[] {
   return groups.filter((g) => used.has(g.id))
 }
 
+/** Expand an id set to include the members of any clip in it — deleting a clip takes its mask +
+ *  clipped contents with it (unclip first to keep them). */
+function withClipMembers(ids: Set<string>, elements: DocElement[]): Set<string> {
+  const out = new Set(ids)
+  for (const e of elements) if (e.clipParent && out.has(e.clipParent)) out.add(e.id)
+  return out
+}
+
+/** All elements transitively under a clip (members, nested clips' members, …). */
+function clipDescendants(clipId: string, elements: DocElement[]): Set<string> {
+  const out = new Set<string>()
+  const stack = [clipId]
+  while (stack.length) {
+    const id = stack.pop()!
+    for (const e of elements) if (e.clipParent === id && !out.has(e.id)) (out.add(e.id), stack.push(e.id))
+  }
+  return out
+}
+
 /** The hatch a closed shape carries (so a boolean result inherits the topmost shape's fill). */
 function hatchOf(el: DocElement): Hatch {
   if (el.type === 'rect') return (el.params as RectParams).hatch
@@ -217,6 +238,11 @@ interface DocStore {
    *  element's transform into its nodes so Bézier curves are preserved. Like booleans but open paths
    *  too; touching ends are welded by the optimizer at plot time. */
   joinSelected: () => void
+  /** Clip-to-shape: consume the topmost selected element as the mask, wrap the rest into a new `clip`
+   *  element (non-destructive, nestable). Needs ≥2 selected. */
+  clipSelected: () => void
+  /** Release a clip: bake its transform into the members, restore the mask, remove the clip. */
+  unclip: (clipId: string) => void
   /** Weld each selected path's open contours that share endpoints into single continuous contours
    *  (closing any that loop), so an outline assembled from pieces can fill. Preserves Béziers. */
   weldSelected: () => void
@@ -345,20 +371,21 @@ export const useDoc = create<DocStore>((set) => ({
 
   removeElement: (id) =>
     set((state) => {
-      dropFromCache(id)
-      const elements = state.elements.filter((e) => e.id !== id)
+      const kill = withClipMembers(new Set([id]), state.elements)
+      kill.forEach(dropFromCache)
+      const elements = state.elements.filter((e) => !kill.has(e.id))
       return {
         elements,
         groups: pruneGroups(elements, state.groups),
-        selectedIds: state.selectedIds.filter((s) => s !== id),
+        selectedIds: state.selectedIds.filter((s) => !kill.has(s)),
       }
     }),
 
   removeSelected: () =>
     set((state) => {
-      state.selectedIds.forEach(dropFromCache)
-      const sel = new Set(state.selectedIds)
-      const elements = state.elements.filter((e) => !sel.has(e.id))
+      const kill = withClipMembers(new Set(state.selectedIds), state.elements)
+      kill.forEach(dropFromCache)
+      const elements = state.elements.filter((e) => !kill.has(e.id))
       return { elements, groups: pruneGroups(elements, state.groups), selectedIds: [] }
     }),
 
@@ -524,6 +551,38 @@ export const useDoc = create<DocStore>((set) => ({
       return { elements, groups: pruneGroups(elements, state.groups), selectedIds: [newEl.id] }
     }),
 
+  clipSelected: () =>
+    set((state) => {
+      const sel = state.elements.filter((e) => state.selectedIds.includes(e.id))
+      if (sel.length < 2) return {}
+      const clipId = crypto.randomUUID()
+      const maskId = sel[sel.length - 1].id // topmost selected (drawn last) → the mask
+      const selIds = new Set(sel.map((e) => e.id))
+      const clip: DocElement = { id: clipId, type: 'clip', transform: { ...IDENTITY_TRANSFORM }, params: {}, pen: 0 }
+      const elements = state.elements.map((e) =>
+        selIds.has(e.id) ? { ...e, clipParent: clipId, ...(e.id === maskId ? { clipRole: 'mask' as const } : {}) } : e,
+      )
+      elements.push(clip)
+      return { elements, selectedIds: [clipId] }
+    }),
+
+  unclip: (clipId) =>
+    set((state) => {
+      const clip = state.elements.find((e) => e.id === clipId && e.type === 'clip')
+      if (!clip) return {}
+      const restored: string[] = []
+      const elements = state.elements
+        .filter((e) => e.id !== clipId)
+        .map((e) => {
+          if (e.clipParent !== clipId) return e
+          restored.push(e.id)
+          const { clipParent: _cp, clipRole: _cr, ...rest } = e
+          return { ...rest, transform: composeTransforms(clip.transform, e.transform) }
+        })
+      dropFromCache(clipId)
+      return { elements, groups: pruneGroups(elements, state.groups), selectedIds: restored }
+    }),
+
   weldSelected: () =>
     set((state) => {
       let changed = false
@@ -579,16 +638,72 @@ export const useDoc = create<DocStore>((set) => ({
     set((state) => {
       const targets = new Set(ids ?? state.selectedIds)
       const idMap = new Map<string, string>()
-      const elements = state.elements.map((el) => {
-        if (!targets.has(el.id) || el.type === 'path') return el
-        const p = elementToPath(el)
-        if (!p) return el
-        dropFromCache(el.id)
-        idMap.set(el.id, p.id)
-        return p
-      })
-      if (idMap.size === 0) return {}
-      return { elements, selectedIds: state.selectedIds.map((id) => idMap.get(id) ?? id) }
+      const removed = new Set<string>() // clip members consumed by a flattened clip
+      let groups = state.groups
+      let changed = false
+
+      // Clips flatten *destructively*: bake the clipped composition into path(s) (one per pen so
+      // colours survive, grouped if several) and drop the clip + all its members.
+      const membersOf = new Map<string, DocElement[]>()
+      for (const e of state.elements)
+        if (e.clipParent) membersOf.set(e.clipParent, [...(membersOf.get(e.clipParent) ?? []), e])
+
+      const out: DocElement[] = []
+      for (const el of state.elements) {
+        if (targets.has(el.id) && el.type === 'clip') {
+          const byPen = new Map<number, Contour[]>()
+          for (const s of clipLocalGeometry(el, membersOf)) {
+            const c = pointsToContour(s.points)
+            if (c.nodes.length >= 2) byPen.set(s.pen, [...(byPen.get(s.pen) ?? []), c])
+          }
+          if (byPen.size === 0) {
+            out.push(el) // nothing inside the mask — leave the clip alone
+            continue
+          }
+          changed = true
+          dropFromCache(el.id)
+          for (const d of clipDescendants(el.id, state.elements)) {
+            removed.add(d)
+            dropFromCache(d)
+          }
+          const paths: DocElement[] = [...byPen.entries()].map(([pen, contours]) => ({
+            id: crypto.randomUUID(),
+            type: 'path',
+            transform: { ...el.transform },
+            params: { contours, hatch: defaultHatch() } as PathParams,
+            pen,
+            ...(el.groupId ? { groupId: el.groupId } : {}),
+            ...(el.name ? { name: el.name } : {}),
+          }))
+          if (paths.length > 1) {
+            const gid = crypto.randomUUID()
+            for (const p of paths) p.groupId = gid
+            groups = [...groups, { id: gid, name: el.name ?? 'Clip', collapsed: false }]
+          }
+          idMap.set(el.id, paths[0].id)
+          out.push(...paths)
+          continue
+        }
+        if (targets.has(el.id) && el.type !== 'path') {
+          const p = elementToPath(el)
+          if (p) {
+            changed = true
+            dropFromCache(el.id)
+            idMap.set(el.id, p.id)
+            out.push(p)
+            continue
+          }
+        }
+        out.push(el)
+      }
+      if (!changed) return {}
+      // Drop any consumed clip members (they may have appeared in the array before their clip).
+      const elements = out.filter((e) => !removed.has(e.id))
+      return {
+        elements,
+        groups: pruneGroups(elements, groups),
+        selectedIds: state.selectedIds.map((id) => idMap.get(id) ?? id).filter((id) => !removed.has(id)),
+      }
     }),
 
   simplifySelected: (tolMm) =>
