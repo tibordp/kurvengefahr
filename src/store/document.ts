@@ -251,7 +251,9 @@ interface DocStore {
   loadDocument: (snapshot: DocSnapshot) => void
   /** Re-render views over the document without changing element data — used by the generation
    *  controller after async (worker) geometry lands in the cache. */
-  notifyGeometry: () => void
+  /** Re-render an element whose worker-produced geometry landed (out-of-band cache). `id` bumps just
+   *  that element's ref so memoized siblings stay put; omit to bump everything. */
+  notifyGeometry: (id?: string) => void
 }
 
 export const useDoc = create<DocStore>((set) => ({
@@ -668,5 +670,12 @@ export const useDoc = create<DocStore>((set) => ({
       groups: snapshot.groups ?? [],
     }),
 
-  notifyGeometry: () => set((state) => ({ elements: [...state.elements] })),
+  notifyGeometry: (id) =>
+    set((state) => ({
+      // Bump only the regenerated element's ref (a no-op clone — same data) so memoized siblings
+      // don't re-render. No id → bump the whole array (defensive fallback).
+      elements: id
+        ? state.elements.map((e) => (e.id === id ? { ...e } : e))
+        : [...state.elements],
+    })),
 }))

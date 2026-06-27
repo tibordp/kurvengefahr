@@ -195,14 +195,14 @@ function handleMessage(msg: WorkerOut) {
     // This geometry is now fit to the job's box; clear any provisional rescale (sizes agree again).
     if (job.extent) generatedExtent.set(msg.elementId, job.extent)
     setStatus(msg.elementId, { phase: 'generating', done: msg.done, total: msg.total })
-    useDoc.getState().notifyGeometry()
+    useDoc.getState().notifyGeometry(msg.elementId)
     return
   }
   // done
   inflight.delete(msg.elementId)
   failed.delete(msg.elementId)
   clearStatus(msg.elementId)
-  useDoc.getState().notifyGeometry()
+  useDoc.getState().notifyGeometry(msg.elementId)
 }
 
 function postGenerate(el: DocElement) {

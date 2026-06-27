@@ -107,6 +107,9 @@ export function isAsyncType(type: string): boolean {
 interface CacheEntry {
   hash: string
   geom: Geometry
+  /** The exact params object this entry was validated against, so an unchanged params *reference*
+   *  (the common case — transform edits, array ref-bumps) skips the O(params) re-hash entirely. */
+  params?: unknown
 }
 const cache = new Map<string, CacheEntry>()
 
@@ -137,9 +140,15 @@ export function geometryHash(type: string, params: unknown): string {
 /** Memoized local-mm geometry for an element. Sync types compute on miss; async types return the
  *  cached/stale/empty geometry and rely on the generation controller to fill the cache. */
 export function generateLocal(el: DocElement): Geometry {
-  const hash = geometryHash(el.type, el.params)
   const hit = cache.get(el.id)
-  if (hit && hit.hash === hash) return hit.geom
+  // Fast path: same params object as last validated → no hash needed (the per-render common case).
+  if (hit && hit.params === el.params) return hit.geom
+
+  const hash = geometryHash(el.type, el.params)
+  if (hit && hit.hash === hash) {
+    hit.params = el.params // remember the ref so subsequent renders take the fast path
+    return hit.geom
+  }
 
   const def = types.get(el.type)
   if (!def) throw new Error(`No element type registered for "${el.type}"`)
@@ -149,7 +158,7 @@ export function generateLocal(el: DocElement): Geometry {
     return hit?.geom ?? []
   }
   const geom = def.generate(el.params)
-  cache.set(el.id, { hash, geom })
+  cache.set(el.id, { hash, geom, params: el.params })
   return geom
 }
 

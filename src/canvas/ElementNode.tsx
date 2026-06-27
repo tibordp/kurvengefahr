@@ -1,6 +1,7 @@
 // One element on the canvas: a Konva Group at the element's transform, containing its
 // local-mm strokes as Lines. The Group transform is the *view* of the element transform;
 // on drag/transform end we read the affine back into the store (the authority).
+import { memo, useMemo } from 'react'
 import { Group, Image as KonvaImage, Line, Rect } from 'react-konva'
 import type Konva from 'konva'
 import type { DocElement } from '../core/types'
@@ -37,7 +38,7 @@ let dragGesture: {
   dy: number
 } | null = null
 
-export function ElementNode({ element, pxPerMm, interactive = true }: Props) {
+function ElementNodeImpl({ element, pxPerMm, interactive = true }: Props) {
   const select = useDoc((s) => s.select)
   const setTransform = useDoc((s) => s.setTransform)
   const setParams = useDoc((s) => s.setParams)
@@ -61,6 +62,38 @@ export function ElementNode({ element, pxPerMm, interactive = true }: Props) {
   // lines streaming in read clearly.
   const generating = useGeneration((s) => !!s.status[element.id])
   const dirty = !generating && needsManualRegen(element.id, element.type, element.params)
+
+  // The Konva Lines are the expensive part for many-point elements: building each `points` array and
+  // reconciling the nodes. Memoize them on the geometry + style so re-renders that don't change the
+  // geometry (a transform/drag edit, a sibling's change) reuse the same Line elements untouched.
+  const dash = element.dash
+  const lines = useMemo(
+    () =>
+      geom.map((stroke, i) => {
+        const pts: number[] = []
+        for (const p of stroke.points) pts.push(p.x, p.y)
+        return (
+          <Line
+            key={i}
+            points={pts}
+            stroke={multiPen ? colorFor(stroke.pen) : elementColor}
+            // Pen width is a property of the pen, not the element: constant in physical mm at the
+            // current zoom, unaffected by element scale. strokeScaleEnabled false → mm × pxPerMm.
+            strokeWidth={PEN_WIDTH_MM * pxPerMm}
+            strokeScaleEnabled={false}
+            // Reflect the element's dashed-stroke style here too (screen px, like strokeWidth).
+            dash={dash ? [dash.dash * pxPerMm, dash.gap * pxPerMm] : undefined}
+            lineCap="round"
+            lineJoin="round"
+            // Generous screen-space hit area so thin ink is easy to click (clicks bubble to the
+            // Group). Selection is per-element, not per-stroke.
+            hitStrokeWidth={12}
+          />
+        )
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [geom, pxPerMm, elementColor, multiPen, pens, dash],
+  )
 
   const commit = (node: Konva.Node) => {
     const sx = node.scaleX()
@@ -161,34 +194,17 @@ export function ElementNode({ element, pxPerMm, interactive = true }: Props) {
       {/* Inner group carries the provisional resize scale for stale ink (1×1 normally). With
           strokeScaleEnabled false on the Lines, this scales positions but never pen width. */}
       <Group scaleX={prov.sx} scaleY={prov.sy}>
-        {geom.map((stroke, i) => {
-          const pts: number[] = []
-          for (const p of stroke.points) pts.push(p.x, p.y)
-          return (
-            <Line
-              key={i}
-              points={pts}
-              stroke={multiPen ? colorFor(stroke.pen) : elementColor}
-              // Pen width is a property of the pen, not the element: keep it constant in
-              // physical mm at the current zoom, unaffected by the element's scale. With
-              // strokeScaleEnabled false, strokeWidth is in screen px → use mm × pxPerMm.
-              strokeWidth={PEN_WIDTH_MM * pxPerMm}
-              strokeScaleEnabled={false}
-              // Reflect the element's dashed-stroke style here too (in screen px, like strokeWidth),
-              // so the edit view matches the preview/plot. Solid when unset.
-              dash={element.dash ? [element.dash.dash * pxPerMm, element.dash.gap * pxPerMm] : undefined}
-              lineCap="round"
-              lineJoin="round"
-              // Generous screen-space hit area so thin ink is easy to click (clicks bubble to
-              // the Group). Selection is per-element, not per-stroke.
-              hitStrokeWidth={12}
-            />
-          )
-        })}
+        {lines}
       </Group>
     </Group>
   )
 }
+
+/** Memoized so an unrelated store change (another element edited, an async geometry bump elsewhere)
+ *  doesn't re-render every element. Re-renders only when this element's ref / zoom / interactivity
+ *  changes — which now happens precisely (transform-only edits and worker geometry both bump just
+ *  this element's ref). */
+export const ElementNode = memo(ElementNodeImpl)
 
 /** An invisible rect at the raster's physical box, so the element's bounds (and thus the selection
  *  Transformer) stay consistent even when it has no strokes and the source image is hidden — without

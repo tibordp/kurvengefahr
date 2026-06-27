@@ -179,6 +179,8 @@ export function Canvas() {
       : []
     tr.nodes(nodes)
     tr.getLayer()?.batchDraw()
+    // Keyed on `elements` so the Transformer recomputes its box after a resize bakes into params
+    // (shapes commit a new size at scale 1 — selectedIds doesn't change, but the geometry does).
   }, [selectedIds, elements, showTransformer, scale, vx, vy])
 
   // Drawing keyboard: Enter finishes a pen path, Esc cancels the draft / returns to Select.
