@@ -174,6 +174,9 @@ export function ElementNode({ element, pxPerMm, interactive = true }: Props) {
               // strokeScaleEnabled false, strokeWidth is in screen px → use mm × pxPerMm.
               strokeWidth={PEN_WIDTH_MM * pxPerMm}
               strokeScaleEnabled={false}
+              // Reflect the element's dashed-stroke style here too (in screen px, like strokeWidth),
+              // so the edit view matches the preview/plot. Solid when unset.
+              dash={element.dash ? [element.dash.dash * pxPerMm, element.dash.gap * pxPerMm] : undefined}
               lineCap="round"
               lineJoin="round"
               // Generous screen-space hit area so thin ink is easy to click (clicks bubble to
