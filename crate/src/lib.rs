@@ -22,6 +22,7 @@ mod generative;
 mod geom;
 mod hatch;
 mod model;
+mod poly;
 mod raster;
 mod shapes;
 mod svg;
@@ -287,6 +288,25 @@ pub fn clip(
     let strokes = decode(xy, pressure, offsets, pen, reversible, group);
     let rect = Rect { x0, y0, x1, y1 };
     GeometryBuffers::from_strokes(&clip::clip(&strokes, &rect))
+}
+
+/// Clip strokes to an arbitrary mask polygon (even-odd over `ring_xy`/`ring_starts`), for
+/// clip-to-shape. Each stroke is split into the sub-polylines inside the mask; pen/reversible/group
+/// preserved.
+#[wasm_bindgen]
+pub fn clip_polygon(
+    xy: &[f32],
+    pressure: &[f32],
+    offsets: &[u32],
+    pen: &[u16],
+    reversible: &[u8],
+    group: &[u32],
+    ring_xy: &[f32],
+    ring_starts: &[u32],
+) -> GeometryBuffers {
+    let strokes = decode(xy, pressure, offsets, pen, reversible, group);
+    let rings = poly::parse_polys(ring_xy, ring_starts);
+    GeometryBuffers::from_strokes(&clip::clip_to_polygon(&strokes, &rings))
 }
 
 /// Greedy nearest-neighbour ordering from `(start_x, start_y)`. The unit of ordering is a

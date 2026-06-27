@@ -3,71 +3,15 @@
 //! millimetre fill `Stroke`s, clipped to the polygon. Pure scalar Rust.
 
 use crate::geom::{Point, Stroke};
-
-type P = (f32, f32);
+use crate::poly::{crossings, inside_multi, parse_polys, pt, P};
 
 const ELLIPSE_TOL: f32 = crate::tess::ELLIPSE_FILL_TOL;
 
-fn pt(x: f32, y: f32) -> Point {
-    Point { x, y, pressure: 1.0 }
-}
 fn stroke(points: Vec<Point>) -> Stroke {
     Stroke { points, pen: 0, reversible: true, group: 0 }
 }
 fn seg(a: P, b: P) -> Stroke {
     stroke(vec![pt(a.0, a.1), pt(b.0, b.1)])
-}
-
-/// Flat `[x0,y0,…]` → one ring's vertices, dropping a trailing point that duplicates the first.
-fn parse_poly(xy: &[f32]) -> Vec<P> {
-    let mut v: Vec<P> = (0..xy.len() / 2).map(|i| (xy[2 * i], xy[2 * i + 1])).collect();
-    if v.len() >= 2 {
-        let f = v[0];
-        let l = *v.last().unwrap();
-        if (f.0 - l.0).abs() < 1e-6 && (f.1 - l.1).abs() < 1e-6 {
-            v.pop();
-        }
-    }
-    v
-}
-
-/// Split a multi-ring `xy` into rings via `ring_starts` (point units, `nrings+1` entries).
-fn parse_polys(xy: &[f32], ring_starts: &[u32]) -> Vec<Vec<P>> {
-    let nrings = ring_starts.len().saturating_sub(1);
-    (0..nrings)
-        .map(|r| parse_poly(&xy[ring_starts[r] as usize * 2..ring_starts[r + 1] as usize * 2]))
-        .collect()
-}
-
-/// Even-odd ray-cast point-in-polygon for a single ring.
-fn inside(poly: &[P], x: f32, y: f32) -> bool {
-    let n = poly.len();
-    if n < 3 {
-        return false;
-    }
-    let mut c = false;
-    let mut j = n - 1;
-    for i in 0..n {
-        let (xi, yi) = poly[i];
-        let (xj, yj) = poly[j];
-        if ((yi > y) != (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi) {
-            c = !c;
-        }
-        j = i;
-    }
-    c
-}
-
-/// Even-odd across all rings (XOR of per-ring parities): a point inside the outer ring and inside a
-/// nested ring (hole) is *outside* the filled region. Orientation-independent.
-fn inside_multi(rings: &[Vec<P>], x: f32, y: f32) -> bool {
-    let mut c = false;
-    for ring in rings {
-        if inside(ring, x, y) {
-            c = !c;
-        }
-    }
-    c
 }
 
 /// Bounding box over all rings' vertices.
@@ -156,37 +100,6 @@ fn d2xy(side: u32, d: u32) -> (u32, u32) {
         s *= 2;
     }
     (x, y)
-}
-
-/// Parameters t∈(0,1) where segment a→b crosses any ring's boundary, sorted and de-duplicated.
-fn crossings(rings: &[Vec<P>], a: P, b: P) -> Vec<f32> {
-    let (rx, ry) = (b.0 - a.0, b.1 - a.1);
-    let mut ts: Vec<f32> = Vec::new();
-    for poly in rings {
-        let n = poly.len();
-        if n < 3 {
-            continue
-        }
-        let mut j = n - 1;
-        for i in 0..n {
-            let c = poly[j];
-            let d = poly[i];
-            let (sx, sy) = (d.0 - c.0, d.1 - c.1);
-            let denom = rx * sy - ry * sx;
-            if denom.abs() > 1e-12 {
-                let (wx, wy) = (c.0 - a.0, c.1 - a.1);
-                let t = (wx * sy - wy * sx) / denom;
-                let u = (wx * ry - wy * rx) / denom;
-                if t > 1e-6 && t < 1.0 - 1e-6 && u >= -1e-6 && u <= 1.0 + 1e-6 {
-                    ts.push(t);
-                }
-            }
-            j = i;
-        }
-    }
-    ts.sort_by(|x, y| x.partial_cmp(y).unwrap_or(std::cmp::Ordering::Equal));
-    ts.dedup_by(|x, y| (*x - *y).abs() < 1e-5);
-    ts
 }
 
 /// A Hilbert space-filling curve over the polygon's bbox, **clipped to the polygon boundary** so the
