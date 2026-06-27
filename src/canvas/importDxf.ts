@@ -6,9 +6,27 @@ import { importDxfRaw } from '../core/wasm/shapes'
 import { nearestPen } from './importSvg'
 import { cornerNode, type Contour, type PathParams } from '../elements/shapes'
 
+/** Selectable units → millimetres per unit. DXF carries real dimensions; we import at actual size. */
+export const DXF_UNITS = [
+  { key: 'mm', label: 'Millimeters', mm: 1 },
+  { key: 'cm', label: 'Centimeters', mm: 10 },
+  { key: 'm', label: 'Meters', mm: 1000 },
+  { key: 'in', label: 'Inches', mm: 25.4 },
+  { key: 'ft', label: 'Feet', mm: 304.8 },
+] as const
+export type DxfUnit = (typeof DXF_UNITS)[number]['key']
+
+/** Map a `$INSUNITS` header code to one of our selectable units (others → millimetres). */
+export function unitFromInsunits(insunits: number): DxfUnit {
+  const m: Record<number, DxfUnit> = { 1: 'in', 2: 'ft', 4: 'mm', 5: 'cm', 6: 'm' }
+  return m[insunits] ?? 'mm'
+}
+
+export const unitScaleFor = (u: DxfUnit): number => DXF_UNITS.find((d) => d.key === u)!.mm
+
 export interface DxfImportOptions {
-  /** Longest side, in mm, to scale the import into (DXF units are unreliable). */
-  targetSize: number
+  /** Millimetres per DXF unit — imports at actual size. */
+  unitScale: number
   /** Map each entity colour to the nearest palette pen (else everything on pen 0). */
   colorToPen: boolean
   /** Chain segments that share endpoints into polylines, so a drawing exported as thousands of loose
@@ -18,11 +36,11 @@ export interface DxfImportOptions {
   groupName?: string
 }
 
-export const defaultDxfImportOptions = (): DxfImportOptions => ({ targetSize: 150, colorToPen: true, merge: true })
+export const defaultDxfImportOptions = (): DxfImportOptions => ({ unitScale: 1, colorToPen: true, merge: true })
 
 /** Import a DXF's bytes as native path elements. Returns the number of elements created. */
 export function addDxfElements(bytes: Uint8Array, opts: DxfImportOptions): number {
-  const shapes = importDxfRaw(bytes, opts.targetSize, opts.merge)
+  const { shapes } = importDxfRaw(bytes, opts.unitScale, opts.merge)
   if (!shapes.length) return 0
   const profile = useDoc.getState().profile
 

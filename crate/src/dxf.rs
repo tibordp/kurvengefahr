@@ -1,9 +1,10 @@
 //! DXF import: a small hand-rolled parser for ASCII DXF, flattening entities to polyline contours
 //! and mirroring `svg.rs`'s output shape so the TS side builds `path` elements the same way. DXF is
 //! line art (no fills), so every entity becomes one open/closed contour carrying a colour (entity
-//! ACI 62, else its layer's). Coordinates are scaled to a target box and Y-flipped (DXF is Y-up, our
-//! page is Y-down); TS centres on the bed. Curves (arcs, circles, ellipses, polyline bulges, splines)
-//! are flattened here. Text, blocks (INSERT) and hatches are not imported.
+//! ACI 62, else its layer's). DXF carries real dimensions, so we import at actual size (mm = coord ×
+//! `unit_scale`, the caller's chosen unit, defaulting to the sniffed `$INSUNITS`) and Y-flip (DXF is
+//! Y-up, our page is Y-down); TS centres on the bed. Curves (arcs, circles, ellipses, polyline
+//! bulges, splines) are flattened here. Text, blocks (INSERT) and hatches are not imported.
 //!
 //! DXF is a flat stream of (group-code, value) line pairs. We pair them, split into records at each
 //! code-0 (a record = an entity/table entry + its fields), then walk records by section. A
@@ -15,14 +16,16 @@ use wasm_bindgen::prelude::*;
 #[derive(serde::Deserialize)]
 #[serde(default)]
 struct Params {
-    target_size: f32,
+    /// Millimetres per DXF unit. DXF carries real dimensions, so we import at actual size; the caller
+    /// picks the unit (defaulting to the sniffed `$INSUNITS`).
+    unit_scale: f32,
     /// Chain open segments that share endpoints into polylines (CAD often exports thousands of loose
     /// LINEs); without this a drawing becomes thousands of one-segment elements.
     merge: bool,
 }
 impl Default for Params {
     fn default() -> Self {
-        Self { target_size: 150.0, merge: true }
+        Self { unit_scale: 1.0, merge: true }
     }
 }
 
@@ -35,6 +38,9 @@ struct Out {
     ring_closed: Vec<u8>,
     shape_starts: Vec<u32>,
     colors: Vec<u32>,
+    /// The `$INSUNITS` header value (0 = unitless, 1 = inch, 4 = mm, …), so the dialog can default
+    /// the unit selector. 0 if absent.
+    insunits: u32,
 }
 
 #[wasm_bindgen]
@@ -63,6 +69,10 @@ impl DxfImport {
     #[wasm_bindgen(getter)]
     pub fn colors(&self) -> Vec<u32> {
         self.inner.colors.clone()
+    }
+    #[wasm_bindgen(getter)]
+    pub fn insunits(&self) -> u32 {
+        self.inner.insunits
     }
 }
 
@@ -296,6 +306,7 @@ pub fn import(bytes: &[u8], params_json: &str) -> DxfImport {
     let recs = records(&text);
 
     let mut section = String::new();
+    let mut insunits: u32 = 0;
     let mut layer_rgb: HashMap<String, u32> = HashMap::new();
     let mut rings: Vec<(Ring, bool, u32)> = Vec::new();
 
@@ -303,7 +314,19 @@ pub fn import(bytes: &[u8], params_json: &str) -> DxfImport {
     while i < recs.len() {
         let r = &recs[i];
         match r.typ.as_str() {
-            "SECTION" => section = r.s(2).unwrap_or("").to_string(),
+            "SECTION" => {
+                section = r.s(2).unwrap_or("").to_string();
+                if section == "HEADER" {
+                    // HEADER variables are fields of this record: a (9, "$INSUNITS") then a (70, n).
+                    for j in 0..r.fields.len() {
+                        if r.fields[j].0 == 9 && r.fields[j].1 == "$INSUNITS" {
+                            if let Some((70, v)) = r.fields.get(j + 1).map(|(c, v)| (*c, v)) {
+                                insunits = v.parse().unwrap_or(0);
+                            }
+                        }
+                    }
+                }
+            }
             "ENDSEC" => section.clear(),
             "LAYER" if section == "TABLES" => {
                 if let Some(name) = r.s(2) {
@@ -343,32 +366,18 @@ pub fn import(bytes: &[u8], params_json: &str) -> DxfImport {
         i += 1;
     }
 
-    // Scale to the target box (longest side), Y-flipped. TS centres on the bed.
-    let (mut x0, mut y0, mut x1, mut y1) = (f64::MAX, f64::MAX, f64::MIN, f64::MIN);
-    for (pts, _, _) in &rings {
-        for &(x, y) in pts {
-            x0 = x0.min(x);
-            y0 = y0.min(y);
-            x1 = x1.max(x);
-            y1 = y1.max(y);
-        }
-    }
-    if !x0.is_finite() {
-        return DxfImport { inner: Out::default() };
-    }
-    let span = (x1 - x0).max(y1 - y0).max(1e-6);
-    let scale = p.target_size as f64 / span;
-
-    // Scale + Y-flip into mm, then (optionally) chain shared-endpoint segments into polylines.
+    // Import at actual size: mm = DXF coord × unit_scale, Y-flipped (DXF is Y-up). TS centres on the
+    // bed. Then (optionally) chain shared-endpoint segments into polylines.
+    let s = p.unit_scale as f64;
     let mut mm: Vec<(Ring, bool, u32)> = rings
         .into_iter()
-        .map(|(pts, closed, rgb)| (pts.into_iter().map(|(x, y)| (x * scale, -y * scale)).collect(), closed, rgb))
+        .map(|(pts, closed, rgb)| (pts.into_iter().map(|(x, y)| (x * s, -y * s)).collect(), closed, rgb))
         .collect();
     if p.merge {
         mm = merge_chains(mm, 0.05);
     }
 
-    let mut out = Out::default();
+    let mut out = Out { insunits, ..Out::default() };
     out.ring_starts.push(0);
     out.shape_starts.push(0);
     for (pts, closed, rgb) in mm {
@@ -465,7 +474,7 @@ mod tests {
     #[test]
     fn imports_a_line_and_circle() {
         let dxf = "0\nSECTION\n2\nENTITIES\n0\nLINE\n8\n0\n10\n0\n20\n0\n11\n10\n21\n0\n0\nCIRCLE\n8\n0\n10\n5\n20\n5\n40\n2\n0\nENDSEC\n0\nEOF\n";
-        let res = import(dxf.as_bytes(), r#"{"target_size":100,"merge":false}"#);
+        let res = import(dxf.as_bytes(), r#"{"merge":false}"#);
         assert_eq!(res.inner.colors.len(), 2, "two entities → two shapes");
         assert_eq!(res.inner.ring_closed, vec![0, 1], "line open, circle closed");
         assert!(res.inner.xy.iter().all(|v| v.is_finite()));
@@ -482,11 +491,11 @@ mod tests {
             seg(10, 10, 0, 10),
             seg(0, 10, 0, 0),
         );
-        let res = import(dxf.as_bytes(), r#"{"target_size":100,"merge":true}"#);
+        let res = import(dxf.as_bytes(), r#"{"merge":true}"#);
         assert_eq!(res.inner.colors.len(), 1, "four segments merge into one polyline");
         assert_eq!(res.inner.ring_closed, vec![1], "the closed loop is detected");
 
-        let unmerged = import(dxf.as_bytes(), r#"{"target_size":100,"merge":false}"#);
+        let unmerged = import(dxf.as_bytes(), r#"{"merge":false}"#);
         assert_eq!(unmerged.inner.colors.len(), 4, "merge off keeps them separate");
     }
 
@@ -494,7 +503,7 @@ mod tests {
     fn closed_lwpolyline() {
         // A 3-vertex closed LWPOLYLINE → a closed ring.
         let dxf = "0\nSECTION\n2\nENTITIES\n0\nLWPOLYLINE\n90\n3\n70\n1\n10\n0\n20\n0\n10\n10\n20\n0\n10\n5\n20\n8\n0\nENDSEC\n0\nEOF\n";
-        let res = import(dxf.as_bytes(), r#"{"target_size":100}"#);
+        let res = import(dxf.as_bytes(), r#"{"merge":false}"#);
         assert_eq!(res.inner.colors.len(), 1);
         assert_eq!(res.inner.ring_closed, vec![1], "closed flag honoured");
     }

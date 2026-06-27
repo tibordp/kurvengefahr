@@ -156,16 +156,22 @@ export interface DxfImportShape {
   rgb: number
 }
 
-/** Parse a DXF into per-entity polyline contours (mm, longest side scaled to `targetSize`, Y-flipped
- *  to page orientation). Line art only -- colour → pen mapping is the caller's job. */
-export function importDxfRaw(bytes: Uint8Array, targetSize: number, merge: boolean): DxfImportShape[] {
-  const res = import_dxf(bytes, JSON.stringify({ target_size: targetSize, merge }))
+/** Parse a DXF into per-entity polyline contours at actual size (mm = coord × `unitScale`, Y-flipped
+ *  to page orientation). Line art only -- colour → pen mapping is the caller's job. `insunits` is the
+ *  sniffed `$INSUNITS` header value (0 if absent), so callers can default a unit selector. */
+export function importDxfRaw(
+  bytes: Uint8Array,
+  unitScale: number,
+  merge: boolean,
+): { shapes: DxfImportShape[]; insunits: number } {
+  const res = import_dxf(bytes, JSON.stringify({ unit_scale: unitScale, merge }))
   const xy = res.xy
   const ringStarts = res.ring_starts
   const ringClosed = res.ring_closed
   const shapeStarts = res.shape_starts
   const colors = res.colors
-  const out: DxfImportShape[] = []
+  const insunits = res.insunits
+  const shapes: DxfImportShape[] = []
   for (let s = 0; s < colors.length; s++) {
     const rings: SvgImportRing[] = []
     for (let r = shapeStarts[s]; r < shapeStarts[s + 1]; r++) {
@@ -173,8 +179,8 @@ export function importDxfRaw(bytes: Uint8Array, targetSize: number, merge: boole
       for (let i = ringStarts[r]; i < ringStarts[r + 1]; i++) points.push({ x: xy[i * 2], y: xy[i * 2 + 1] })
       rings.push({ points, closed: ringClosed[r] !== 0 })
     }
-    out.push({ rings, rgb: colors[s] })
+    shapes.push({ rings, rgb: colors[s] })
   }
   res.free()
-  return out
+  return { shapes, insunits }
 }
