@@ -59,8 +59,7 @@ export async function exportPng(pxPerMm?: number): Promise<void> {
   canvas.height = Math.max(1, Math.round(bed.height * scale))
   const ctx = canvas.getContext('2d')
   if (!ctx) return
-  ctx.fillStyle = '#ffffff'
-  ctx.fillRect(0, 0, canvas.width, canvas.height)
+  // Leave the background transparent (a fresh canvas is already clear; PNG keeps the alpha).
   ctx.lineCap = 'round'
   ctx.lineJoin = 'round'
   ctx.lineWidth = PEN_WIDTH_MM * scale

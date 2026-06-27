@@ -348,15 +348,14 @@ export const useDoc = create<DocStore>((set) => ({
   duplicateSelected: () =>
     set((state) => {
       const sel = new Set(state.selectedIds)
+      // Clone the whole element (preserving dash, name, … — not a hand-picked field list that silently
+      // drops things) with fresh ids and a small offset; group membership is dropped, like paste.
       const copies = state.elements
         .filter((e) => sel.has(e.id))
-        .map((el) => ({
-          id: crypto.randomUUID(),
-          type: el.type,
-          transform: { ...el.transform, x: el.transform.x + 5, y: el.transform.y + 5 },
-          params: structuredClone(el.params),
-          pen: el.pen,
-        }))
+        .map((el) => {
+          const { id: _id, groupId: _g, ...rest } = structuredClone(el)
+          return { ...rest, id: crypto.randomUUID(), transform: { ...rest.transform, x: rest.transform.x + 5, y: rest.transform.y + 5 } }
+        })
       if (!copies.length) return {}
       return { elements: [...state.elements, ...copies], selectedIds: copies.map((c) => c.id) }
     }),
