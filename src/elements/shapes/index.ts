@@ -10,6 +10,7 @@ export {
   defaultPathParams,
   cornerNode,
   pathOutlineStrokes,
+  weldContours,
   type PathParams,
   type PathNode,
   type Contour,

@@ -70,6 +70,106 @@ function contoursToFlat(contours: Contour[]): {
   return { flat, starts, closed }
 }
 
+/** Reverse a contour: nodes back-to-front, swapping each node's in/out handles. */
+function reverseContour(c: Contour): Contour {
+  return {
+    closed: c.closed,
+    nodes: c.nodes
+      .slice()
+      .reverse()
+      .map((n) => ({ x: n.x, y: n.y, hinX: n.houtX, hinY: n.houtY, houtX: n.hinX, houtY: n.hinY })),
+  }
+}
+
+/** Weld open contours whose endpoints coincide (within `tol` mm) into single continuous contours,
+ *  preserving Bézier handles; a chain that loops back is closed (so it can fill). Closed contours
+ *  pass through. Greedy from both ends, straightest continuation at a junction. */
+export function weldContours(contours: Contour[], tol = 0.1): Contour[] {
+  const out: Contour[] = []
+  const open: Contour[] = []
+  for (const c of contours) {
+    if (c.closed || c.nodes.length < 2) out.push(c)
+    else open.push(c)
+  }
+  if (open.length < 2) return contours
+
+  const key = (n: PathNode) => `${Math.round(n.x / tol)},${Math.round(n.y / tol)}`
+  // endpoint cell → [contour index, which end (0 = first node, 1 = last node)]
+  const ends = new Map<string, [number, 0 | 1][]>()
+  const push = (k: string, v: [number, 0 | 1]) => (ends.get(k) ?? ends.set(k, []).get(k)!).push(v)
+  open.forEach((c, i) => {
+    push(key(c.nodes[0]), [i, 0])
+    push(key(c.nodes[c.nodes.length - 1]), [i, 1])
+  })
+
+  const used = new Array(open.length).fill(false)
+  const norm = (x: number, y: number) => {
+    const l = Math.hypot(x, y) || 1
+    return { x: x / l, y: y / l }
+  }
+  // Pick the unused contour touching node `n` whose body best continues direction `dir`.
+  const next = (n: PathNode, dir: { x: number; y: number }): [number, 0 | 1] | null => {
+    const cands = (ends.get(key(n)) ?? []).filter(([i]) => !used[i])
+    if (!cands.length) return null
+    let best = cands[0]
+    let bestScore = -Infinity
+    for (const [i, e] of cands) {
+      const ns = open[i].nodes
+      const [a, b] = e === 0 ? [ns[0], ns[1]] : [ns[ns.length - 1], ns[ns.length - 2]]
+      const d = norm(b.x - a.x, b.y - a.y)
+      const score = d.x * dir.x + d.y * dir.y
+      if (score > bestScore) {
+        bestScore = score
+        best = [i, e]
+      }
+    }
+    return best
+  }
+
+  for (let seed = 0; seed < open.length; seed++) {
+    if (used[seed]) continue
+    used[seed] = true
+    let chain = open[seed].nodes.map((n) => ({ ...n }))
+    // Grow forward from the tail.
+    for (;;) {
+      const last = chain[chain.length - 1]
+      const prev = chain[chain.length - 2]
+      const hit = next(last, norm(last.x - prev.x, last.y - prev.y))
+      if (!hit) break
+      const [i, e] = hit
+      used[i] = true
+      const c = e === 1 ? reverseContour(open[i]) : open[i]
+      last.houtX = c.nodes[0].houtX
+      last.houtY = c.nodes[0].houtY
+      for (let k = 1; k < c.nodes.length; k++) chain.push({ ...c.nodes[k] })
+    }
+    // Grow backward from the head.
+    for (;;) {
+      const first = chain[0]
+      const second = chain[1]
+      const hit = next(first, norm(first.x - second.x, first.y - second.y))
+      if (!hit) break
+      const [i, e] = hit
+      used[i] = true
+      const c = e === 0 ? reverseContour(open[i]) : open[i]
+      const cl = c.nodes[c.nodes.length - 1]
+      first.hinX = cl.hinX
+      first.hinY = cl.hinY
+      chain = c.nodes.slice(0, -1).map((n) => ({ ...n })).concat(chain)
+    }
+    // Close if the chain looped back to its start.
+    let closed = false
+    if (chain.length >= 3 && key(chain[0]) === key(chain[chain.length - 1])) {
+      const tail = chain.pop()!
+      chain[0].hinX = tail.hinX
+      chain[0].hinY = tail.hinY
+      closed = true
+    }
+    out.push({ nodes: chain, closed })
+  }
+  return out
+}
+
 /** Tessellate the given contours' boundaries (one stroke per contour, in order), no hatch fill.
  *  Used by boolean ops to recover a path's rings independent of its fill/stroke style. */
 export function pathOutlineStrokes(contours: Contour[]): Geometry {

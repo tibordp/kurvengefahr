@@ -15,7 +15,7 @@ import { useLibrary } from './library'
 import { place, transformToMatrix, type Matrix } from '../core/pipeline/place'
 import type { DocSnapshot } from './persistence/schema'
 import type { Geometry, Point } from '../core/types'
-import { cornerNode, defaultHatch, pathOutlineStrokes } from '../elements/shapes'
+import { cornerNode, defaultHatch, pathOutlineStrokes, weldContours } from '../elements/shapes'
 import type { Contour, PathNode, PathParams, RectParams, EllipseParams, Hatch } from '../elements/shapes'
 import { rectGeometry, ellipseGeometry, booleanGeometry, simplifyPolyline, type Rings } from '../core/wasm/shapes'
 
@@ -217,6 +217,11 @@ interface DocStore {
    *  element's transform into its nodes so Bézier curves are preserved. Like booleans but open paths
    *  too; touching ends are welded by the optimizer at plot time. */
   joinSelected: () => void
+  /** Weld each selected path's open contours that share endpoints into single continuous contours
+   *  (closing any that loop), so an outline assembled from pieces can fill. Preserves Béziers. */
+  weldSelected: () => void
+  /** Break each selected multi-contour path into one path element per contour (release compound). */
+  breakApartSelected: () => void
   /** Add pasted elements (fresh ids, slight offset, group membership dropped); selects them and
    *  returns the new ids. Clipboard I/O lives in `store/clipboard.ts` (the real system clipboard). */
   addPasted: (elements: DocElement[]) => string[]
@@ -515,6 +520,43 @@ export const useDoc = create<DocStore>((set) => ({
       removed.forEach(dropFromCache)
       const elements = [...state.elements.filter((e) => !removed.has(e.id)), newEl]
       return { elements, groups: pruneGroups(elements, state.groups), selectedIds: [newEl.id] }
+    }),
+
+  weldSelected: () =>
+    set((state) => {
+      let changed = false
+      const elements = state.elements.map((el) => {
+        if (!state.selectedIds.includes(el.id) || el.type !== 'path') return el
+        const p = el.params as PathParams
+        const welded = weldContours(p.contours)
+        if (welded.length === p.contours.length) return el // nothing merged
+        changed = true
+        dropFromCache(el.id)
+        return { ...el, params: { ...p, contours: welded } }
+      })
+      return changed ? { elements } : {}
+    }),
+
+  breakApartSelected: () =>
+    set((state) => {
+      let changed = false
+      const created: string[] = []
+      const elements = state.elements.flatMap((el) => {
+        const p = el.params as PathParams
+        if (!state.selectedIds.includes(el.id) || el.type !== 'path' || p.contours.length < 2) return [el]
+        changed = true
+        dropFromCache(el.id)
+        return p.contours.map((c) => {
+          const id = crypto.randomUUID()
+          created.push(id)
+          return {
+            ...el,
+            id,
+            params: { ...p, contours: [c] },
+          } as DocElement
+        })
+      })
+      return changed ? { elements, selectedIds: created } : {}
     }),
 
   addPasted: (els) => {

@@ -21,6 +21,7 @@ import {
   Dices,
   Spline,
   Link2,
+  Ungroup,
 } from 'lucide-react'
 import { useDoc, type AlignEdge } from '../store/document'
 import { useUI } from '../store/ui'
@@ -469,6 +470,8 @@ function TextInspector({ id, params }: { id: string; params: TextParams }) {
 function PathInspector({ id, params }: { id: string; params: PathParams }) {
   const setParams = useDoc((s) => s.setParams)
   const simplifySelected = useDoc((s) => s.simplifySelected)
+  const weldSelected = useDoc((s) => s.weldSelected)
+  const breakApartSelected = useDoc((s) => s.breakApartSelected)
   const [tol, setTol] = useState('0.3')
   const nodeCount = params.contours.reduce((a, c) => a + c.nodes.length, 0)
   const anyClosed = params.contours.some((c) => c.closed)
@@ -513,6 +516,25 @@ function PathInspector({ id, params }: { id: string; params: PathParams }) {
           Simplify
         </Button>
       </div>
+      {params.contours.length > 1 && (
+        <div className="mt-1 grid grid-cols-2 gap-1">
+          {params.contours.some((c) => !c.closed) && (
+            <Button
+              title="Weld open contours that share endpoints into single contours (loops close, so they can fill)"
+              onClick={() => weldSelected()}
+            >
+              <Link2 size={15} /> Merge
+            </Button>
+          )}
+          <Button
+            className={params.contours.some((c) => !c.closed) ? '' : 'col-span-2'}
+            title="Break this compound path into one path per contour"
+            onClick={() => breakApartSelected()}
+          >
+            <Ungroup size={15} /> Break apart
+          </Button>
+        </div>
+      )}
       {anyClosed && (
         <HatchControls
           hatch={params.hatch}

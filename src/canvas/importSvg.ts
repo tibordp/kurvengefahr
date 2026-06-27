@@ -82,6 +82,25 @@ function hatchFor(shape: SvgImportShape, opts: SvgImportOptions): Hatch {
   return { pattern: opts.fillStyle, spacing: Math.max(0.3, spacing), angle: 45, stroke: true }
 }
 
+/** Collapse stroke-only path specs (`hatch === 'none'`) into one multi-contour path per pen, so a
+ *  line-art import becomes a few editable compound paths instead of hundreds of elements. Filled
+ *  shapes are left alone — merging them would let even-odd punch holes where they overlap. */
+export function mergePathSpecsByPen<T extends { type: string; params: PathParams; pen: number }>(specs: T[]): T[] {
+  const out: T[] = []
+  const byPen = new Map<number, { spec: T; contours: Contour[] }>()
+  for (const s of specs) {
+    if (s.params.hatch.pattern === 'none') {
+      const g = byPen.get(s.pen)
+      if (g) g.contours.push(...s.params.contours)
+      else byPen.set(s.pen, { spec: s, contours: [...s.params.contours] })
+    } else {
+      out.push(s)
+    }
+  }
+  for (const { spec, contours } of byPen.values()) out.push({ ...spec, params: { ...spec.params, contours } })
+  return out
+}
+
 /** Import an SVG's bytes as native path elements. Returns the number of elements created. */
 export function addSvgElements(bytes: Uint8Array, opts: SvgImportOptions): number {
   const shapes = importSvgRaw(bytes, opts.occlude, opts.targetSize, opts.pxToMm)
@@ -119,9 +138,11 @@ export function addSvgElements(bytes: Uint8Array, opts: SvgImportOptions): numbe
     })
     .filter((s): s is NonNullable<typeof s> => s !== null)
 
-  if (!specs.length) return 0
+  // Stroke-only shapes collapse to one compound path per pen (fills stay individual).
+  const merged = mergePathSpecsByPen(specs)
+  if (!merged.length) return 0
   // Collect the import into one collapsed group so a busy SVG doesn't flood the elements tree.
-  const group = specs.length > 1 ? { name: opts.groupName || 'SVG import', collapsed: true } : undefined
-  useDoc.getState().addElements(specs, group)
-  return specs.length
+  const group = merged.length > 1 ? { name: opts.groupName || 'SVG import', collapsed: true } : undefined
+  useDoc.getState().addElements(merged, group)
+  return merged.length
 }

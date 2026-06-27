@@ -3,7 +3,7 @@
 // result on the page (one undo step). DXF is line art, so paths are imported outline-only (no hatch).
 import { useDoc } from '../store/document'
 import { importDxfRaw } from '../core/wasm/shapes'
-import { nearestPen } from './importSvg'
+import { nearestPen, mergePathSpecsByPen } from './importSvg'
 import { cornerNode, type Contour, type PathParams } from '../elements/shapes'
 
 /** Selectable units → millimetres per unit. DXF carries real dimensions; we import at actual size. */
@@ -75,8 +75,10 @@ export function addDxfElements(bytes: Uint8Array, opts: DxfImportOptions): numbe
     })
     .filter((s): s is NonNullable<typeof s> => s !== null)
 
-  if (!specs.length) return 0
-  const group = specs.length > 1 ? { name: opts.groupName || 'DXF import', collapsed: true } : undefined
-  useDoc.getState().addElements(specs, group)
-  return specs.length
+  // DXF is line art — collapse to one compound path per pen.
+  const merged = mergePathSpecsByPen(specs)
+  if (!merged.length) return 0
+  const group = merged.length > 1 ? { name: opts.groupName || 'DXF import', collapsed: true } : undefined
+  useDoc.getState().addElements(merged, group)
+  return merged.length
 }

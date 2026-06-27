@@ -56,6 +56,10 @@ function buildCommands(): Command[] {
   }
   add('paste', 'Paste', 'Edit', () => void pasteFromClipboard())
   if (sel.length >= 2) add('join', 'Join into one path', 'Combine', doc.joinSelected)
+  if (sel.some((e) => e.type === 'path' && (e.params as PathParams).contours.some((c) => !c.closed)))
+    add('weld', 'Merge open contours', 'Combine', doc.weldSelected)
+  if (sel.some((e) => e.type === 'path' && (e.params as PathParams).contours.length > 1))
+    add('break', 'Break apart path', 'Combine', doc.breakApartSelected)
   if (sel.length >= 2) add('group', 'Group selection', 'Arrange', () => doc.createGroup(doc.selectedIds))
   if (groupIds.length) add('ungroup', 'Ungroup', 'Arrange', () => groupIds.forEach(doc.ungroup))
   if (sel.some((e) => e.type !== 'path')) add('to-path', 'Convert to path', 'Arrange', () => doc.convertToPath())
