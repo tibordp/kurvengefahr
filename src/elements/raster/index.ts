@@ -14,6 +14,7 @@ import { registerElement } from '../registry'
 /** Stylization method. Each maps to a Rust routine in `crate/src/raster/`. */
 export type RasterMethod =
   | 'contours' // faithful outline tracing
+  | 'centerline' // skeleton/centreline tracing for line art (one stroke per line)
   | 'contourmap' // topographic iso-tone lines
   | 'hatch' // engraving-style tonal cross-hatch
   | 'scanlines' // squiggle scanlines (wiggle ∝ darkness)

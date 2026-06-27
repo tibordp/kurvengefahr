@@ -514,6 +514,7 @@ function SliderNum({
 /** Human label for each stylization method (drives the picker). */
 const METHOD_LABELS: Record<RasterMethod, string> = {
   contours: 'Outline tracing',
+  centerline: 'Centreline (line art)',
   contourmap: 'Topographic lines',
   hatch: 'Tonal hatching',
   scanlines: 'Squiggle scanlines',
@@ -549,18 +550,22 @@ function RasterInspector({ id, params }: { id: string; params: RasterParams }) {
       </Field>
 
       {/* --- per-method controls --- */}
-      {m === 'contours' && (
+      {(m === 'contours' || m === 'centerline') && (
         <>
           <SliderNum label="Threshold" min={0} max={255} step={1} value={params.threshold} hardMax int
             title="Luma cutoff: pixels darker than this become ink. Lower = less ink, higher = more."
             onChange={(v) => up({ threshold: v })} />
           <SliderNum label="Smoothing (mm)" min={0} max={5} step={0.1} value={params.simplifyTol}
-            title="Elastic-band smoothing strength: how far (mm) the traced line may be pulled taut from the pixel edge. 0 = faithful/jagged; higher = smoother and simpler. Sharp corners are kept."
+            title={m === 'centerline'
+              ? 'Simplify the traced centrelines (mm). Higher = smoother and fewer points.'
+              : 'Elastic-band smoothing strength: how far (mm) the traced line may be pulled taut from the pixel edge. 0 = faithful/jagged; higher = smoother and simpler. Sharp corners are kept.'}
             onChange={(v) => up({ simplifyTol: v })} />
-          <SliderNum label="Despeckle (px²)" min={0} max={100} step={1} value={params.minArea} int
-            title="Drop traced contours smaller than this many pixels² (removes specks)."
-            onChange={(v) => up({ minArea: v })} />
         </>
+      )}
+      {m === 'contours' && (
+        <SliderNum label="Despeckle (px²)" min={0} max={100} step={1} value={params.minArea} int
+          title="Drop traced contours smaller than this many pixels² (removes specks)."
+          onChange={(v) => up({ minArea: v })} />
       )}
 
       {m === 'contourmap' && (

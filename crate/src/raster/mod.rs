@@ -17,6 +17,7 @@
 //! - **flowfield** — streamlines that flow along the image's edges.
 //! - **spiral** — one Archimedean spiral, radially modulated by darkness.
 
+mod centerline;
 mod contourmap;
 mod contours;
 mod flow;
@@ -45,6 +46,7 @@ pub fn vectorize(rgba: &[u8], width: u32, height: u32, params: &str) -> Vec<Stro
     }
     let grid = Grid::build(rgba, w, h, p.target_w_mm, p.target_h_mm, p.invert);
     match p.method.as_str() {
+        "centerline" => centerline::centerline(&grid, &p),
         "contourmap" => contourmap::contourmap(&grid, &p),
         "hatch" => tone::hatch(&grid, &p),
         "scanlines" => scanlines::scanlines(&grid, &p),
