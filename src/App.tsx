@@ -5,6 +5,7 @@ import { Inspector } from './ui/Inspector'
 import { HelpDialog } from './ui/HelpDialog'
 import { SvgImportDialog } from './ui/SvgImportDialog'
 import { ExportDialog } from './ui/ExportDialog'
+import { CommandPalette } from './ui/CommandPalette'
 import { Canvas } from './canvas/Canvas'
 import { PreviewControls } from './ui/PreviewControls'
 import { StatusBar } from './ui/StatusBar'
@@ -85,6 +86,7 @@ export function App() {
       <HelpDialog />
       <SvgImportDialog />
       <ExportDialog />
+      <CommandPalette />
     </div>
   )
 }

@@ -93,6 +93,14 @@ export const SHORTCUT_GROUPS: { title: string; items: ShortcutItem[] }[] = [
     ],
   },
   {
+    title: 'View',
+    items: [
+      { keys: [MOD_KEY, 'K'], label: 'Command palette' },
+      { keys: ['Shift', '1'], label: 'Fit everything in view' },
+      { keys: ['Shift', '2'], label: 'Fit selection in view' },
+    ],
+  },
+  {
     title: 'Output',
     items: [
       { keys: [MOD_KEY, 'S'], label: 'Generate & download G-code' },

@@ -56,6 +56,7 @@ export function Canvas() {
   const vy = useViewport((s) => s.y)
   const setViewport = useViewport((s) => s.setViewport)
   const setFit = useViewport((s) => s.setFit)
+  const fitNonce = useViewport((s) => s.fitNonce)
   const setCursor = useCursor((s) => s.setCursor)
   const clearCursor = useCursor((s) => s.clear)
 
@@ -99,6 +100,44 @@ export function Canvas() {
       setViewport(clampViewport(useViewport.getState(), size.w, size.h, bed.width, bed.height))
     }
   }, [size.w, size.h, bed.width, bed.height, setViewport, setFit])
+
+  // Fit-to-view requests (from shortcuts / command palette). The Canvas owns the host size, so the
+  // viewport store just bumps a nonce and we compute the framing here.
+  useEffect(() => {
+    if (!fitNonce || !size.w || !size.h) return
+    const { fitMode } = useViewport.getState()
+    const { elements, selectedIds } = useDoc.getState()
+    const targets =
+      fitMode === 'selection' ? elements.filter((e) => selectedIds.includes(e.id)) : elements
+    let x0 = Infinity
+    let y0 = Infinity
+    let x1 = -Infinity
+    let y1 = -Infinity
+    for (const el of targets)
+      for (const s of place(generateLocal(el), el.transform))
+        for (const p of s.points) {
+          if (p.x < x0) x0 = p.x
+          if (p.y < y0) y0 = p.y
+          if (p.x > x1) x1 = p.x
+          if (p.y > y1) y1 = p.y
+        }
+    // Fit-all also includes the bed; an empty/selection-less request falls back to the bed.
+    if (fitMode === 'all' || !Number.isFinite(x0)) {
+      x0 = Math.min(Number.isFinite(x0) ? x0 : 0, 0)
+      y0 = Math.min(Number.isFinite(y0) ? y0 : 0, 0)
+      x1 = Math.max(Number.isFinite(x1) ? x1 : bed.width, bed.width)
+      y1 = Math.max(Number.isFinite(y1) ? y1 : bed.height, bed.height)
+    }
+    const bw = Math.max(1, x1 - x0)
+    const bh = Math.max(1, y1 - y0)
+    const scale = clamp(Math.min(size.w / bw, size.h / bh) * 0.92, MIN_SCALE, MAX_SCALE)
+    const cx = (x0 + x1) / 2
+    const cy = (y0 + y1) / 2
+    setViewport(
+      clampViewport({ scale, x: size.w / 2 - scale * cx, y: size.h / 2 - scale * cy }, size.w, size.h, bed.width, bed.height),
+    )
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fitNonce])
 
   // Track Space for pan mode (ignored while typing).
   useEffect(() => {

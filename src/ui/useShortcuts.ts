@@ -9,6 +9,8 @@ import { usePreview } from '../store/preview'
 import { exportGcode } from '../output/export'
 import { undo, redo } from '../store/history'
 import { deleteSelectedNodes, clearNodeSelection } from '../canvas/nodeSelection'
+import { useCommandPalette } from '../store/commandPalette'
+import { useViewport } from '../store/viewport'
 import { TOOL_KEYS } from './shortcuts'
 
 function isTyping(target: EventTarget | null): boolean {
@@ -31,6 +33,13 @@ export function useShortcuts(): void {
 
       // While the Help dialog owns the screen, swallow the rest (it handles its own Esc/Tab).
       if (useUI.getState().helpOpen) return
+
+      // ⌘/Ctrl+K — command palette (works even from a focused field).
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
+        e.preventDefault()
+        useCommandPalette.getState().toggle()
+        return
+      }
 
       // ⌘/Ctrl+S — generate & download G-code (overrides the browser's save).
       if ((e.metaKey || e.ctrlKey) && (e.key === 's' || e.key === 'S')) {
@@ -86,6 +95,18 @@ export function useShortcuts(): void {
         const p = usePreview.getState()
         if (p.dist >= (p.toolpath?.total ?? 0)) p.setDist(0) // replay from start
         p.setPlaying(!p.playing)
+        return
+      }
+
+      // Fit view: Shift+1 (everything) / Shift+2 (selection).
+      if (e.shiftKey && e.code === 'Digit1') {
+        e.preventDefault()
+        useViewport.getState().requestFit('all')
+        return
+      }
+      if (e.shiftKey && e.code === 'Digit2') {
+        e.preventDefault()
+        useViewport.getState().requestFit('selection')
         return
       }
 

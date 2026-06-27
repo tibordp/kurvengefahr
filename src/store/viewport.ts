@@ -13,6 +13,10 @@ interface ViewportStore {
   fit: number
   setViewport: (v: { scale: number; x: number; y: number }) => void
   setFit: (fit: number) => void
+  /** Bumped to ask the Canvas (which holds the host size) to fit `fitMode` into view. */
+  fitNonce: number
+  fitMode: 'all' | 'selection'
+  requestFit: (mode: 'all' | 'selection') => void
 }
 
 export const useViewport = create<ViewportStore>((set) => ({
@@ -22,6 +26,9 @@ export const useViewport = create<ViewportStore>((set) => ({
   fit: 1,
   setViewport: (v) => set(v),
   setFit: (fit) => set({ fit }),
+  fitNonce: 0,
+  fitMode: 'all',
+  requestFit: (mode) => set((s) => ({ fitMode: mode, fitNonce: s.fitNonce + 1 })),
 }))
 
 interface CursorStore {

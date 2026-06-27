@@ -49,6 +49,8 @@ interface DocsStore {
   deleteDocument: (id: string) => void
   renameActive: (name: string) => void
   duplicateActive: () => void
+  /** Open a new document containing copies of the current selection (this tab switches to it). */
+  duplicateSelectionToNewDoc: () => void
   /** Bind a fresh document to this tab from imported content. */
   loadImported: (name: string, snapshot: DocSnapshot) => void
 
@@ -112,6 +114,24 @@ export const useDocuments = create<DocsStore>((set, get) => ({
     set({ activeId: id, activeName: name }) // working canvas (useDoc) is unchanged — just a new identity
     lastContent = null
     persistActive({ force: true })
+  },
+
+  duplicateSelectionToNewDoc: () => {
+    const { elements, selectedIds, profile } = useDoc.getState()
+    const sel = elements.filter((e) => selectedIds.includes(e.id))
+    if (!sel.length) return
+    const cloned = sel.map((e) => {
+      const { groupId: _g, ...rest } = structuredClone(e)
+      return { ...rest, id: crypto.randomUUID() }
+    })
+    const base = get().activeName.trim() || 'Untitled'
+    get().loadImported(`${base} copy`, {
+      elements: cloned,
+      profile: structuredClone(profile),
+      selectedIds: cloned.map((c) => c.id),
+      fiducial: null,
+      groups: [],
+    })
   },
 
   loadImported: (name, snapshot) => {
