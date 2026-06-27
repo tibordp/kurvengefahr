@@ -50,9 +50,15 @@ impl Default for Params {
 // ---- Hershey ------------------------------------------------------------------------------------
 
 struct HGlyph {
-    strokes: Vec<Vec<(f32, f32)>>, // Hershey units, y-down
-    advance: f32,
+    strokes: Vec<Vec<(f32, f32)>>, // Hershey units, y-down (drawn at raw coords — the left bearing
+    advance: f32,                  // baked into them is what spaces the glyphs)
 }
+
+/// The Hershey glyph coordinates are scaled by this factor relative to the advance unit `o`, so the
+/// horizontal advance per glyph is `o * 1.68` (matches the reference hersheytext renderer). The word
+/// space uses the same factor on a default advance.
+const HERSHEY_ADV_MUL: f32 = 1.68;
+const HERSHEY_SPACE_O: f32 = 10.0;
 
 #[derive(serde::Deserialize)]
 struct RawFont {
@@ -227,7 +233,6 @@ fn hershey_layout(p: &Params) -> Vec<Stroke> {
         };
         let scale = p.size / HERSHEY_EM;
         let line_h = p.size * p.line_spacing;
-        let space = 16.0 * scale; // Hershey has no space glyph
         let glyph_for = |c: char| -> Option<&HGlyph> {
             let code = c as u32;
             if (33..=127).contains(&code) {
@@ -236,11 +241,12 @@ fn hershey_layout(p: &Params) -> Vec<Stroke> {
                 None
             }
         };
-        let line_width = |line: &str| -> f32 {
-            line.chars().fold(0.0, |w, c| {
-                w + glyph_for(c).map_or(space, |g| g.advance * scale) + p.letter_spacing
-            })
+        // Advance per glyph = o * 1.68 (coords are scaled relative to the advance unit); word space
+        // uses a default advance. Glyphs draw at raw coords so their built-in left bearing spaces them.
+        let advance = |c: char| -> f32 {
+            glyph_for(c).map_or(HERSHEY_SPACE_O, |g| g.advance) * HERSHEY_ADV_MUL * scale + p.letter_spacing
         };
+        let line_width = |line: &str| line.chars().map(advance).sum::<f32>();
         let mut out = Vec::new();
         for (li, line) in p.text.split('\n').enumerate() {
             let top = li as f32 * line_h;
@@ -252,10 +258,8 @@ fn hershey_layout(p: &Params) -> Vec<Stroke> {
                             s.iter().map(|&(x, y)| Point { x: pen + x * scale, y: top + y * scale, pressure: 1.0 }).collect(),
                         ));
                     }
-                    pen += g.advance * scale + p.letter_spacing;
-                } else {
-                    pen += space + p.letter_spacing;
                 }
+                pen += advance(c);
             }
         }
         out
