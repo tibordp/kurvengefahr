@@ -7,6 +7,7 @@ import {
   tessellate_path,
   simplify_polyline,
   split_cubic,
+  text,
   hatch,
   concentric,
   boolean,
@@ -52,6 +53,12 @@ export function pathGeometry(
 /** RDP-simplify a flat [x0,y0,…] polyline; returns the kept points, flat. */
 export function simplifyPolyline(xy: Float32Array, tol: number): Float32Array {
   return simplify_polyline(xy, tol)
+}
+
+/** Lay out text as geometry. `paramsJson` = {text, mode, font, size, letter_spacing, line_spacing,
+ *  align}. single mode → centreline strokes; outline mode → closed glyph contours. */
+export function textGeometry(paramsJson: string): Geometry {
+  return decode(text(paramsJson))
 }
 
 /** Split the cubic between two path nodes at `t` (de Casteljau), for inserting a node mid-segment.

@@ -5,6 +5,7 @@
 import {
   MousePointer2,
   Signature,
+  Type,
   Minus,
   Square,
   Circle,
@@ -25,6 +26,7 @@ export const MOD_KEY = isApple ? '⌘' : 'Ctrl'
 export const TOOLS: { tool: Tool; icon: LucideIcon; label: string; key: string }[] = [
   { tool: 'select', icon: MousePointer2, label: 'Select', key: 'V' },
   { tool: 'handwriting', icon: Signature, label: 'Handwriting', key: 'T' },
+  { tool: 'text', icon: Type, label: 'Text', key: 'Y' },
   { tool: 'line', icon: Minus, label: 'Line', key: 'L' },
   { tool: 'rect', icon: Square, label: 'Rectangle', key: 'R' },
   { tool: 'ellipse', icon: Circle, label: 'Ellipse', key: 'O' },

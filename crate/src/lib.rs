@@ -23,6 +23,7 @@ mod model;
 mod raster;
 mod shapes;
 mod svg;
+mod text;
 mod typeset;
 
 use std::cell::RefCell;
@@ -169,6 +170,14 @@ pub fn tessellate_path(nodes: &[f32], contour_starts: &[u32], closed: &[u8], tol
         }));
     }
     GeometryBuffers::from_strokes(&strokes)
+}
+
+/// Lay out text as strokes. `params` is JSON (`{text, mode, font, size, letter_spacing,
+/// line_spacing, align}`). mode `single` = Hershey single-stroke centrelines; `outline` = closed
+/// glyph contours (the element hatch-fills them even-odd). `size` is the em in mm.
+#[wasm_bindgen]
+pub fn text(params: &str) -> GeometryBuffers {
+    GeometryBuffers::from_strokes(&text::text(params))
 }
 
 /// Ramer–Douglas–Peucker simplification of a flat `[x0,y0,…]` polyline (for freehand capture).

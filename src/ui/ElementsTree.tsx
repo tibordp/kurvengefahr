@@ -13,6 +13,7 @@ import {
   Ungroup,
   Search,
   Signature,
+  Type,
   Square,
   Circle,
   Spline,
@@ -25,6 +26,7 @@ import { useHover } from '../store/hover'
 import type { DocElement } from '../core/types'
 import type { HandwritingParams } from '../elements/handwriting'
 import type { PathParams } from '../elements/shapes'
+import type { TextParams } from '../elements/text'
 import { SectionTitle, controlClass, cx } from './primitives'
 
 /** A label derived from the element's content, used when it has no user-given name. */
@@ -33,6 +35,10 @@ function derivedName(el: DocElement): string {
     const text = (el.params as HandwritingParams).text.replace(/\s+/g, ' ').trim()
     if (!text) return 'Handwriting (empty)'
     return text.length > 20 ? `“${text.slice(0, 20)}…”` : `“${text}”`
+  }
+  if (el.type === 'text') {
+    const t = (el.params as TextParams).text.replace(/\s+/g, ' ').trim()
+    return t ? (t.length > 20 ? `${t.slice(0, 20)}…` : t) : 'Text'
   }
   if (el.type === 'rect') return 'Rectangle'
   if (el.type === 'ellipse') return 'Ellipse'
@@ -50,6 +56,7 @@ const labelOf = (el: DocElement) => el.name ?? derivedName(el)
 
 const TYPE_ICON: Record<string, LucideIcon> = {
   handwriting: Signature,
+  text: Type,
   rect: Square,
   ellipse: Circle,
   path: Spline,

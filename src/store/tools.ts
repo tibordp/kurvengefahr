@@ -7,6 +7,7 @@ import { create } from 'zustand'
 export type Tool =
   | 'select'
   | 'handwriting'
+  | 'text'
   | 'line'
   | 'rect'
   | 'ellipse'

@@ -15,6 +15,7 @@ import {
   defaultPathParams,
   type PathNode,
 } from '../elements/shapes'
+import { defaultTextParams } from '../elements/text'
 import { simplifyPolyline } from '../core/wasm/shapes'
 import { snap } from './snap'
 
@@ -153,6 +154,9 @@ export function drawPointerDown(p: Pt, mods: Mods): void {
     setDraft({ kind: 'freehand', pts: [sp] })
   } else if (tool === 'handwriting') {
     useDoc.getState().addHandwriting(undefined, sp)
+    useTools.getState().setTool('select')
+  } else if (tool === 'text') {
+    useDoc.getState().addElement('text', defaultTextParams(), sp)
     useTools.getState().setTool('select')
   } else if (tool === 'fiducial') {
     // Singleton: placing simply sets (or moves) the one document fiducial.

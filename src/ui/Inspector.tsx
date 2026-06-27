@@ -36,6 +36,13 @@ import type { Pen } from '../core/types'
 import type { HandwritingParams } from '../elements/handwriting'
 import { SEEDED_METHODS, type RasterParams, type RasterMethod } from '../elements/raster'
 import type { RectParams, EllipseParams, PathParams, Hatch, HatchPattern } from '../elements/shapes'
+import {
+  HERSHEY_FONTS,
+  OUTLINE_FONTS,
+  type TextParams,
+  type TextMode,
+  type TextAlign,
+} from '../elements/text'
 import { Button, IconButton, Field, SectionTitle, Banner, controlClass, textareaClass, cx } from './primitives'
 import { MOD_KEY } from './shortcuts'
 import { ElementsTree } from './ElementsTree'
@@ -317,6 +324,59 @@ function EllipseInspector({ id, params }: { id: string; params: EllipseParams })
       <Num label="Radius X (mm)" value={params.rx} step={1} onChange={(v) => up({ rx: Math.max(0, v) })} />
       <Num label="Radius Y (mm)" value={params.ry} step={1} onChange={(v) => up({ ry: Math.max(0, v) })} />
       <HatchControls hatch={params.hatch} onChange={(h) => up({ hatch: h })} />
+    </>
+  )
+}
+
+function TextInspector({ id, params }: { id: string; params: TextParams }) {
+  const setParams = useDoc((s) => s.setParams)
+  const up = (patch: Partial<TextParams>) => setParams(id, { ...params, ...patch })
+  const fonts = params.mode === 'outline' ? OUTLINE_FONTS : HERSHEY_FONTS
+  const setMode = (mode: TextMode) => {
+    // Font keys differ per mode; reset to that mode's default if the current one doesn't apply.
+    const list = mode === 'outline' ? OUTLINE_FONTS : HERSHEY_FONTS
+    const font = list.some((f) => f.key === params.font) ? params.font : list[0].key
+    up({ mode, font })
+  }
+  return (
+    <>
+      <SectionTitle>Text</SectionTitle>
+      <textarea
+        className={cx(textareaClass, 'min-h-[3.5rem]')}
+        value={params.text}
+        placeholder="Type text…"
+        onChange={(e) => up({ text: e.target.value })}
+      />
+      <Field label="Style">
+        <select className={controlClass} value={params.mode} onChange={(e) => setMode(e.target.value as TextMode)}>
+          <option value="single">Single-line (plotter)</option>
+          <option value="outline">Outline</option>
+        </select>
+      </Field>
+      <Field label="Font">
+        <select className={controlClass} value={params.font} onChange={(e) => up({ font: e.target.value })}>
+          {fonts.map((f) => (
+            <option key={f.key} value={f.key}>
+              {f.name}
+            </option>
+          ))}
+        </select>
+      </Field>
+      <Num label="Size (mm)" value={params.size} step={1} onChange={(v) => up({ size: Math.max(0.5, v) })} />
+      <Num label="Letter spacing (mm)" value={params.letterSpacing} step={0.5}
+        onChange={(v) => up({ letterSpacing: v })} />
+      <Num label="Line spacing" value={params.lineSpacing} step={0.1}
+        onChange={(v) => up({ lineSpacing: Math.max(0.5, v) })} />
+      <Field label="Align">
+        <select className={controlClass} value={params.align} onChange={(e) => up({ align: e.target.value as TextAlign })}>
+          <option value="left">Left</option>
+          <option value="center">Center</option>
+          <option value="right">Right</option>
+        </select>
+      </Field>
+      {params.mode === 'outline' && (
+        <HatchControls hatch={params.hatch} onChange={(h) => up({ hatch: h })} />
+      )}
     </>
   )
 }
@@ -815,6 +875,7 @@ function ElementSection() {
       {element.type === 'ellipse' && (
         <EllipseInspector id={element.id} params={element.params as EllipseParams} />
       )}
+      {element.type === 'text' && <TextInspector id={element.id} params={element.params as TextParams} />}
       {element.type === 'path' && <PathInspector id={element.id} params={element.params as PathParams} />}
       {element.type === 'raster' && <RasterInspector id={element.id} params={element.params as RasterParams} />}
 
