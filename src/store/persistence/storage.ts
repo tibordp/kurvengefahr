@@ -1,7 +1,8 @@
 // Low-level localStorage / sessionStorage access for documents. Pure leaf module (no store imports)
 // so both the documents store and the boot/sync controller can use it without import cycles. All
 // reads go through the tolerant schema loaders and never throw.
-import { loadStoredDoc, serializeDoc, type StoredDoc } from './schema'
+import { loadStoredDoc, serializeDoc, sanitizeProfile, type StoredDoc } from './schema'
+import type { MachineProfile } from '../../core/types'
 
 export interface DocMeta {
   id: string
@@ -12,6 +13,26 @@ export interface DocMeta {
 export const INDEX_KEY = 'kg-docs'
 export const ACTIVE_KEY = 'kg-active' // sessionStorage: this tab's active document id
 export const docKey = (id: string) => `kg-doc:${id}`
+export const DEFAULT_PROFILE_KEY = 'kg-default-profile' // last-used profile, seeds new documents
+
+/** Remember the last-edited machine profile so new documents start from it instead of the preset. */
+export function writeDefaultProfile(profile: MachineProfile): void {
+  try {
+    localStorage.setItem(DEFAULT_PROFILE_KEY, JSON.stringify(profile))
+  } catch {
+    /* storage full / unavailable — new docs just fall back to the preset */
+  }
+}
+
+/** The remembered default profile (sanitized), or null if none stored / unreadable. */
+export function readDefaultProfile(): MachineProfile | null {
+  try {
+    const raw = localStorage.getItem(DEFAULT_PROFILE_KEY)
+    return raw ? sanitizeProfile(JSON.parse(raw)) : null
+  } catch {
+    return null
+  }
+}
 
 export function readDoc(id: string): StoredDoc | null {
   try {

@@ -12,6 +12,7 @@ import '../elements/generative' // side-effect: registers the generative element
 import '../elements/raster' // side-effect: registers the raster image type before persistence boot
 import '../elements/clip' // side-effect: registers the clip container element before persistence boot
 import { PRUSA_MK4, findBuiltinProfile } from './profiles'
+import { writeDefaultProfile } from './persistence/storage'
 import { useLibrary } from './library'
 import { place, transformToMatrix, composeTransforms, type Matrix } from '../core/pipeline/place'
 import { clipLocalGeometry } from '../core/pipeline/clipGeometry'
@@ -767,14 +768,21 @@ export const useDoc = create<DocStore>((set) => ({
 
   setFiducial: (pt) => set({ fiducial: pt }),
 
-  setProfile: (patch) => set((state) => ({ profile: { ...state.profile, ...patch } })),
+  // A profile edit (or switch) also becomes the sticky default for new documents.
+  setProfile: (patch) => {
+    const profile = { ...useDoc.getState().profile, ...patch }
+    set({ profile })
+    writeDefaultProfile(profile)
+  },
 
-  selectProfile: (id) =>
-    set(() => {
-      const source =
-        findBuiltinProfile(id) ?? useLibrary.getState().customProfiles.find((p) => p.id === id)
-      return source ? { profile: structuredClone(source) } : {}
-    }),
+  selectProfile: (id) => {
+    const source =
+      findBuiltinProfile(id) ?? useLibrary.getState().customProfiles.find((p) => p.id === id)
+    if (!source) return
+    const profile = structuredClone(source)
+    set({ profile })
+    writeDefaultProfile(profile)
+  },
 
   loadDocument: (snapshot) =>
     set({

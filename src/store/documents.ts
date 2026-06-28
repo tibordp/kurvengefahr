@@ -24,7 +24,9 @@ import { deleteImage, listImageIds, referencedImageIds } from './images'
 
 const emptySnapshot = (): DocSnapshot => ({
   elements: [],
-  profile: structuredClone(PRUSA_MK4),
+  // New documents inherit the last-edited machine profile (sticky across docs), falling back to the
+  // preset on first run.
+  profile: storage.readDefaultProfile() ?? structuredClone(PRUSA_MK4),
   selectedIds: [],
   fiducial: null,
   groups: [],
