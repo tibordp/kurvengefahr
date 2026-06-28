@@ -7,6 +7,7 @@ const DEFAULT_PENS = [{ id: 0, name: 'Pen 1', color: '#1a1a1a' }]
 export const PRUSA_MK4: MachineProfile = {
   id: 'prusa-mk4',
   name: 'Prusa MK4 + pen holder',
+  kind: 'prusa',
   bed: { width: 250, height: 210 },
   origin: 'bottom-left',
   feeds: { travel: 9000, draw: 3000 },
@@ -15,7 +16,7 @@ export const PRUSA_MK4: MachineProfile = {
   penZ: { up: 4, down: 0 },
   penOffset: { x: 0, y: 0, z: 0 },
   pens: DEFAULT_PENS,
-  preamble: ['G21 ; mm', 'G90 ; absolute', 'G28 ; home'].join('\n'),
+  preamble: ['M862.6 P "Input shaper" ; FW feature check', 'G21 ; mm', 'G90 ; absolute', 'G28 ; home'].join('\n'),
   postamble: ['G0 Z30 ; pen clear', 'G0 X0 Y0 ; park', 'M84 ; motors off'].join('\n'),
   pause: ['G4 P500', 'M0 {message}'].join('\n'),
   units: 'mm',
@@ -24,6 +25,7 @@ export const PRUSA_MK4: MachineProfile = {
 export const GENERIC_A4: MachineProfile = {
   id: 'generic-a4',
   name: 'Generic A4',
+  kind: 'prusa',
   bed: { width: 297, height: 210 },
   origin: 'bottom-left',
   feeds: { travel: 6000, draw: 2000 },

@@ -108,11 +108,26 @@ export interface Fiducial {
   y: number
 }
 
+/** Machine family — drives the output dialect/affordances. Only Prusa (G-code) today; the
+ *  discriminator is here so a future type (e.g. an AxiDraw over Web Serial) slots in without
+ *  reshaping the profile. */
+export type MachineKind = 'prusa'
+
+/** Optional binding to a *physical* device this profile plots to, discriminated by transport so new
+ *  transports (e.g. `webserial`) can be added later. `prusalink` targets a printer the user granted
+ *  to this app in the PrusaLink Bridge extension; the id/name are the extension's, never creds. */
+export type DeviceBinding = { transport: 'prusalink'; printerId: string; printerName: string }
+
 /** Global, document-level machine description. A feed/preamble tweak is a pure re-emit;
  *  geometry is untouched. Editable in the UI; presets seed it. */
 export interface MachineProfile {
   id: string
   name: string
+  /** Machine family. Currently always `'prusa'`; the connectivity UI keys off it, and emit/Z will
+   *  branch on it when a second kind lands. */
+  kind: MachineKind
+  /** Optional physical-printer binding. Absent = download-only (the default). */
+  device?: DeviceBinding
   /** Bed size in mm. */
   bed: { width: number; height: number }
   /** Where machine (0,0) sits relative to the bed; drives the Y-flip in `toMachine`. */

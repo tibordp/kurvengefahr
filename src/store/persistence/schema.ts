@@ -78,9 +78,17 @@ export function sanitizeProfile(p: unknown): MachineProfile {
   const base = PRUSA_MK4
   if (!isObj(p)) return structuredClone(base)
   const pens = Array.isArray(p.pens) && p.pens.length ? p.pens.map(sanitizePen) : structuredClone(base.pens)
+  // Physical-printer binding: keep only a well-formed prusalink binding, else drop (download-only).
+  const d = p.device
+  const device: MachineProfile['device'] =
+    isObj(d) && d.transport === 'prusalink' && typeof d.printerId === 'string' && typeof d.printerName === 'string'
+      ? { transport: 'prusalink', printerId: d.printerId, printerName: d.printerName }
+      : undefined
   return {
     id: str(p.id, base.id),
     name: str(p.name, base.name),
+    kind: 'prusa', // only machine kind today; validate against MachineKind when a second lands
+    ...(device ? { device } : {}),
     bed: { width: num(p.bed?.width, base.bed.width), height: num(p.bed?.height, base.bed.height) },
     origin: p.origin === 'top-left' || p.origin === 'bottom-left' ? p.origin : base.origin,
     feeds: { travel: num(p.feeds?.travel, base.feeds.travel), draw: num(p.feeds?.draw, base.feeds.draw) },
