@@ -24,8 +24,10 @@ function NumberField({
   onChange: (v: number) => void
   min?: number
 }) {
-  const [text, setText] = useState(String(value))
-  useEffect(() => setText(String(value)), [value])
+  // Display at 2 decimals (e.g. an SVG's native mm size), full precision still stored on edit.
+  const fmt = (v: number) => String(Number(v.toFixed(2)))
+  const [text, setText] = useState(() => fmt(value))
+  useEffect(() => setText(fmt(value)), [value])
   return (
     <input
       className={controlClass}

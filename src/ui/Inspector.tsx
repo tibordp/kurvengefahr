@@ -58,7 +58,19 @@ import { ElementsTree } from './ElementsTree'
 
 
 
-const display = (v: number) => (Number.isFinite(v) ? String(v) : '0')
+// Display value rounded to a sensible number of decimals (full precision is still stored and
+// editable — this only affects what's shown when not actively typing). mm/degrees/scale read fine at
+// 2 places; a finer-stepped field (e.g. 0.005) shows enough to resolve its step. Trailing zeros are
+// trimmed (140, not 140.00).
+const display = (v: number, decimals = 2) =>
+  Number.isFinite(v) ? String(Number(v.toFixed(decimals))) : '0'
+
+const decimalsOf = (step: number) => {
+  const i = String(step).indexOf('.')
+  return i < 0 ? 0 : String(step).length - i - 1
+}
+/** Decimals to display for a field: 2 by default, more only if the step is finer. */
+const displayDecimals = (step: number) => Math.max(2, decimalsOf(step))
 
 // A numeric field that uses `type="text"` so intermediate states ("-", "1.", "") survive while
 // typing (type="number" reports an empty value mid-typing, which clobbers negatives). It keeps
@@ -77,13 +89,14 @@ function Num({
   onChange: (v: number) => void
   title?: string
 }) {
-  const [text, setText] = useState(() => display(value))
+  const dec = displayDecimals(step)
+  const [text, setText] = useState(() => display(value, dec))
   const [focused, setFocused] = useState(false)
 
   // Mirror external changes (canvas drag, selection switch) only when not actively editing.
   useEffect(() => {
-    if (!focused) setText(display(value))
-  }, [value, focused])
+    if (!focused) setText(display(value, dec))
+  }, [value, focused, dec])
 
   const stepBy = (dir: number) => {
     const base = Number.isFinite(parseFloat(text)) ? parseFloat(text) : value
@@ -570,12 +583,13 @@ function SliderNum({
   hardMax?: boolean
   int?: boolean
 }) {
-  const [text, setText] = useState(() => String(value))
+  const dec = int ? 0 : displayDecimals(step)
+  const [text, setText] = useState(() => display(value, dec))
   const [focused, setFocused] = useState(false)
   // Mirror external changes (slider drag, regenerate, selection switch) only when not typing.
   useEffect(() => {
-    if (!focused) setText(String(value))
-  }, [value, focused])
+    if (!focused) setText(display(value, dec))
+  }, [value, focused, dec])
 
   const clampNum = (n: number) => {
     let v = int ? Math.round(n) : n
