@@ -22,6 +22,7 @@ import {
   Spline,
   Link2,
   Ungroup,
+  Printer,
 } from 'lucide-react'
 import { useDoc, type AlignEdge } from '../store/document'
 import { useUI } from '../store/ui'
@@ -32,6 +33,14 @@ import { PROFILE_PRESETS, findBuiltinProfile } from '../store/profiles'
 import { hashParams, isMultiPen } from '../elements/registry'
 import { profilesFile, parseProfilesFile } from '../store/persistence/schema'
 import { drawableRegion } from '../core/pipeline/clip'
+import {
+  bridgeAvailable,
+  grantedPrinters,
+  requestPrinters,
+  printerStatus,
+  type PrinterInfo,
+  type PrinterStatus,
+} from '../output/plot'
 import { downloadJson, pickJsonFile } from '../output/download'
 import { substitution_note } from '../core/wasm'
 import type { Pen } from '../core/types'
@@ -1340,6 +1349,147 @@ function MachineSection() {
           context message; the lift/travel moves are added automatically.
         </p>
       </Field>
+
+      <PhysicalPrinterSection />
+    </>
+  )
+}
+
+const STATUS_COLOR: Record<string, string> = {
+  idle: 'bg-emerald-500',
+  printing: 'bg-amber-500',
+  paused: 'bg-amber-500',
+  busy: 'bg-amber-500',
+  attention: 'bg-accent-solid',
+  error: 'bg-accent-solid',
+  offline: 'bg-zinc-400',
+}
+
+function StatusDot({ status }: { status: PrinterStatus | null }) {
+  const state = status?.state ?? 'offline'
+  return (
+    <div className="flex items-center gap-1.5 py-0.5 text-xs text-muted">
+      <span className={cx('h-2 w-2 rounded-full', STATUS_COLOR[state] ?? 'bg-zinc-400')} />
+      <span className="capitalize">{status ? state : 'connecting…'}</span>
+    </div>
+  )
+}
+
+/** Optional direct-plotting binding (PrusaLink via the bridge extension). Inert by default: nothing
+ *  requests access until the user clicks Connect. Lives on the profile, so it travels with it. */
+function PhysicalPrinterSection() {
+  const kind = useDoc((s) => s.profile.kind)
+  const device = useDoc((s) => s.profile.device)
+  const setProfile = useDoc((s) => s.setProfile)
+  const [available, setAvailable] = useState<boolean | null>(null)
+  const [printers, setPrinters] = useState<PrinterInfo[]>([])
+  const [connecting, setConnecting] = useState(false)
+  const [status, setStatus] = useState<PrinterStatus | null>(null)
+
+  // Detect the extension (harmless ping — no access request) and load already-granted printers.
+  useEffect(() => {
+    let alive = true
+    void bridgeAvailable().then((ok) => {
+      if (!alive) return
+      setAvailable(ok)
+      if (ok) void grantedPrinters().then((ps) => alive && setPrinters(ps)).catch(() => {})
+    })
+    return () => {
+      alive = false
+    }
+  }, [])
+
+  // Live status of the bound printer while this section is open.
+  const boundId = device?.transport === 'prusalink' ? device.printerId : null
+  useEffect(() => {
+    if (!available || !boundId) {
+      setStatus(null)
+      return
+    }
+    let alive = true
+    const tick = () =>
+      void printerStatus(boundId)
+        .then((s) => alive && setStatus(s))
+        .catch(() => alive && setStatus(null))
+    tick()
+    const t = setInterval(tick, 4000)
+    return () => {
+      alive = false
+      clearInterval(t)
+    }
+  }, [available, boundId])
+
+  if (kind !== 'prusa') return null
+
+  const connect = async () => {
+    setConnecting(true)
+    try {
+      const ps = await requestPrinters(true)
+      setPrinters(ps)
+      // Delight: if nothing's bound yet and exactly one printer was granted, bind it.
+      if (!device && ps.length === 1) {
+        setProfile({ device: { transport: 'prusalink', printerId: ps[0].id, printerName: ps[0].name } })
+      }
+    } catch {
+      // user denied / closed the prompt — leave as-is
+    } finally {
+      setConnecting(false)
+    }
+  }
+
+  const pick = (id: string) => {
+    if (!id) {
+      setProfile({ device: undefined })
+      return
+    }
+    const name = printers.find((p) => p.id === id)?.name ?? device?.printerName ?? id
+    setProfile({ device: { transport: 'prusalink', printerId: id, printerName: name } })
+  }
+
+  // Keep a bound-but-no-longer-granted printer visible so the binding doesn't silently vanish.
+  const options = [...printers]
+  if (device && !options.some((p) => p.id === device.printerId)) {
+    options.unshift({ id: device.printerId, name: `${device.printerName} (disconnected)`, type: 'prusalink' })
+  }
+
+  return (
+    <>
+      <SectionTitle title="Plot directly to a PrusaLink printer via the browser extension.">
+        Physical printer
+      </SectionTitle>
+      {available === false && (
+        <Banner>
+          Install the{' '}
+          <a
+            className="font-medium underline underline-offset-2"
+            href="https://tibordp.github.io/prusalink-bridge/"
+            target="_blank"
+            rel="noreferrer"
+          >
+            PrusaLink Bridge
+          </a>{' '}
+          extension to plot straight to your printer.
+        </Banner>
+      )}
+      {available && (
+        <>
+          <Field label="Printer">
+            <select className={controlClass} value={device?.printerId ?? ''} onChange={(e) => pick(e.target.value)}>
+              <option value="">None (download only)</option>
+              {options.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+          {device && <StatusDot status={status} />}
+          <Button className="mt-1" onClick={connect} disabled={connecting}>
+            <Printer size={14} />
+            {connecting ? 'Connecting…' : printers.length ? 'Add / refresh printers…' : 'Connect a printer…'}
+          </Button>
+        </>
+      )}
     </>
   )
 }

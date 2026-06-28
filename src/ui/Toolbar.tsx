@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { RotateCw, Play, Pencil, Download, PanelRight, CircleHelp, Undo2, Redo2 } from 'lucide-react'
+import { RotateCw, Play, Pencil, Download, Printer, PanelRight, CircleHelp, Undo2, Redo2 } from 'lucide-react'
 import { useDoc } from '../store/document'
 import { usePreview } from '../store/preview'
 import { useUI } from '../store/ui'
@@ -9,10 +9,27 @@ import { buildPlottableGeometry } from '../core/pipeline'
 import { optimizeGeometry } from '../core/pipeline/optimize'
 import { penParkInPage } from '../core/pipeline/toMachine'
 import { buildToolpath } from '../core/preview/toolpath'
-import { exportGcode } from '../output/export'
+import { exportGcode, plotGcode } from '../output/export'
+import { BridgeError } from '../output/plot'
+import { toast } from '../store/toast'
 import { Button, IconButton } from './primitives'
 import { MOD_KEY } from './shortcuts'
 import { DocumentMenu } from './DocumentMenu'
+
+/** Map a bridge failure to a short, human toast. CANCELLED is intentionally absent (silent). */
+function plotErrorMessage(code: string): string {
+  switch (code) {
+    case 'DENIED': return 'Permission needed — allow access in the extension'
+    case 'NOT_GRANTED':
+    case 'NO_HOST_PERMISSION': return 'Reconnect the printer in Machine settings'
+    case 'PRINTER_UNREACHABLE': return "Couldn't reach the printer"
+    case 'AUTH_FAILED': return 'Printer rejected the credentials'
+    case 'PRINTER_BUSY': return 'Printer is busy'
+    case 'NOT_INSTALLED': return 'Plotter extension not found'
+    case 'TIMEOUT': return 'Plot timed out'
+    default: return 'Plot failed'
+  }
+}
 
 /** A curving trail with a gap + head — a nod to "Achtung, die Kurve!" (and to drawing one
  *  continuous line). `currentColor`, so it inherits the accent. */
@@ -43,7 +60,9 @@ export function Toolbar() {
   const toggleHelp = useUI((s) => s.toggleHelp)
   const canUndo = useHistory((s) => s.past.length > 0)
   const canRedo = useHistory((s) => s.future.length > 0)
+  const device = useDoc((s) => s.profile.device)
   const [busy, setBusy] = useState(false)
+  const [plotting, setPlotting] = useState(false)
   const [preparing, setPreparing] = useState(false)
 
   const dirtyCount = elements.filter((e) => needsManualRegen(e.id, e.type, e.params)).length
@@ -75,6 +94,20 @@ export function Toolbar() {
       await exportGcode()
     } finally {
       setBusy(false)
+    }
+  }
+
+  const onPlot = async () => {
+    if (elements.length === 0 || !device) return
+    setPlotting(true)
+    try {
+      await plotGcode()
+      toast.success(`Sent to ${device.printerName}`)
+    } catch (e) {
+      const code = e instanceof BridgeError ? e.code : 'INTERNAL'
+      if (code !== 'CANCELLED') toast.error(plotErrorMessage(code))
+    } finally {
+      setPlotting(false)
     }
   }
 
@@ -153,8 +186,20 @@ export function Toolbar() {
           {previewActive ? 'Edit' : preparing ? 'Preparing…' : 'Preview'}
         </span>
       </Button>
+      {device && (
+        <Button
+          variant="primary"
+          onClick={onPlot}
+          disabled={plotting || elements.length === 0}
+          aria-label={`Plot to ${device.printerName}`}
+          title={`Plot to ${device.printerName}`}
+        >
+          <Printer size={15} />
+          <span className="hidden sm:inline">{plotting ? 'Sending…' : 'Plot'}</span>
+        </Button>
+      )}
       <Button
-        variant="primary"
+        variant={device ? 'default' : 'primary'}
         onClick={onGenerate}
         disabled={busy}
         aria-label="Generate and download G-code"

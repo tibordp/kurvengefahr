@@ -52,6 +52,9 @@ with a spring-loaded pen holder; the machine profile is editable.
 - **Preview** -- Scrub and play back the whole toolpath -- travel moves, pen lifts, and draws --
   before downloading the G-code.
 - **Export** -- Download G-code, or export the artwork as SVG or a transparent PNG.
+- **Plot directly** -- With the companion PrusaLink Bridge browser extension, bind a profile to one of
+  your printers and send the job straight to it with one click -- no download-and-transfer. Credentials
+  live in the extension; the app only ever sees the printer's name and live status.
 - **Elements tree** -- A searchable, collapsible list of every element with named groups; selection
   is synced both ways with the canvas.
 - **Documents** -- Multiple drawings in tabs, autosaved, with cross-tab sync, undo/redo that survives

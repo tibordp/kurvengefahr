@@ -7,6 +7,7 @@ import { SvgImportDialog } from './ui/SvgImportDialog'
 import { DxfImportDialog } from './ui/DxfImportDialog'
 import { ExportDialog } from './ui/ExportDialog'
 import { CommandPalette } from './ui/CommandPalette'
+import { Toaster } from './ui/Toaster'
 import { Canvas } from './canvas/Canvas'
 import { PreviewControls } from './ui/PreviewControls'
 import { StatusBar } from './ui/StatusBar'
@@ -120,6 +121,7 @@ export function App() {
       <DxfImportDialog />
       <ExportDialog />
       <CommandPalette />
+      <Toaster />
     </div>
   )
 }
