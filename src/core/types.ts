@@ -38,18 +38,26 @@ export type Geometry = Stroke[]
  *  see `src/filters`. Filters stack in order, run in Rust (local space, before `place`), and are
  *  NOT geometry-affecting params: like `pen`, changing them is a cheap re-place, never a regenerate.
  *  Field names mirror the Rust `filters::FilterSpec` (camelCase); the discriminant is `type`. */
-export type FilterType = 'roughen' | 'wave' | 'sketch' | 'twist' | 'bulge'
+export type FilterType = 'roughen' | 'smooth' | 'wave' | 'sketch' | 'twist' | 'bulge'
 
 interface FilterCommon {
   enabled: boolean
 }
-/** Hand-drawn wobble: smooth normal displacement + optional fine tremor. Seeded. */
+/** Hand-drawn wobble: a positional turbulence field + optional fine tremor. Seeded. */
 export interface RoughenFilter extends FilterCommon {
   type: 'roughen'
   amplitudeMm: number
   detailMm: number
   tremorMm: number
   seed: number
+}
+/** The opposite of roughen: subdivide to `detailMm`, then Laplacian-relax (rounds corners / irons
+ *  out jitter, on jagged and already-curved geometry alike). */
+export interface SmoothFilter extends FilterCommon {
+  type: 'smooth'
+  detailMm: number
+  strength: number
+  iterations: number
 }
 /** Sinusoidal warp; >1 harmonic makes it anharmonic. */
 export interface WaveFilter extends FilterCommon {
@@ -79,7 +87,7 @@ export interface BulgeFilter extends FilterCommon {
   strength: number
   radiusMm: number
 }
-export type FilterSpec = RoughenFilter | WaveFilter | SketchFilter | TwistFilter | BulgeFilter
+export type FilterSpec = RoughenFilter | SmoothFilter | WaveFilter | SketchFilter | TwistFilter | BulgeFilter
 
 /** Affine local→page transform, decomposed to match Konva's node model and the inspector.
  *  Translation is millimetres in page space; rotation is degrees. */

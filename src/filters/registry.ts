@@ -35,6 +35,17 @@ const DEFS: Record<FilterType, FilterDef> = {
       { key: 'tremorMm', label: 'Tremor (mm)', min: 0, max: 3, step: 0.1 },
     ],
   },
+  smooth: {
+    type: 'smooth',
+    label: 'Smooth',
+    seeded: false,
+    defaults: () => ({ type: 'smooth', enabled: true, detailMm: 1, strength: 0.5, iterations: 6 }),
+    controls: [
+      { key: 'detailMm', label: 'Resolution (mm)', min: 0.25, max: 10, step: 0.25 },
+      { key: 'strength', label: 'Strength', min: 0, max: 1, step: 0.05 },
+      { key: 'iterations', label: 'Iterations', min: 1, max: 30, step: 1, int: true },
+    ],
+  },
   wave: {
     type: 'wave',
     label: 'Wave / warp',

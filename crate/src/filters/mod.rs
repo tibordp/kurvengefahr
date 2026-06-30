@@ -11,6 +11,7 @@
 mod bulge;
 mod roughen;
 mod sketch;
+mod smooth;
 mod twist;
 mod wave;
 
@@ -48,8 +49,10 @@ pub struct FilterSpec {
     pub offset_mm: f32,
     /// Twist/bulge: falloff radius from the geometry centre, mm.
     pub radius_mm: f32,
-    /// Twist: rotation at the centre, degrees. Bulge: −1 pinch … +1 bulge.
+    /// Twist: rotation at the centre, degrees. Bulge: −1 pinch … +1 bulge. Smooth: relax amount 0..1.
     pub strength: f32,
+    /// Smooth: number of relaxation passes.
+    pub iterations: u32,
 }
 
 /// Apply a stack of filters (JSON array of [`FilterSpec`]) to local-space geometry, in order. A
@@ -66,6 +69,7 @@ pub fn apply(strokes: &[Stroke], params_json: &str) -> Vec<Stroke> {
         }
         cur = match spec.kind.as_str() {
             "roughen" => roughen::apply(&cur, spec),
+            "smooth" => smooth::apply(&cur, spec),
             "wave" => wave::apply(&cur, spec),
             "sketch" => sketch::apply(&cur, spec),
             "twist" => twist::apply(&cur, spec),
@@ -157,28 +161,6 @@ fn hash_u32(mut x: u32) -> u32 {
 #[inline]
 fn mix(a: u32, b: u32) -> u32 {
     hash_u32(a ^ b.wrapping_mul(0x9e37_79b1))
-}
-
-/// A pseudo-random value in [-1, 1] at integer lattice index `i` for stream `seed`.
-#[inline]
-fn grad(i: i32, seed: u32) -> f32 {
-    (mix(i as u32, seed) as f32 / u32::MAX as f32) * 2.0 - 1.0
-}
-
-/// Smooth 1-D value noise in [-1, 1] (smoothstep-interpolated lattice). `t` is in lattice units.
-pub fn noise1(t: f32, seed: u32) -> f32 {
-    let i = t.floor();
-    let f = t - i;
-    let u = f * f * (3.0 - 2.0 * f);
-    let a = grad(i as i32, seed);
-    let b = grad(i as i32 + 1, seed);
-    a + (b - a) * u
-}
-
-/// Two-octave 1-D fractal noise in roughly [-1, 1] — the roughen wobble (low octave) plus a finer
-/// detail octave.
-pub fn fbm1(t: f32, seed: u32) -> f32 {
-    noise1(t, seed) * 0.7 + noise1(t * 2.17 + 11.3, seed ^ 0x68bc_21eb) * 0.3
 }
 
 /// Smooth 2-D value noise in [-1, 1] (smoothstep-interpolated lattice). `x,y` in lattice units. A
@@ -285,6 +267,32 @@ mod tests {
         );
         // And it actually moved (not a no-op).
         assert!((a_end.x - 10.0).abs() + (a_end.y - 0.0).abs() > 0.1, "endpoint should be displaced");
+    }
+
+    #[test]
+    fn smooth_adds_points_rounds_and_pins_endpoints() {
+        // A single spike at the middle; Chaikin cuts the corner (rounds the peak down) and adds
+        // points, while the open polyline's endpoints stay exactly put.
+        let strokes = vec![Stroke {
+            points: vec![
+                Point { x: 0.0, y: 0.0, pressure: 1.0 },
+                Point { x: 1.0, y: 10.0, pressure: 1.0 },
+                Point { x: 2.0, y: 0.0, pressure: 1.0 },
+            ],
+            pen: 5,
+            reversible: true,
+            group: 2,
+        }];
+        let json = r#"[{"type":"smooth","enabled":true,"detailMm":2.0,"strength":0.7,"iterations":15}]"#;
+        let out = apply(&strokes, json);
+        assert_eq!(out[0].pen, 5);
+        assert!(out[0].points.len() > 3, "subdivision adds points (more than the 3 input)");
+        let first = out[0].points[0];
+        let last = *out[0].points.last().unwrap();
+        assert!(first.x == 0.0 && first.y == 0.0, "first endpoint pinned");
+        assert!(last.x == 2.0 && last.y == 0.0, "last endpoint pinned");
+        let peak = out[0].points.iter().fold(0.0f32, |m, p| m.max(p.y));
+        assert!(peak < 9.0, "peak rounded down from 10 (got {peak})");
     }
 
     #[test]

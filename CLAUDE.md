@@ -97,7 +97,8 @@ registry `generate()`. Non-obvious bits:
   into members. Deleting a container cascades to members (`withDescendants`); empty containers are
   pruned (`pruneEmptyContainers`).
 - **Non-destructive filters** (`src/filters`, `crate/src/filters/`): a per-element `DocElement.filters`
-  stack (roughen / wave / sketch / twist / bulge) applied in Rust, in **local space before `place`**,
+  stack (roughen / smooth / wave / sketch / twist / bulge) applied in Rust, in **local space before
+  `place`**,
   via `filteredLocal`. The **source stays editable** — a `path`'s nodes still edit its *pre-filter*
   shape; the canvas draws the post-filter strokes with the pre-filter outline shown as a faint ghost
   (`GhostLayer`, a read-only overlay) when selected. Filters compose with containers: a member's

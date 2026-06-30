@@ -30,8 +30,9 @@ with a spring-loaded pen holder; the machine profile is editable.
   nest and transform as one object, the mask stays editable and comes back when you release the clip,
   and you can flatten a clip into plain paths with convert-to-path.
 - **Filters** -- Non-destructive, stackable distortions on any element or group: roughen for a
-  hand-drawn wobble, wave for sinusoidal (and anharmonic) warps, sketch for multi-pass overdraw, and
-  twist or bulge to swirl and balloon. The source stays editable -- a path keeps its nodes, shown over
+  hand-drawn wobble, smooth to round corners and iron out jitter, wave for sinusoidal (and anharmonic)
+  warps, sketch for multi-pass overdraw, and twist or bulge to swirl and balloon. The source stays
+  editable -- a path keeps its nodes, shown over
   a ghost of the original shape -- while the filtered strokes are what plot. A filter on a group warps
   its combined geometry as one coherent field.
 - **Generative** -- Parametric pattern generators: spirographs, L-system fractals, Truchet tiles,
