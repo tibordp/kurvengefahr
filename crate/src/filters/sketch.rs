@@ -1,8 +1,10 @@
-//! Sketch — the multi-pass pen look: emit each stroke `passes` times, every pass wandering by a
-//! slowly-varying 2-D offset (so the passes don't overlap exactly, like a hand re-drawing a line).
-//! Each pass keeps the source stroke's pen/reversible/group; the optimizer plots them as separate
-//! singletons. Deterministic per `seed` (+ stroke + pass).
-use super::{fbm1, is_closed, resample, FilterSpec};
+//! Sketch — the multi-pass pen look: emit each stroke `passes` times, every pass displaced by its own
+//! gentle positional wander field (a different seed per pass), so the passes don't overlap exactly,
+//! like a hand re-drawing a line. The wander is a function of position (like roughen), so within a
+//! given pass two strokes that share a point stay joined — a Truchet/Voronoi mesh overdraws without
+//! tearing at the seams. Each pass keeps the source stroke's pen/reversible/group; the optimizer plots
+//! them as separate singletons. Deterministic per `seed` (+ pass).
+use super::{fbm2, resample, FilterSpec};
 use crate::geom::{Point, Stroke};
 
 pub fn apply(strokes: &[Stroke], s: &FilterSpec) -> Vec<Stroke> {
@@ -11,34 +13,28 @@ pub fn apply(strokes: &[Stroke], s: &FilterSpec) -> Vec<Stroke> {
     if passes <= 1 || offset <= 1e-4 {
         return strokes.to_vec();
     }
+    let freq = 1.0 / 25.0; // a gentle, large-scale wander (each pass drifts slowly across the work)
+    let step = 2.0;
+
     let mut out: Vec<Stroke> = Vec::with_capacity(strokes.len() * passes as usize);
-    for (si, stroke) in strokes.iter().enumerate() {
+    for stroke in strokes {
         if stroke.points.len() < 2 {
             out.push(stroke.clone());
             continue;
         }
-        let closed = is_closed(&stroke.points);
-        let pts = resample(&stroke.points, 2.0);
+        let pts = resample(&stroke.points, step);
         for pass in 0..passes {
-            let seed = s
-                .seed
-                .wrapping_add((si as u32).wrapping_mul(0x9e37_79b1))
-                .wrapping_add((pass as u32).wrapping_mul(0x85eb_ca6b));
-            let mut acc = 0.0f32;
-            let mut pp: Vec<Point> = Vec::with_capacity(pts.len());
-            for i in 0..pts.len() {
-                if i > 0 {
-                    acc += (pts[i].x - pts[i - 1].x).hypot(pts[i].y - pts[i - 1].y);
-                }
-                let t = acc * 0.08; // low frequency → a gentle, whole-line wander per pass
-                let dx = offset * fbm1(t, seed ^ 0x00a1_b2c3);
-                let dy = offset * fbm1(t + 5.5, seed ^ 0x00c3_b2a1);
-                pp.push(Point { x: pts[i].x + dx, y: pts[i].y + dy, pressure: pts[i].pressure });
-            }
-            if closed && pp.len() > 1 {
-                let first = pp[0];
-                *pp.last_mut().unwrap() = first;
-            }
+            // A distinct field per pass (so passes differ), shared across strokes (so seams hold).
+            let base = s.seed.wrapping_add((pass as u32).wrapping_mul(0x9e37_79b1));
+            let (sx, sy) = (base ^ 0xaaaa_aaaa, base ^ 0x5555_5555);
+            let pp: Vec<Point> = pts
+                .iter()
+                .map(|p| Point {
+                    x: p.x + offset * fbm2(p.x * freq, p.y * freq, sx),
+                    y: p.y + offset * fbm2(p.x * freq, p.y * freq, sy),
+                    pressure: p.pressure,
+                })
+                .collect();
             out.push(Stroke { points: pp, pen: stroke.pen, reversible: stroke.reversible, group: stroke.group });
         }
     }

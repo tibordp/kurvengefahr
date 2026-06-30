@@ -311,4 +311,21 @@ mod tests {
         assert_eq!(out.len(), 3, "one stroke → 3 overdrawn passes");
         assert!(out.iter().all(|s| s.pen == 3 && s.group == 7));
     }
+
+    #[test]
+    fn sketch_keeps_shared_endpoints_joined_per_pass() {
+        // Two strokes meeting at (10,0); within a pass the positional wander keeps the seam joined.
+        let strokes = vec![
+            Stroke { points: vec![Point { x: 0.0, y: 0.0, pressure: 1.0 }, Point { x: 10.0, y: 0.0, pressure: 1.0 }], pen: 0, reversible: true, group: 0 },
+            Stroke { points: vec![Point { x: 10.0, y: 0.0, pressure: 1.0 }, Point { x: 10.0, y: 10.0, pressure: 1.0 }], pen: 0, reversible: true, group: 0 },
+        ];
+        let json = r#"[{"type":"sketch","enabled":true,"passes":2,"offsetMm":1.0,"seed":4}]"#;
+        let out = apply(&strokes, json); // order: [A0, A1, B0, B1]
+        let a0_end = *out[0].points.last().unwrap();
+        let b0_start = out[2].points[0];
+        assert!(
+            (a0_end.x - b0_start.x).abs() < 1e-4 && (a0_end.y - b0_start.y).abs() < 1e-4,
+            "pass-0 copies must stay joined at the shared node",
+        );
+    }
 }
