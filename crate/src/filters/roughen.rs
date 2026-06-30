@@ -1,8 +1,10 @@
-//! Roughen — the "hand-drawn" look: resample to even spacing, then nudge each point along the local
-//! normal by smooth two-octave noise (the wobble) plus an optional fine 2-D tremor (the shake). The
-//! noise streams are keyed by `seed` + the stroke index, so strokes differ but a re-roll (new seed)
-//! is deterministic. Closed contours are re-closed so a shape stays a shape.
-use super::{fbm1, is_closed, noise1, resample, FilterSpec};
+//! Roughen — the "hand-drawn" look as a **positional turbulence field**: every point is offset by a
+//! 2-D noise vector sampled at its own location (low-octave wobble at ~`detailMm` scale, plus an
+//! optional finer tremor), not by per-stroke arc-length jitter. Because the offset is a function of
+//! position, two strokes that meet at a point get the *same* offset there and stay joined — so a
+//! Truchet tiling or a Voronoi mesh (3-way nodes included) roughens without tearing apart at the
+//! seams. Seeded for determinism; re-roll = a new field.
+use super::{fbm2, noise2, resample, FilterSpec};
 use crate::geom::{Point, Stroke};
 
 pub fn apply(strokes: &[Stroke], s: &FilterSpec) -> Vec<Stroke> {
@@ -12,46 +14,40 @@ pub fn apply(strokes: &[Stroke], s: &FilterSpec) -> Vec<Stroke> {
         return strokes.to_vec();
     }
     let detail = s.detail_mm.max(0.3);
-    // Feature size ≈ 4 samples, so the wobble undulates rather than buzzing point-to-point.
-    let freq = 1.0 / (detail * 4.0);
+    let freq = 1.0 / detail; // wobble feature size ≈ detailMm
+    let tfreq = 1.0 / 1.5; // tremor: a fixed fine ~1.5 mm shake
+    // Sample finely enough to render the wobble smoothly, scaled to the feature size.
+    let step = (detail * 0.25).clamp(0.3, 1.0);
+    // Distinct streams per axis so the offset isn't locked to the diagonal.
+    let (sax, say) = (s.seed ^ 0x1111_1111, s.seed ^ 0x2222_2222);
+    let (stx, sty) = (s.seed ^ 0x3333_3333, s.seed ^ 0x4444_4444);
+
+    let offset = |x: f32, y: f32| -> (f32, f32) {
+        let mut ox = amp * fbm2(x * freq, y * freq, sax);
+        let mut oy = amp * fbm2(x * freq, y * freq, say);
+        if tremor > 0.0 {
+            ox += tremor * noise2(x * tfreq, y * tfreq, stx);
+            oy += tremor * noise2(x * tfreq, y * tfreq, sty);
+        }
+        (ox, oy)
+    };
 
     strokes
         .iter()
-        .enumerate()
-        .map(|(si, stroke)| {
+        .map(|stroke| {
             if stroke.points.len() < 2 {
                 return stroke.clone();
             }
-            let closed = is_closed(&stroke.points);
-            let pts = resample(&stroke.points, detail);
-            let n = pts.len();
-            let seed = s.seed.wrapping_add((si as u32).wrapping_mul(0x9e37_79b1));
-            let mut acc = 0.0f32;
-            let mut out: Vec<Point> = Vec::with_capacity(n);
-            for i in 0..n {
-                if i > 0 {
-                    acc += (pts[i].x - pts[i - 1].x).hypot(pts[i].y - pts[i - 1].y);
-                }
-                // Local tangent → unit normal.
-                let prev = pts[if i == 0 { 0 } else { i - 1 }];
-                let next = pts[if i + 1 < n { i + 1 } else { i }];
-                let (tx, ty) = (next.x - prev.x, next.y - prev.y);
-                let len = tx.hypot(ty).max(1e-6);
-                let (nx, ny) = (-ty / len, tx / len);
-                let w = amp * fbm1(acc * freq, seed);
-                // Fine tremor: independent high-frequency jitter in x and y.
-                let jx = tremor * noise1(acc * 1.7 + 3.1, seed ^ 0x1234_5678);
-                let jy = tremor * noise1(acc * 1.9 + 7.7, seed ^ 0x8765_4321);
-                out.push(Point {
-                    x: pts[i].x + nx * w + jx,
-                    y: pts[i].y + ny * w + jy,
-                    pressure: pts[i].pressure,
-                });
-            }
-            if closed && out.len() > 1 {
-                let first = out[0];
-                *out.last_mut().unwrap() = first; // keep the contour closed (no seam gap)
-            }
+            let pts = resample(&stroke.points, step);
+            let out = pts
+                .iter()
+                .map(|p| {
+                    let (ox, oy) = offset(p.x, p.y);
+                    Point { x: p.x + ox, y: p.y + oy, pressure: p.pressure }
+                })
+                .collect();
+            // Closed contours stay closed for free: first and last share a position, so they get the
+            // same offset.
             Stroke { points: out, pen: stroke.pen, reversible: stroke.reversible, group: stroke.group }
         })
         .collect()

@@ -181,6 +181,29 @@ pub fn fbm1(t: f32, seed: u32) -> f32 {
     noise1(t, seed) * 0.7 + noise1(t * 2.17 + 11.3, seed ^ 0x68bc_21eb) * 0.3
 }
 
+/// Smooth 2-D value noise in [-1, 1] (smoothstep-interpolated lattice). `x,y` in lattice units. A
+/// **function of position** — so two strokes that touch at a point get the same value there, which is
+/// what keeps a displacement field from tearing shared endpoints apart (Truchet tiles, Voronoi nodes).
+pub fn noise2(x: f32, y: f32, seed: u32) -> f32 {
+    let xi = x.floor();
+    let yi = y.floor();
+    let (fx, fy) = (x - xi, y - yi);
+    let ux = fx * fx * (3.0 - 2.0 * fx);
+    let uy = fy * fy * (3.0 - 2.0 * fy);
+    let (x0, y0) = (xi as i32, yi as i32);
+    let g = |ix: i32, iy: i32| -> f32 {
+        (mix(mix(ix as u32, iy as u32), seed) as f32 / u32::MAX as f32) * 2.0 - 1.0
+    };
+    let nx0 = g(x0, y0) + (g(x0 + 1, y0) - g(x0, y0)) * ux;
+    let nx1 = g(x0, y0 + 1) + (g(x0 + 1, y0 + 1) - g(x0, y0 + 1)) * ux;
+    nx0 + (nx1 - nx0) * uy
+}
+
+/// Two-octave 2-D fractal noise (roughly [-1, 1]).
+pub fn fbm2(x: f32, y: f32, seed: u32) -> f32 {
+    noise2(x, y, seed) * 0.7 + noise2(x * 2.13 + 5.1, y * 2.13 + 9.7, seed ^ 0x68bc_21eb) * 0.3
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -241,6 +264,27 @@ mod tests {
         let c = apply(&line(), &json.replace("42", "43"));
         let diff = a[0].points.iter().zip(&c[0].points).any(|(p, q)| (p.y - q.y).abs() > 1e-4);
         assert!(diff, "different seed → different roughening");
+    }
+
+    #[test]
+    fn roughen_keeps_shared_endpoints_joined() {
+        // Two separate strokes meeting at (10,0) — the Truchet/Voronoi case. A positional field gives
+        // both the same offset there, so the seam doesn't tear apart.
+        let strokes = vec![
+            Stroke { points: vec![Point { x: 0.0, y: 0.0, pressure: 1.0 }, Point { x: 10.0, y: 0.0, pressure: 1.0 }], pen: 0, reversible: true, group: 0 },
+            Stroke { points: vec![Point { x: 10.0, y: 0.0, pressure: 1.0 }, Point { x: 10.0, y: 10.0, pressure: 1.0 }], pen: 0, reversible: true, group: 0 },
+        ];
+        let json = r#"[{"type":"roughen","enabled":true,"amplitudeMm":3,"detailMm":5,"tremorMm":0.5,"seed":9}]"#;
+        let out = apply(&strokes, json);
+        let a_end = *out[0].points.last().unwrap();
+        let b_start = out[1].points[0];
+        assert!(
+            (a_end.x - b_start.x).abs() < 1e-4 && (a_end.y - b_start.y).abs() < 1e-4,
+            "shared endpoint must stay joined (({},{}) vs ({},{}))",
+            a_end.x, a_end.y, b_start.x, b_start.y,
+        );
+        // And it actually moved (not a no-op).
+        assert!((a_end.x - 10.0).abs() + (a_end.y - 0.0).abs() > 0.1, "endpoint should be displaced");
     }
 
     #[test]
