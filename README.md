@@ -45,6 +45,9 @@ with a spring-loaded pen holder; the machine profile is editable.
   in the preview and the G-code.
 - **Multi-pen output** -- Assign a pen per element; the job is grouped by color with a pause to swap
   pens between colors, and each color's strokes are ordered to cut pen travel.
+- **Pen pressure** -- Set a pressure per element, shown as line weight on the canvas and in the
+  preview. The machine profile maps it to a pen-down Z range (light to full) for a spring-loaded
+  holder; profiles that only do pen up/down can turn pressure off, which disables the control.
 - **Reachable area** -- Account for the pen's offset from the nozzle; anything the pen can't reach is
   greyed out and clipped away.
 - **Registration** -- An optional fiducial point the plot travels to and pauses at, so you can

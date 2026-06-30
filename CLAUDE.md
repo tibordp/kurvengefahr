@@ -65,6 +65,14 @@ The metadata is what makes the optimizer and emitter work, and each field encode
   and pen groups plot in **palette order**, with the profile's `pause` macro dropped between groups.
   A future *natively multi-colour* element sets per-stroke pens in its generator and opts out of
   stamping via registry `multiPen`.
+- `pressure` (per-point, 0..1) — the element's single `DocElement.pressure` is **stamped onto its
+  points at concatenation** (in `place`, called from `buildPageGeometry`), exactly like `pen`: a
+  cheap re-place/re-emit, never a regenerate; multi-pen types carry per-member pressure instead.
+  `emit` maps it to the pen-down Z, interpolating `penZ.downLight` (light) → `penZ.down` (full).
+  **`penZ.downLight` is the pressure switch** (`pressureEnabled()`): absent ⇒ pen up/down only, every
+  stroke at `down`, and the per-element control is disabled in the UI (value kept). On the canvas +
+  preview, pressure shows as line weight only (display, not the real tip width). A future *natively
+  variable-pressure* element sets per-point pressure in its generator and opts out of stamping.
 - `reversible` — optimizer may flip stroke direction.
 - `group` — nonzero = one **locked, ordered, contiguous chain** (a handwriting element); 0 = free
   singleton in the global optimization bag.

@@ -133,6 +133,7 @@ function elementToPath(el: DocElement): DocElement | null {
     transform: el.transform,
     params: { contours, hatch } as PathParams,
     pen: el.pen,
+    ...(el.pressure !== undefined ? { pressure: el.pressure } : {}),
     ...(el.groupId ? { groupId: el.groupId } : {}),
     ...(el.name ? { name: el.name } : {}),
   }
@@ -264,8 +265,12 @@ interface DocStore {
   setPen: (id: string, pen: PenId) => void
   /** Set (or clear, with null) an element's dashed-stroke style. Re-place/re-emit only. */
   setDash: (id: string, dash: { dash: number; gap: number } | null) => void
+  /** Set an element's pen pressure (0..1). Not a param — invalidates only Place/Emit. */
+  setPressure: (id: string, pressure: number) => void
   /** Assign every selected element to a pen. */
   setPenSelected: (pen: PenId) => void
+  /** Set the pen pressure (0..1) on every selected element. */
+  setPressureSelected: (pressure: number) => void
   /** Place / move / clear the document fiducial (page-space mm). Re-emit only (no geometry). */
   setFiducial: (pt: Fiducial | null) => void
   /** Patch the machine profile. Invalidates only Emit. */
@@ -400,6 +405,7 @@ export const useDoc = create<DocStore>((set) => ({
         transform: { ...el.transform, x: el.transform.x + 5, y: el.transform.y + 5 },
         params: structuredClone(el.params),
         pen: el.pen,
+        ...(el.pressure !== undefined ? { pressure: el.pressure } : {}),
       }
       return { elements: [...state.elements, copy], selectedIds: [copy.id] }
     }),
@@ -760,10 +766,23 @@ export const useDoc = create<DocStore>((set) => ({
       ),
     })),
 
+  setPressure: (id, pressure) =>
+    set((state) => {
+      const p = Math.min(1, Math.max(0, pressure))
+      return { elements: state.elements.map((e) => (e.id === id ? { ...e, pressure: p } : e)) }
+    }),
+
   setPenSelected: (pen) =>
     set((state) => {
       const sel = new Set(state.selectedIds)
       return { elements: state.elements.map((e) => (sel.has(e.id) ? { ...e, pen } : e)) }
+    }),
+
+  setPressureSelected: (pressure) =>
+    set((state) => {
+      const sel = new Set(state.selectedIds)
+      const p = Math.min(1, Math.max(0, pressure))
+      return { elements: state.elements.map((e) => (sel.has(e.id) ? { ...e, pressure: p } : e)) }
     }),
 
   setFiducial: (pt) => set({ fiducial: pt }),

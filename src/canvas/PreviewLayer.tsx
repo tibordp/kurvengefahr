@@ -6,9 +6,9 @@ import { Shape, Circle } from 'react-konva'
 import type Konva from 'konva'
 import { usePreview } from '../store/preview'
 import { useDoc } from '../store/document'
+import { pressureEnabled } from '../core/types'
 import { sampleAt } from '../core/preview/toolpath'
-
-const PEN_WIDTH_MM = 0.4
+import { displayPenWidthMm } from './penWidth'
 
 interface Props {
   pxPerMm: number
@@ -18,6 +18,7 @@ export function PreviewLayer({ pxPerMm }: Props) {
   const toolpath = usePreview((s) => s.toolpath)
   const dist = usePreview((s) => s.dist)
   const pens = useDoc((s) => s.profile.pens)
+  const pressureOn = useDoc((s) => pressureEnabled(s.profile))
   if (!toolpath) return null
 
   const colorFor = (pen?: number) => pens.find((p) => p.id === pen)?.color ?? '#1a1a1a'
@@ -63,7 +64,7 @@ export function PreviewLayer({ pxPerMm }: Props) {
           by = a.y + (b.y - a.y) * frac
         }
         const pressure = (a.pressure + b.pressure) / 2
-        ctx.lineWidth = PEN_WIDTH_MM * Math.max(pressure, 0.1)
+        ctx.lineWidth = displayPenWidthMm(pressure, pressureOn)
         ctx.beginPath()
         ctx.moveTo(a.x, a.y)
         ctx.lineTo(bx, by)
@@ -84,7 +85,7 @@ export function PreviewLayer({ pxPerMm }: Props) {
         <Circle
           x={head.x}
           y={head.y}
-          radius={head.penDown ? r * (0.6 + 0.8 * head.pressure) : r}
+          radius={head.penDown && pressureOn ? r * (0.6 + 0.8 * head.pressure) : r}
           fill={head.penDown ? '#2563eb' : '#ffffff'}
           stroke={head.penDown ? '#1e3a8a' : '#9ca3af'}
           strokeWidth={1 / pxPerMm}

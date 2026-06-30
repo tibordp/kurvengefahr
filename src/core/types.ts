@@ -82,6 +82,14 @@ export interface DocElement<TParams = unknown> {
   /** When set on a clip member, this element is the clip's **mask**: it makes no marks (its closed
    *  contours bound the clip) but stays a real, editable element so unclip can restore it. */
   clipRole?: 'mask'
+  /** Pen pressure, normalised 0..1 (1 = full). Absent = full. Like `pen`, it's *not* a
+   *  geometry-affecting param: it's stamped onto the element's stroke points at concatenation
+   *  (`buildPageGeometry`), so changing it is a cheap re-place/re-emit, never a regenerate. The
+   *  machine profile maps it to a pen-down Z (light↔full); a profile without pressure ignores it and
+   *  draws every stroke at `penZ.down`. Single-pressure for now — a future element that *natively*
+   *  varies pressure sets per-point pressure in its generator (and opts out of stamping, like
+   *  `multiPen`). Multi-pen types (e.g. `clip`) carry per-member pressure instead. */
+  pressure?: number
 }
 
 /** A flat (non-nesting) organizational group of elements, shown as a collapsible node in the
@@ -134,8 +142,12 @@ export interface MachineProfile {
   origin: 'top-left' | 'bottom-left'
   /** Feed rates, mm/min. */
   feeds: { travel: number; draw: number }
-  /** Pen Z heights (mm) for up (clearance) and down (drawing). */
-  penZ: { up: number; down: number }
+  /** Pen Z heights (mm). `up` = clearance; `down` = the pen-down height at **full** pressure.
+   *  `downLight` is the optional pen-down Z at **minimum** pressure — its presence *is* the
+   *  pressure switch: present ⇒ a stroke's pressure (0..1) interpolates `downLight` (light) →
+   *  `down` (full); absent ⇒ pen up/down only, every stroke draws at `down` and the per-element
+   *  pressure control is disabled in the UI (values kept, not cleared). See {@link pressureEnabled}. */
+  penZ: { up: number; down: number; downLight?: number }
   /** Pen tip position relative to the nozzle, machine axes (mm). G-code commands the nozzle,
    *  so emitted coords = pen target − offset. Nonzero x/y shrink the reachable (drawable) area;
    *  z shifts the commanded Z. */
@@ -151,4 +163,10 @@ export interface MachineProfile {
    *  text on the LCD). Empty = no pause. */
   pause: string
   units: 'mm'
+}
+
+/** Pressure is supported by a profile when it defines a light-pressure pen-down Z (`penZ.downLight`).
+ *  The single source of truth for "is the per-element pressure control live / does emit vary Z". */
+export function pressureEnabled(profile: MachineProfile): boolean {
+  return profile.penZ.downLight !== undefined
 }

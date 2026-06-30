@@ -90,8 +90,14 @@ export function applyMatrix(m: Matrix, p: Point): Point {
   }
 }
 
-function placeStroke(s: Stroke, m: Matrix): Stroke {
-  return { ...s, points: s.points.map((p) => applyMatrix(m, p)) }
+function placeStroke(s: Stroke, m: Matrix, pressure?: number): Stroke {
+  return {
+    ...s,
+    points: s.points.map((p) => {
+      const q = applyMatrix(m, p)
+      return pressure === undefined ? q : { ...q, pressure }
+    }),
+  }
 }
 
 /** Element-local (x,y) → page (x,y). For the on-canvas node-editing overlay. */
@@ -110,8 +116,10 @@ export function pageToLocal(t: Transform, x: number, y: number): { x: number; y:
   return { x: (m[3] * dx - m[2] * dy) / det, y: (-m[1] * dx + m[0] * dy) / det }
 }
 
-/** Lift an element's local geometry into page space. */
-export function place(geom: Geometry, t: Transform): Geometry {
+/** Lift an element's local geometry into page space. When `pressure` is given, it's stamped onto
+ *  every point (the element's single pressure value — the seam where per-element pressure enters the
+ *  per-point IR); omit to keep the generator's per-point pressure. */
+export function place(geom: Geometry, t: Transform, pressure?: number): Geometry {
   const m = transformToMatrix(t)
-  return geom.map((s) => placeStroke(s, m))
+  return geom.map((s) => placeStroke(s, m, pressure))
 }

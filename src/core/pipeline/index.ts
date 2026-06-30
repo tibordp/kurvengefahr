@@ -55,7 +55,11 @@ export function buildPageGeometry(
       for (const s of place(clipLocalGeometry(el, membersOf), el.transform)) out.push({ ...s })
       continue
     }
-    const placed = place(generateLocal(el), el.transform)
+    // Stamp the element's pressure onto its points here (page space), alongside pen below: a
+    // multi-pen type carries per-member pressure (stamped in clipLocalGeometry), so leave its
+    // generator pressure intact. Filters run after, so a future taper shapes this baseline.
+    const elPressure = isMultiPen(el.type) ? undefined : el.pressure
+    const placed = place(generateLocal(el), el.transform, elPressure)
     const filtered = applyFilters(placed, filters)
     const styled = el.dash && el.dash.dash > 0 && el.dash.gap > 0 ? dashGeometry(filtered, el.dash.dash, el.dash.gap) : filtered
     const stamp = isMultiPen(el.type) ? (s: (typeof styled)[number]) => s.pen : () => el.pen

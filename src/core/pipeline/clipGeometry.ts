@@ -52,7 +52,8 @@ export function clipLocalGeometry(clip: DocElement, membersOf: Map<string, DocEl
   const out: Geometry = []
   for (const child of members) {
     if (child.clipRole === 'mask') continue
-    const local = place(elementLocalGeometry(child, membersOf), child.transform)
+    const childPressure = isMultiPen(child.type) ? undefined : child.pressure
+    const local = place(elementLocalGeometry(child, membersOf), child.transform, childPressure)
     const stamped = isMultiPen(child.type) ? local : local.map((s) => ({ ...s, pen: child.pen }))
     out.push(...clipToPolygon(stamped, rings))
   }

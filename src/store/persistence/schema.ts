@@ -20,7 +20,9 @@ import { isKnownType, sanitizeParams } from '../../elements/registry'
 // v3: clip-to-shape — a `clip` element type plus optional `clipParent`/`clipRole` tags. Additive
 // optional fields backfill via the sanitizers, so no migration step; the bump just fences off older
 // apps that don't know how to render clips.
-export const CURRENT_DOC_SCHEMA = 3
+// v4: pen pressure — optional per-element `pressure` plus a profile `pressure` block. Additive and
+// backfilled, so no migration step; the bump fences off older apps that draw every stroke at down Z.
+export const CURRENT_DOC_SCHEMA = 4
 export const CURRENT_LIBRARY_SCHEMA = 1
 
 export const DOC_FILE_KIND = 'kurvengefahr/document'
@@ -92,7 +94,14 @@ export function sanitizeProfile(p: unknown): MachineProfile {
     bed: { width: num(p.bed?.width, base.bed.width), height: num(p.bed?.height, base.bed.height) },
     origin: p.origin === 'top-left' || p.origin === 'bottom-left' ? p.origin : base.origin,
     feeds: { travel: num(p.feeds?.travel, base.feeds.travel), draw: num(p.feeds?.draw, base.feeds.draw) },
-    penZ: { up: num(p.penZ?.up, base.penZ.up), down: num(p.penZ?.down, base.penZ.down) },
+    penZ: {
+      up: num(p.penZ?.up, base.penZ.up),
+      down: num(p.penZ?.down, base.penZ.down),
+      // Optional: present ⇒ pressure on. Keep only a finite number, else drop (pen up/down only).
+      ...(typeof p.penZ?.downLight === 'number' && Number.isFinite(p.penZ.downLight)
+        ? { downLight: p.penZ.downLight }
+        : {}),
+    },
     penOffset: { x: num(p.penOffset?.x, 0), y: num(p.penOffset?.y, 0), z: num(p.penOffset?.z, 0) },
     pens,
     preamble: str(p.preamble, base.preamble),
@@ -130,6 +139,10 @@ export function sanitizeElements(arr: unknown): DocElement[] {
         : {}),
       ...(typeof e.clipParent === 'string' ? { clipParent: e.clipParent } : {}),
       ...(e.clipRole === 'mask' ? { clipRole: 'mask' as const } : {}),
+      // Pressure is optional (absent = full); keep it only when a valid 0..1 value is stored.
+      ...(typeof e.pressure === 'number' && Number.isFinite(e.pressure)
+        ? { pressure: Math.min(1, Math.max(0, e.pressure)) }
+        : {}),
     })
   }
   return out

@@ -28,7 +28,14 @@ export function emit(geom: Geometry, profile: MachineProfile, fiducial?: Fiducia
   // G-code commands the nozzle; the pen is offset from it, so subtract the offset from the
   // pen target. Geometry is already clipped to the reachable region, so coords stay in-bounds.
   const zUp = f3(penZ.up - off.z)
-  const zDown = f3(penZ.down - off.z)
+  // Pen-down Z for a stroke's pressure (0..1). With pressure on (downLight set), interpolate
+  // downLight (light) → down (full); off, every stroke uses the single `down`. Element pressure is
+  // constant per stroke (stamped on all its points), so one Z at pen-down suffices.
+  const penDownZ = (p: number) => {
+    const light = penZ.downLight
+    const z = light === undefined ? penZ.down : light + (penZ.down - light) * Math.min(1, Math.max(0, p))
+    return f3(z - off.z)
+  }
   const nozzle = (p: { x: number; y: number }) => {
     const m = toMachine(p, profile)
     return { x: f3(m.x - off.x), y: f3(m.y - off.y) }
@@ -84,6 +91,7 @@ export function emit(geom: Geometry, profile: MachineProfile, fiducial?: Fiducia
     for (const s of strokes) {
       const drawFeed = s.feed ?? feeds.draw
       const first = nozzle(s.points[0])
+      const zDown = penDownZ(s.points[0].pressure ?? 1)
 
       // Travel to the start (pen already up), then pen down.
       lines.push(`G0 X${first.x} Y${first.y} F${f3(feeds.travel)}`)

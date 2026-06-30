@@ -44,6 +44,8 @@ import {
 import { downloadJson, pickJsonFile } from '../output/download'
 import { substitution_note } from '../core/wasm'
 import type { Pen } from '../core/types'
+import { pressureEnabled } from '../core/types'
+import { validateProfile } from '../core/profileValidation'
 import type { HandwritingParams } from '../elements/handwriting'
 import { SEEDED_METHODS, type RasterParams, type RasterMethod } from '../elements/raster'
 import type { RectParams, EllipseParams, PathParams, Hatch, HatchPattern } from '../elements/shapes'
@@ -580,7 +582,7 @@ const numFieldClass =
  *  larger value is allowed (and the thumb just pins at max) unless `hardMax`. `int` rounds. This is
  *  the default raster knob: drag for feel, type for precision, exceed the range when you want to. */
 function SliderNum({
-  label, title, min, max, step, value, onChange, hardMax = false, int = false,
+  label, title, min, max, step, value, onChange, hardMax = false, int = false, disabled = false,
 }: {
   label: string
   title?: string
@@ -591,6 +593,7 @@ function SliderNum({
   onChange: (v: number) => void
   hardMax?: boolean
   int?: boolean
+  disabled?: boolean
 }) {
   const dec = int ? 0 : displayDecimals(step)
   const [text, setText] = useState(() => display(value, dec))
@@ -613,7 +616,7 @@ function SliderNum({
 
   return (
     <Field label={label} title={title}>
-      <div className="flex min-w-0 items-center gap-1.5">
+      <div className={cx('flex min-w-0 items-center gap-1.5', disabled && 'opacity-40')}>
         <input
           type="range"
           className="min-w-0 flex-1"
@@ -621,6 +624,7 @@ function SliderNum({
           max={max}
           step={step}
           value={sliderVal}
+          disabled={disabled}
           onChange={(e) => onChange(clampNum(parseFloat(e.target.value)))}
         />
         <input
@@ -628,6 +632,7 @@ function SliderNum({
           inputMode="decimal"
           className={numFieldClass}
           value={text}
+          disabled={disabled}
           onFocus={() => setFocused(true)}
           onBlur={(e) => {
             setFocused(false)
@@ -855,6 +860,8 @@ function MultiSelectSection({ count }: { count: number }) {
   const removeSelected = useDoc((s) => s.removeSelected)
   const duplicateSelected = useDoc((s) => s.duplicateSelected)
   const setPenSelected = useDoc((s) => s.setPenSelected)
+  const setPressureSelected = useDoc((s) => s.setPressureSelected)
+  const pressureOn = useDoc((s) => pressureEnabled(s.profile))
   const booleanSelected = useDoc((s) => s.booleanSelected)
   const joinSelected = useDoc((s) => s.joinSelected)
   const convertToPath = useDoc((s) => s.convertToPath)
@@ -882,6 +889,13 @@ function MultiSelectSection({ count }: { count: number }) {
     const sel = s.elements.filter((e) => s.selectedIds.includes(e.id) && !isMultiPen(e.type))
     if (!sel.length) return null
     return sel.every((e) => e.pen === sel[0].pen) ? sel[0].pen : null
+  })
+  // Shared pressure of the (single-pen) selection, or null when they differ.
+  const commonPressure = useDoc((s) => {
+    const sel = s.elements.filter((e) => s.selectedIds.includes(e.id) && !isMultiPen(e.type))
+    if (!sel.length) return null
+    const first = sel[0].pressure ?? 1
+    return sel.every((e) => (e.pressure ?? 1) === first) ? first : null
   })
   const A = ({ edge, Icon, title }: { edge: AlignEdge; Icon: typeof AlignStartVertical; title: string }) => (
     <IconButton aria-label={title} title={title} onClick={() => align(edge)}>
@@ -950,6 +964,20 @@ function MultiSelectSection({ count }: { count: number }) {
       </Button>
       <div className="mt-3">
         <PenSelect value={commonPen} onChange={(pen) => setPenSelected(pen)} />
+        {commonPen !== null && (
+          <SliderNum
+            label="Pressure (%)"
+            title={pressureOn ? 'Pen pressure, light to full.' : 'Machine has no variable pressure.'}
+            min={0}
+            max={100}
+            step={1}
+            int
+            hardMax
+            disabled={!pressureOn}
+            value={Math.round((commonPressure ?? 1) * 100)}
+            onChange={(v) => setPressureSelected(v / 100)}
+          />
+        )}
       </div>
       <div className="mt-3 flex gap-2">
         <Button className="flex-1" title={`Duplicate (${MOD_KEY}D)`} onClick={() => duplicateSelected()}>
@@ -999,6 +1027,8 @@ function ElementSection() {
   const setTransform = useDoc((s) => s.setTransform)
   const setPen = useDoc((s) => s.setPen)
   const setDash = useDoc((s) => s.setDash)
+  const setPressure = useDoc((s) => s.setPressure)
+  const pressureOn = useDoc((s) => pressureEnabled(s.profile))
   const removeElement = useDoc((s) => s.removeElement)
   const convertToPath = useDoc((s) => s.convertToPath)
 
@@ -1052,6 +1082,25 @@ function ElementSection() {
       )}
 
       <SectionTitle>Stroke</SectionTitle>
+      {!isMultiPen(element.type) && (
+        <>
+          <SliderNum
+            label="Pressure (%)"
+            title={pressureOn ? 'Pen pressure, light to full.' : 'Machine has no variable pressure.'}
+            min={0}
+            max={100}
+            step={1}
+            int
+            hardMax
+            disabled={!pressureOn}
+            value={Math.round((element.pressure ?? 1) * 100)}
+            onChange={(v) => setPressure(element.id, v / 100)}
+          />
+          {!pressureOn && (
+            <p className="-mt-1 mb-2 text-2xs text-faint">Machine has no variable pressure.</p>
+          )}
+        </>
+      )}
       <Field label="Dashed">
         <input
           type="checkbox"
@@ -1272,9 +1321,20 @@ function PensSection() {
 function MachineSection() {
   const profile = useDoc((s) => s.profile)
   const setProfile = useDoc((s) => s.setProfile)
+  const pressureOn = pressureEnabled(profile)
+  const errors = validateProfile(profile)
 
   return (
     <>
+      {errors.length > 0 && (
+        <Banner variant="warn">
+          <ul className="flex flex-col gap-0.5">
+            {errors.map((e) => (
+              <li key={e}>{e}</li>
+            ))}
+          </ul>
+        </Banner>
+      )}
       <ProfileControls />
       <PensSection />
 
@@ -1297,10 +1357,46 @@ function MachineSection() {
         onChange={(v) => setProfile({ feeds: { ...profile.feeds, travel: v } })} />
       <Num label="Draw (mm/min)" value={profile.feeds.draw} step={100}
         onChange={(v) => setProfile({ feeds: { ...profile.feeds, draw: v } })} />
-      <Num label="Pen up Z" value={profile.penZ.up} step={0.1}
+
+      <SectionTitle title="Pen heights. With variable pressure on, a stroke's pressure (0..100%) picks a pen-down Z between the light and full heights; off = a single pen-down height (pen up/down only), and the per-element pressure control is disabled.">
+        Pen Z
+      </SectionTitle>
+      <Field label="Variable pressure" title="On adds a light-pressure pen-down Z; a stroke's pressure picks a height between it and Pen down Z. Off = pen up/down only.">
+        <input
+          type="checkbox"
+          className="h-4 w-4 justify-self-start"
+          checked={pressureOn}
+          onChange={(e) =>
+            setProfile({
+              penZ: e.target.checked
+                ? { ...profile.penZ, downLight: (profile.penZ.up + profile.penZ.down) / 2 }
+                : (({ downLight: _drop, ...rest }) => rest)(profile.penZ),
+            })
+          }
+        />
+      </Field>
+      <Num label="Pen up Z" title="Clearance height — the pen lifts here to travel." value={profile.penZ.up} step={0.1}
         onChange={(v) => setProfile({ penZ: { ...profile.penZ, up: v } })} />
-      <Num label="Pen down Z" value={profile.penZ.down} step={0.1}
-        onChange={(v) => setProfile({ penZ: { ...profile.penZ, down: v } })} />
+      {pressureOn && (
+        <Num
+          label="Pen down Z (light)"
+          title="Pen-down height at minimum (0%) pressure."
+          value={profile.penZ.downLight ?? profile.penZ.down}
+          step={0.1}
+          onChange={(v) => setProfile({ penZ: { ...profile.penZ, downLight: v } })}
+        />
+      )}
+      <Num
+        label={pressureOn ? 'Pen down Z (full)' : 'Pen down Z'}
+        title={
+          pressureOn
+            ? 'Pen-down height at full (100%) pressure.'
+            : 'Pen-down height for every stroke.'
+        }
+        value={profile.penZ.down}
+        step={0.1}
+        onChange={(v) => setProfile({ penZ: { ...profile.penZ, down: v } })}
+      />
 
       <SectionTitle title="Pen tip position relative to the nozzle. Shrinks the reachable area; offsets G-code coordinates.">
         Pen offset (vs nozzle)
@@ -1549,12 +1645,15 @@ function Tab({
   id,
   controls,
   children,
+  alert = false,
 }: {
   active: boolean
   onClick: () => void
   id: string
   controls: string
   children: React.ReactNode
+  /** Show a warning dot — e.g. the Machine profile has validation errors. */
+  alert?: boolean
 }) {
   return (
     <button
@@ -1564,7 +1663,7 @@ function Tab({
       aria-controls={controls}
       onClick={onClick}
       className={cx(
-        '-mb-px border-b-2 px-3 py-2.5 text-sm font-medium transition-colors outline-none',
+        '-mb-px flex items-center gap-1.5 border-b-2 px-3 py-2.5 text-sm font-medium transition-colors outline-none',
         'focus-visible:text-text',
         active
           ? 'border-accent text-text'
@@ -1572,6 +1671,13 @@ function Tab({
       )}
     >
       {children}
+      {alert && (
+        <span
+          className="h-1.5 w-1.5 rounded-full bg-warn-text"
+          aria-label="needs attention"
+          title="This profile has problems that block plotting"
+        />
+      )}
     </button>
   )
 }
@@ -1580,6 +1686,7 @@ export function Inspector() {
   const [tab, setTab] = useState<'elements' | 'machine' | 'preferences'>('elements')
   const inspectorOpen = useUI((s) => s.inspectorOpen)
   const setInspectorOpen = useUI((s) => s.setInspectorOpen)
+  const machineInvalid = useDoc((s) => validateProfile(s.profile).length > 0)
 
   // Reveal the Elements tab whenever an element is selected or manipulated, so you never tweak the
   // canvas while looking at the Machine profile. The signal folds in the selected elements' ids +
@@ -1621,6 +1728,7 @@ export function Inspector() {
           onClick={() => setTab('machine')}
           id="tab-machine"
           controls="panel-machine"
+          alert={machineInvalid}
         >
           Machine
         </Tab>

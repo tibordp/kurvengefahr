@@ -4,12 +4,14 @@
 import { memo, useMemo } from 'react'
 import { Group, Image as KonvaImage, Line, Rect } from 'react-konva'
 import type { DocElement, Transform } from '../core/types'
+import { pressureEnabled } from '../core/types'
 import { generateLocal, isMultiPen } from '../elements/registry'
 import { useDoc } from '../store/document'
 import { useGeneration, needsManualRegen, provisionalScale } from '../core/generation'
 import { useRasterImage } from './useRasterImage'
 import type { RasterParams } from '../elements/raster'
 import { useNodeInteraction } from './useNodeInteraction'
+import { displayPenWidthMm, PEN_WIDTH_MM } from './penWidth'
 
 interface Props {
   element: DocElement
@@ -23,11 +25,9 @@ interface Props {
   effective?: Transform
 }
 
-/** Nominal pen-tip width. Later this comes from the pen/machine profile, not the element. */
-const PEN_WIDTH_MM = 0.4
-
 function ElementNodeImpl({ element, pxPerMm, interactive = true, effective }: Props) {
   const pens = useDoc((s) => s.profile.pens)
+  const pressureOn = useDoc((s) => pressureEnabled(s.profile))
   const handlers = useNodeInteraction(element)
   const t = effective ?? element.transform
 
@@ -38,6 +38,10 @@ function ElementNodeImpl({ element, pxPerMm, interactive = true, effective }: Pr
   // stroke's own pen for natively multi-colour types.
   const multiPen = isMultiPen(element.type)
   const elementColor = colorFor(element.pen)
+  // Pressure shows as line weight (display only). The element's single pressure is stamped in the
+  // pipeline, but locally the strokes still carry the generator's flat pressure — so weight the
+  // whole element by its own value. Multi-pen types (clip) vary per member, so leave them at full.
+  const widthMm = multiPen ? PEN_WIDTH_MM : displayPenWidthMm(element.pressure ?? 1, pressureOn)
 
   // After a resize bakes a new box into params, the cached ink is still fit to the OLD box until the
   // re-trace lands. Rescale just the strokes (not the underlay, which is already at the new size) so
@@ -64,9 +68,10 @@ function ElementNodeImpl({ element, pxPerMm, interactive = true, effective }: Pr
             key={i}
             points={pts}
             stroke={multiPen ? colorFor(stroke.pen) : elementColor}
-            // Pen width is a property of the pen, not the element: constant in physical mm at the
-            // current zoom, unaffected by element scale. strokeScaleEnabled false → mm × pxPerMm.
-            strokeWidth={PEN_WIDTH_MM * pxPerMm}
+            // Width is constant in physical mm at the current zoom, unaffected by element scale
+            // (strokeScaleEnabled false → mm × pxPerMm). Per-element pressure scales it for a weight
+            // cue; the pen tip itself doesn't change — this is display only.
+            strokeWidth={widthMm * pxPerMm}
             strokeScaleEnabled={false}
             // Reflect the element's dashed-stroke style here too (screen px, like strokeWidth).
             dash={dash ? [dash.dash * pxPerMm, dash.gap * pxPerMm] : undefined}
@@ -79,7 +84,7 @@ function ElementNodeImpl({ element, pxPerMm, interactive = true, effective }: Pr
         )
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [geom, pxPerMm, elementColor, multiPen, pens, dash],
+    [geom, pxPerMm, elementColor, multiPen, pens, dash, widthMm],
   )
 
   return (

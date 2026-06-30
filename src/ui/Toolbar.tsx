@@ -5,6 +5,7 @@ import { usePreview } from '../store/preview'
 import { useUI } from '../store/ui'
 import { useHistory, undo, redo } from '../store/history'
 import { regenerateAll, needsManualRegen } from '../core/generation'
+import { validateProfile } from '../core/profileValidation'
 import { buildPlottableGeometry } from '../core/pipeline'
 import { optimizeGeometry } from '../core/pipeline/optimize'
 import { penParkInPage } from '../core/pipeline/toMachine'
@@ -61,6 +62,7 @@ export function Toolbar() {
   const canUndo = useHistory((s) => s.past.length > 0)
   const canRedo = useHistory((s) => s.future.length > 0)
   const device = useDoc((s) => s.profile.device)
+  const profileInvalid = useDoc((s) => validateProfile(s.profile).length > 0)
   const [busy, setBusy] = useState(false)
   const [plotting, setPlotting] = useState(false)
   const [preparing, setPreparing] = useState(false)
@@ -190,9 +192,9 @@ export function Toolbar() {
         <Button
           variant="primary"
           onClick={onPlot}
-          disabled={plotting || elements.length === 0}
+          disabled={plotting || elements.length === 0 || profileInvalid}
           aria-label={`Plot to ${device.printerName}`}
-          title={`Plot to ${device.printerName}`}
+          title={profileInvalid ? 'Fix the machine profile to plot' : `Plot to ${device.printerName}`}
         >
           <Printer size={15} />
           <span className="hidden sm:inline">{plotting ? 'Sending…' : 'Plot'}</span>
@@ -201,9 +203,9 @@ export function Toolbar() {
       <Button
         variant={device ? 'default' : 'primary'}
         onClick={onGenerate}
-        disabled={busy}
+        disabled={busy || profileInvalid}
         aria-label="Generate and download G-code"
-        title={`Generate & download G-code (${MOD_KEY}S)`}
+        title={profileInvalid ? 'Fix the machine profile to generate G-code' : `Generate & download G-code (${MOD_KEY}S)`}
       >
         <Download size={15} />
         <span className="hidden sm:inline">{busy ? 'Generating…' : 'Generate G-code'}</span>

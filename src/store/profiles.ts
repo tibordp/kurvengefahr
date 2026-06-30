@@ -11,9 +11,9 @@ export const PRUSA_MK4: MachineProfile = {
   bed: { width: 250, height: 210 },
   origin: 'bottom-left',
   feeds: { travel: 9000, draw: 3000 },
-  // Spring-loaded holder: Z down presses the pen; tune `down` for line weight. Placeholder
-  // values — dial in on the machine.
-  penZ: { up: 4, down: 0 },
+  // Spring-loaded holder: Z down presses the pen; tune `down` for line weight. `down` is full
+  // pressure, `downLight` the lightest touch (pressure lifts toward up). Placeholders — dial in.
+  penZ: { up: 4, down: 0, downLight: 2 },
   penOffset: { x: 0, y: 0, z: 0 },
   pens: DEFAULT_PENS,
   preamble: ['M862.6 P "Input shaper" ; FW feature check', 'G21 ; mm', 'G90 ; absolute', 'G28 ; home'].join('\n'),
@@ -29,7 +29,7 @@ export const GENERIC_A4: MachineProfile = {
   bed: { width: 297, height: 210 },
   origin: 'bottom-left',
   feeds: { travel: 6000, draw: 2000 },
-  penZ: { up: 5, down: 0 },
+  penZ: { up: 5, down: 0, downLight: 2.5 },
   penOffset: { x: 0, y: 0, z: 0 },
   pens: DEFAULT_PENS,
   preamble: ['G21', 'G90', 'G28'].join('\n'),
