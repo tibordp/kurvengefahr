@@ -31,6 +31,10 @@ interface ElementType {
    *  NOT stamp the element's single `pen` over them. None today; the seam is here so adding such a
    *  type (e.g. a multi-layer SVG import) needs no pipeline change. */
   multiPen?: boolean
+  /** A **container** element: it has no generator of its own; its geometry is composed from member
+   *  elements (tagged with their `parent` = this element's id) in the pipeline / on the canvas. Both
+   *  `group` (plain composition) and `clip` (composition + mask) set this. */
+  container?: boolean
   /** Async types only: when this returns true, param edits trigger a **debounced auto-regenerate**
    *  (live preview) instead of waiting for a manual "Regenerate". Decided per-params so a type can
    *  be live in a cheap mode and manual in a heavy one. Absent / false = manual (the default, e.g.
@@ -73,6 +77,12 @@ export function bakesScale(type: string): boolean {
 /** Whether this type assigns per-stroke pens itself (so concatenation leaves its pens untouched). */
 export function isMultiPen(type: string): boolean {
   return !!types.get(type)?.multiPen
+}
+
+/** Whether this type is a container (group/clip): its geometry is composed from its members, not a
+ *  generator. The single source of truth for "skip at top level / render via a container node". */
+export function isContainer(type: string): boolean {
+  return !!types.get(type)?.container
 }
 
 /** Whether edits to this element should auto-regenerate (debounced) rather than wait for a manual
@@ -175,4 +185,24 @@ export function markGenerated(id: string, hash: string, geom: Geometry): void {
 
 export function dropFromCache(id: string): void {
   cache.delete(id)
+  filterCache.delete(id)
+}
+
+/** Memo for an element's *filtered* local geometry, keyed by id. Valid while both the pre-filter
+ *  base geometry (`base` — a stable ref from `generateLocal`/container compose) and the `filters`
+ *  array ref are unchanged, so re-renders that touch neither skip the (Rust) filter pass. Lives here
+ *  alongside the geometry cache so `dropFromCache` evicts both; `filteredLocal` (clipGeometry.ts)
+ *  reads/writes it. */
+interface FilterEntry {
+  base: Geometry
+  filters: unknown
+  geom: Geometry
+}
+const filterCache = new Map<string, FilterEntry>()
+
+export function getFilterCache(id: string): FilterEntry | undefined {
+  return filterCache.get(id)
+}
+export function setFilterCache(id: string, entry: FilterEntry): void {
+  filterCache.set(id, entry)
 }

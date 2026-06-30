@@ -34,6 +34,53 @@ export interface Stroke {
 /** The entire interface between "things that make marks" and "things that make motion." */
 export type Geometry = Stroke[]
 
+/** A non-destructive geometry filter applied to an element's (or container's) generated strokes —
+ *  see `src/filters`. Filters stack in order, run in Rust (local space, before `place`), and are
+ *  NOT geometry-affecting params: like `pen`, changing them is a cheap re-place, never a regenerate.
+ *  Field names mirror the Rust `filters::FilterSpec` (camelCase); the discriminant is `type`. */
+export type FilterType = 'roughen' | 'wave' | 'sketch' | 'twist' | 'bulge'
+
+interface FilterCommon {
+  enabled: boolean
+}
+/** Hand-drawn wobble: smooth normal displacement + optional fine tremor. Seeded. */
+export interface RoughenFilter extends FilterCommon {
+  type: 'roughen'
+  amplitudeMm: number
+  detailMm: number
+  tremorMm: number
+  seed: number
+}
+/** Sinusoidal warp; >1 harmonic makes it anharmonic. */
+export interface WaveFilter extends FilterCommon {
+  type: 'wave'
+  amplitudeMm: number
+  wavelengthMm: number
+  angleDeg: number
+  phaseDeg: number
+  harmonics: number
+}
+/** Multi-pass overdraw: N wandering copies of each stroke. Seeded. */
+export interface SketchFilter extends FilterCommon {
+  type: 'sketch'
+  passes: number
+  offsetMm: number
+  seed: number
+}
+/** Swirl about the geometry centre, fading out by `radiusMm`. */
+export interface TwistFilter extends FilterCommon {
+  type: 'twist'
+  angleDeg: number
+  radiusMm: number
+}
+/** Radial bulge (+) / pinch (−) about the geometry centre, fading out by `radiusMm`. */
+export interface BulgeFilter extends FilterCommon {
+  type: 'bulge'
+  strength: number
+  radiusMm: number
+}
+export type FilterSpec = RoughenFilter | WaveFilter | SketchFilter | TwistFilter | BulgeFilter
+
 /** Affine local→page transform, decomposed to match Konva's node model and the inspector.
  *  Translation is millimetres in page space; rotation is degrees. */
 export interface Transform {
@@ -65,23 +112,25 @@ export interface DocElement<TParams = unknown> {
    *  type that is *natively* multi-colour sets per-stroke pens in its generator and opts out of
    *  stamping (registry `multiPen`); `pen` then acts as its base/fallback. */
   pen: PenId
-  /** Optional flat-group membership — a purely organizational tag for the Elements tree (collapse,
-   *  group-select, rename). It does NOT affect geometry, plot order, or the pipeline; an element
-   *  with no `groupId` sits at the tree's top level. References a {@link Group} by id. */
-  groupId?: string
+  /** Container membership: this element belongs to the container element (a `group` or `clip`) with
+   *  this id. Its `transform` is then **relative to that container's local space** (the container's
+   *  transform composes onto it — containers nest). A `group` composes its members as one unit; a
+   *  `clip` additionally clips them to a mask member. Absent ⇒ the element sits at the top level. */
+  parent?: string
   /** Optional user-given display name for the Elements tree; falls back to a derived label. */
   name?: string
   /** Optional dashed stroke style (mm): each stroke is broken into `dash`-long marks separated by
    *  `gap`. Like `pen`/`transform`, it's applied downstream (in `buildPageGeometry`) — a cheap
    *  re-place/re-emit, never a regenerate. Absent = solid. */
   dash?: { dash: number; gap: number }
-  /** Clip-to-shape membership: this element belongs to the `clip` element with this id. Its
-   *  `transform` is then **relative to that clip's local space** (so the clip's transform composes
-   *  onto it — clips nest). The clip renders/plots only the part of its members inside the mask. */
-  clipParent?: string
-  /** When set on a clip member, this element is the clip's **mask**: it makes no marks (its closed
+  /** When set on a `clip` member, this element is the clip's **mask**: it makes no marks (its closed
    *  contours bound the clip) but stays a real, editable element so unclip can restore it. */
   clipRole?: 'mask'
+  /** Optional non-destructive filter stack (roughen / warp / …). Applied in order to the element's
+   *  generated geometry in local space (before `place`), in Rust. Like `pen`/`pressure`, NOT a
+   *  geometry param: changing it is a cheap re-filter/re-place, never a regenerate. The source stays
+   *  editable (a `path`'s nodes still edit its pre-filter shape). Absent/empty = no filters. */
+  filters?: FilterSpec[]
   /** Pen pressure, normalised 0..1 (1 = full). Absent = full. Like `pen`, it's *not* a
    *  geometry-affecting param: it's stamped onto the element's stroke points at concatenation
    *  (`buildPageGeometry`), so changing it is a cheap re-place/re-emit, never a regenerate. The
@@ -90,14 +139,6 @@ export interface DocElement<TParams = unknown> {
    *  varies pressure sets per-point pressure in its generator (and opts out of stamping, like
    *  `multiPen`). Multi-pen types (e.g. `clip`) carry per-member pressure instead. */
   pressure?: number
-}
-
-/** A flat (non-nesting) organizational group of elements, shown as a collapsible node in the
- *  Elements tree. Membership lives on each element's `groupId`; this just holds the display state. */
-export interface Group {
-  id: string
-  name: string
-  collapsed: boolean
 }
 
 export interface Pen {

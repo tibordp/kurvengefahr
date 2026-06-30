@@ -56,7 +56,7 @@ export function NodeEditLayer({ pxPerMm }: { pxPerMm: number }) {
   const p = el.params as PathParams
   // Effective page transform — for a clip member this composes the clip chain, so handles land where
   // the (moved) clip actually is, and edits still commit in the path's own local coords.
-  const t = el.clipParent ? effectiveTransform(el, new Map(elements.map((e) => [e.id, e]))) : el.transform
+  const t = el.parent ? effectiveTransform(el, new Map(elements.map((e) => [e.id, e]))) : el.transform
   const r = 4 / pxPerMm // anchor radius, screen-constant
   const hr = 3 / pxPerMm // handle radius
   const ir = 2.6 / pxPerMm // insert (midpoint) dot radius

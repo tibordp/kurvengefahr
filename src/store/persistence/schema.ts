@@ -9,10 +9,11 @@
 //     simply backfilled when loading older data.
 //   • Forward (old app, newer data): a `schemaVersion` greater than CURRENT yields `unsupported`;
 //     callers report it and leave the stored bytes untouched rather than mangling them.
-import type { DocElement, Fiducial, Group, MachineProfile, Transform } from '../../core/types'
+import type { DocElement, Fiducial, MachineProfile, Transform } from '../../core/types'
 import { IDENTITY_TRANSFORM } from '../../core/types'
 import { PRUSA_MK4 } from '../profiles'
-import { isKnownType, sanitizeParams } from '../../elements/registry'
+import { isContainer, isKnownType, sanitizeParams } from '../../elements/registry'
+import { sanitizeFilters } from '../../filters/registry'
 
 // v2: `path` params went multi-contour ({nodes,closed} → {contours:[{nodes,closed}]}). No migration
 // step is needed — the path sanitizer coerces the old single-contour shape — but the bump makes an
@@ -22,7 +23,12 @@ import { isKnownType, sanitizeParams } from '../../elements/registry'
 // apps that don't know how to render clips.
 // v4: pen pressure — optional per-element `pressure` plus a profile `pressure` block. Additive and
 // backfilled, so no migration step; the bump fences off older apps that draw every stroke at down Z.
-export const CURRENT_DOC_SCHEMA = 4
+// v5: containers unified — plain `groups` (a separate array + per-element `groupId`) and clips
+// (`clipParent`) collapse into a single container model: a `group`/`clip` element + each member's
+// `parent`. No migration step (buildout, no back-compat) — older docs just load without their old
+// grouping/clips, which the sanitizers tolerate.
+// v6: per-element non-destructive `filters` stack. Additive optional field, backfilled to [].
+export const CURRENT_DOC_SCHEMA = 6
 export const CURRENT_LIBRARY_SCHEMA = 1
 
 export const DOC_FILE_KIND = 'kurvengefahr/document'
@@ -35,8 +41,6 @@ export interface DocSnapshot {
   selectedIds: string[]
   /** The single alignment fiducial (page-space mm), or null. */
   fiducial: Fiducial | null
-  /** Organizational element groups for the Elements tree (membership is on each element). */
-  groups: Group[]
 }
 
 /** A document as stored under `kg-doc:<id>` — snapshot + identity/metadata. */
@@ -132,30 +136,18 @@ export function sanitizeElements(arr: unknown): DocElement[] {
       transform: sanitizeTransform(e.transform),
       params: sanitizeParams(type, e.params),
       pen: num(e.pen, num(legacyPen, 0)),
-      ...(typeof e.groupId === 'string' ? { groupId: e.groupId } : {}),
       ...(typeof e.name === 'string' ? { name: e.name } : {}),
       ...(isObj(e.dash) && typeof e.dash.dash === 'number' && typeof e.dash.gap === 'number'
         ? { dash: { dash: Math.max(0, e.dash.dash), gap: Math.max(0, e.dash.gap) } }
         : {}),
-      ...(typeof e.clipParent === 'string' ? { clipParent: e.clipParent } : {}),
+      ...(typeof e.parent === 'string' ? { parent: e.parent } : {}),
       ...(e.clipRole === 'mask' ? { clipRole: 'mask' as const } : {}),
+      ...(Array.isArray(e.filters) && e.filters.length ? { filters: sanitizeFilters(e.filters) } : {}),
       // Pressure is optional (absent = full); keep it only when a valid 0..1 value is stored.
       ...(typeof e.pressure === 'number' && Number.isFinite(e.pressure)
         ? { pressure: Math.min(1, Math.max(0, e.pressure)) }
         : {}),
     })
-  }
-  return out
-}
-
-/** Coerce the persisted groups array. Dangling members and empty groups are reconciled in
- *  {@link sanitizeSnapshot} once both elements and groups are known. */
-function sanitizeGroups(arr: unknown): Group[] {
-  if (!Array.isArray(arr)) return []
-  const out: Group[] = []
-  for (const g of arr) {
-    if (!isObj(g) || typeof g.id !== 'string') continue
-    out.push({ id: g.id, name: str(g.name, 'Group'), collapsed: !!g.collapsed })
   }
   return out
 }
@@ -171,17 +163,18 @@ function sanitizeFiducial(f: unknown): Fiducial | null {
 export function sanitizeSnapshot(raw: unknown): DocSnapshot {
   const o = isObj(raw) ? raw : {}
   let elements = sanitizeElements(o.elements)
-  // Reconcile clips: drop a clipParent/clipRole whose clip element is gone, then drop any clip left
-  // with no members — so the pipeline never skips an orphaned member or renders an empty clip.
-  const clipIds = new Set(elements.filter((e) => e.type === 'clip').map((e) => e.id))
+  // Reconcile containers (group/clip): drop a `parent`/`clipRole` whose container element is gone,
+  // then drop any container left with no members — so the pipeline never skips an orphaned member or
+  // renders an empty container.
+  const containerIds = new Set(elements.filter((e) => isContainer(e.type)).map((e) => e.id))
   for (const e of elements)
-    if (e.clipParent && !clipIds.has(e.clipParent)) {
-      delete e.clipParent
+    if (e.parent && !containerIds.has(e.parent)) {
+      delete e.parent
       delete e.clipRole
     }
-  const clipsWithMembers = new Set<string>()
-  for (const e of elements) if (e.clipParent) clipsWithMembers.add(e.clipParent)
-  elements = elements.filter((e) => e.type !== 'clip' || clipsWithMembers.has(e.id))
+  const containersWithMembers = new Set<string>()
+  for (const e of elements) if (e.parent) containersWithMembers.add(e.parent)
+  elements = elements.filter((e) => !isContainer(e.type) || containersWithMembers.has(e.id))
   const ids = new Set(elements.map((e) => e.id))
   // Back-compat: a pre-multi-select doc stored a single `selectedId`.
   const rawIds = Array.isArray(o.selectedIds)
@@ -191,16 +184,7 @@ export function sanitizeSnapshot(raw: unknown): DocSnapshot {
       : []
   const selectedIds = rawIds.filter((id: unknown): id is string => typeof id === 'string' && ids.has(id))
 
-  // Reconcile groups with membership: keep only groups that have ≥1 member, and clear any element's
-  // groupId that points at a dropped group — so a tree can never reference a phantom group.
-  let groups = sanitizeGroups(o.groups)
-  const used = new Set<string>()
-  for (const e of elements) if (e.groupId) used.add(e.groupId)
-  groups = groups.filter((g) => used.has(g.id))
-  const live = new Set(groups.map((g) => g.id))
-  for (const e of elements) if (e.groupId && !live.has(e.groupId)) delete e.groupId
-
-  return { elements, profile: sanitizeProfile(o.profile), selectedIds, fiducial: sanitizeFiducial(o.fiducial), groups }
+  return { elements, profile: sanitizeProfile(o.profile), selectedIds, fiducial: sanitizeFiducial(o.fiducial) }
 }
 
 // ---- migrations ---------------------------------------------------------------------------------
@@ -284,7 +268,6 @@ export function documentFile(doc: StoredDoc) {
       profile: doc.profile,
       selectedIds: doc.selectedIds,
       fiducial: doc.fiducial,
-      groups: doc.groups,
     },
   }
 }

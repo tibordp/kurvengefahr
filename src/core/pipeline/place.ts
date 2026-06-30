@@ -66,18 +66,18 @@ export function invertTransform(t: Transform): Transform {
   return matrixToTransform(invertMatrix(transformToMatrix(t)))
 }
 
-/** A clip member's transform is relative to its clip's local space; compose up the `clipParent`
+/** A container member's transform is relative to its container's local space; compose up the `parent`
  *  chain to get its true page transform (so it can be rendered/edited in place). */
 export function effectiveTransform(el: DocElement, byId: Map<string, DocElement>): Transform {
   let t = el.transform
-  let pid = el.clipParent
+  let pid = el.parent
   const seen = new Set<string>()
   while (pid && !seen.has(pid)) {
     seen.add(pid)
-    const clip = byId.get(pid)
-    if (!clip) break
-    t = composeTransforms(clip.transform, t)
-    pid = clip.clipParent
+    const parent = byId.get(pid)
+    if (!parent) break
+    t = composeTransforms(parent.transform, t)
+    pid = parent.parent
   }
   return t
 }

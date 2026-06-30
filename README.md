@@ -22,10 +22,18 @@ with a spring-loaded pen holder; the machine profile is editable.
   included); combine several elements into one editable compound path (Bézier curves preserved); weld
   touching open contours into a single fillable outline; or break a compound path back into its
   pieces.
+- **Groups** -- Group elements into a real container that moves, scales, and rotates as one nested
+  object. Groups nest, members stay individually editable inside, and ungrouping returns them exactly
+  where they were.
 - **Clip to shape** -- Clip anything (generative patterns, traced images, handwriting, imports) to a
   shape, non-destructively: the topmost selection becomes the mask, the rest is clipped to it. Clips
   nest and transform as one object, the mask stays editable and comes back when you release the clip,
   and you can flatten a clip into plain paths with convert-to-path.
+- **Filters** -- Non-destructive, stackable distortions on any element or group: roughen for a
+  hand-drawn wobble, wave for sinusoidal (and anharmonic) warps, sketch for multi-pass overdraw, and
+  twist or bulge to swirl and balloon. The source stays editable -- a path keeps its nodes, shown over
+  a ghost of the original shape -- while the filtered strokes are what plot. A filter on a group warps
+  its combined geometry as one coherent field.
 - **Generative** -- Parametric pattern generators: spirographs, L-system fractals, Truchet tiles,
   Voronoi diagrams, and noise flow fields, each fit to a box and reproducible per seed.
 - **Vector import** -- SVG and DXF become native, editable paths, sized to fit or imported at 1:1
@@ -58,8 +66,8 @@ with a spring-loaded pen holder; the machine profile is editable.
 - **Plot directly** -- With the companion PrusaLink Bridge browser extension, bind a profile to one of
   your printers and send the job straight to it with one click -- no download-and-transfer. Credentials
   live in the extension; the app only ever sees the printer's name and live status.
-- **Elements tree** -- A searchable, collapsible list of every element with named groups; selection
-  is synced both ways with the canvas.
+- **Elements tree** -- A searchable, collapsible list of every element, with groups and clips as
+  nested, named containers; selection is synced both ways with the canvas.
 - **Documents** -- Multiple drawings in tabs, autosaved, with cross-tab sync, undo/redo that survives
   a refresh, and `.kgz` export.
 - A command palette (`Ctrl/Cmd+K`), fit-to-view, system-clipboard copy/paste across documents and

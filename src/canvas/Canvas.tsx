@@ -18,11 +18,12 @@ import { useViewport, useCursor } from '../store/viewport'
 import { clampViewport, fitScale, MIN_SCALE, MAX_SCALE } from './viewport'
 import { drawableRegion } from '../core/pipeline/clip'
 import { ElementNode } from './ElementNode'
-import { ClipNode } from './ClipNode'
+import { ContainerNode } from './ContainerNode'
 import { CanvasContextMenu, type CanvasMenuState } from './CanvasContextMenu'
 import { PreviewLayer } from './PreviewLayer'
 import { DrawingPreview } from './DrawingPreview'
 import { NodeEditLayer } from './NodeEditLayer'
+import { GhostLayer } from './GhostLayer'
 import { FiducialLayer } from './FiducialLayer'
 import { SnapGrid } from './SnapLayer'
 import { useSnap } from '../store/snap'
@@ -37,8 +38,8 @@ import {
   type Pt,
 } from './drawing'
 import { place, localToPage, effectiveTransform } from '../core/pipeline/place'
-import { clipLocalGeometry } from '../core/pipeline/clipGeometry'
-import { generateLocal } from '../elements/registry'
+import { elementLocalGeometry } from '../core/pipeline/clipGeometry'
+import { generateLocal, isContainer } from '../elements/registry'
 import { useNodeSelection, isNodeSelected, type NodeSel } from './nodeSelection'
 import { useHover } from '../store/hover'
 import type { PathParams } from '../elements/shapes'
@@ -47,21 +48,22 @@ const clamp = (v: number, lo: number, hi: number) => (v < lo ? lo : v > hi ? hi 
 
 export function Canvas() {
   const elements = useDoc((s) => s.elements)
-  // Clip lookup: ids of clip elements, the clipParent→members map (for ClipNode / member hiding), and
-  // an id→element map (for composing a member's effective page transform when editing it in place).
-  const { clipIds, membersOf, byId } = useMemo(() => {
-    const clipIds = new Set(elements.filter((e) => e.type === 'clip').map((e) => e.id))
+  // Container lookup: ids of container elements (group/clip), the parent→members map (for
+  // ContainerNode / member hiding), and an id→element map (for composing a member's effective page
+  // transform when editing it in place).
+  const { containerIds, membersOf, byId } = useMemo(() => {
+    const containerIds = new Set(elements.filter((e) => isContainer(e.type)).map((e) => e.id))
     const membersOf = new Map<string, DocElement[]>()
     const byId = new Map<string, DocElement>()
     for (const e of elements) {
       byId.set(e.id, e)
-      if (e.clipParent) {
-        const arr = membersOf.get(e.clipParent) ?? []
+      if (e.parent) {
+        const arr = membersOf.get(e.parent) ?? []
         arr.push(e)
-        membersOf.set(e.clipParent, arr)
+        membersOf.set(e.parent, arr)
       }
     }
-    return { clipIds, membersOf, byId }
+    return { containerIds, membersOf, byId }
   }, [elements])
   const profile = useDoc((s) => s.profile)
   const bed = profile.bed
@@ -468,10 +470,10 @@ export function Canvas() {
       } else {
         const ids: string[] = []
         for (const el of doc.elements) {
-          // Clip members are selected via their clip, not individually; a clip is bounded by its
-          // clipped composition (its own generateLocal is empty).
-          if (el.clipParent && clipIds.has(el.clipParent)) continue
-          const local = el.type === 'clip' ? clipLocalGeometry(el, membersOf) : generateLocal(el)
+          // Container members are selected via their container, not individually; a container is
+          // bounded by its composed geometry (its own generateLocal is empty).
+          if (el.parent && containerIds.has(el.parent)) continue
+          const local = isContainer(el.type) ? elementLocalGeometry(el, membersOf) : generateLocal(el)
           let bx0 = Infinity
           let by0 = Infinity
           let bx1 = -Infinity
@@ -567,10 +569,10 @@ export function Canvas() {
           ))}
           {elements.map((el) => {
             const interactive = !previewActive && !spaceHeld && !drawing
-            // Clip members (mask + clipped contents) aren't drawn at the top level — only via their
-            // clip's clipped composition. A *selected* member renders raw at its effective page
-            // transform, so you can see and edit it in context (the clip chain is composed in).
-            if (el.clipParent && clipIds.has(el.clipParent)) {
+            // Container members aren't drawn at the top level — only via their container's composed
+            // geometry. A *selected* member renders raw at its effective page transform, so you can
+            // see and edit it in context (the container chain is composed in).
+            if (el.parent && containerIds.has(el.parent)) {
               if (!selectedIds.includes(el.id)) return null
               return (
                 <ElementNode
@@ -582,12 +584,13 @@ export function Canvas() {
                 />
               )
             }
-            if (el.type === 'clip')
-              return <ClipNode key={el.id} element={el} membersOf={membersOf} pxPerMm={scale} interactive={interactive} />
+            if (isContainer(el.type))
+              return <ContainerNode key={el.id} element={el} membersOf={membersOf} pxPerMm={scale} interactive={interactive} />
             return <ElementNode key={el.id} element={el} pxPerMm={scale} interactive={interactive} />
           })}
           {previewActive && <PreviewLayer pxPerMm={scale} />}
           {drawing && <DrawingPreview pxPerMm={scale} />}
+          {!previewActive && !drawing && <GhostLayer />}
           {!previewActive && !drawing && <NodeEditLayer pxPerMm={scale} />}
           {!previewActive && !drawing && <HoverHighlight pxPerMm={scale} />}
           <FiducialLayer pxPerMm={scale} interactive={!previewActive && !spaceHeld && !drawing} />
@@ -710,14 +713,14 @@ function HoverHighlight({ pxPerMm }: { pxPerMm: number }) {
   const el = id ? (elements.find((e) => e.id === id) ?? null) : null
   const selected = useDoc((s) => (id ? s.selectedIds.includes(id) : false))
   if (!el || selected) return null
-  // Bounds in page space: a clip uses its clipped composition; a clip member its effective transform.
+  // Bounds in page space: a container uses its composed geometry; a member its effective transform.
   let geom = generateLocal(el)
   let t = el.transform
-  if (el.type === 'clip') {
+  if (isContainer(el.type)) {
     const m = new Map<string, DocElement[]>()
-    for (const e of elements) if (e.clipParent) m.set(e.clipParent, [...(m.get(e.clipParent) ?? []), e])
-    geom = clipLocalGeometry(el, m)
-  } else if (el.clipParent) {
+    for (const e of elements) if (e.parent) m.set(e.parent, [...(m.get(e.parent) ?? []), e])
+    geom = elementLocalGeometry(el, m)
+  } else if (el.parent) {
     t = effectiveTransform(el, new Map(elements.map((e) => [e.id, e])))
   }
   let x0 = Infinity

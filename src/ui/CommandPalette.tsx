@@ -35,7 +35,7 @@ function buildCommands(): Command[] {
       e.type === 'ellipse' ||
       (e.type === 'path' && (e.params as PathParams).contours.some((c) => c.closed && c.nodes.length >= 3)),
   )
-  const groupIds = [...new Set(sel.map((e) => e.groupId).filter((g): g is string => !!g))]
+  const groupIds = sel.filter((e) => e.type === 'group').map((e) => e.id)
   const clipIds = sel.filter((e) => e.type === 'clip').map((e) => e.id)
   const cmds: Command[] = []
   const add = (id: string, label: string, group: string, run: () => void) => cmds.push({ id, label, group, run })

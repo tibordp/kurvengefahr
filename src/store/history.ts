@@ -40,12 +40,12 @@ export const useHistory = create<{ past: Snapshot[]; future: Snapshot[] }>(() =>
 }))
 
 const snap = (): Snapshot => {
-  const { elements, profile, selectedIds, fiducial, groups } = useDoc.getState()
-  return { elements, profile, selectedIds, fiducial, groups }
+  const { elements, profile, selectedIds, fiducial } = useDoc.getState()
+  return { elements, profile, selectedIds, fiducial }
 }
 // Fingerprint of undoable CONTENT only — excludes `selectedIds`, so selecting is not an undo step.
 // A `notifyGeometry()` ref-bump keeps the same element objects, so it serializes identically.
-const fp = (s: Snapshot): string => JSON.stringify([s.elements, s.profile, s.fiducial, s.groups])
+const fp = (s: Snapshot): string => JSON.stringify([s.elements, s.profile, s.fiducial])
 
 let present: Snapshot | null = null
 let presentFp = ''

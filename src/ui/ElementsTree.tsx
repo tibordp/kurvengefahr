@@ -1,13 +1,12 @@
-// The Elements tree: every element in the document, organized into flat (non-nesting) groups. The
-// reliable way to (re)select things — including an element dragged off the bed or hidden inside a
-// collapsed group. Selection here drives the same store as clicking the canvas, both ways. Built for
-// many elements (SVG import drops its shapes into one collapsed group): collapse, search, multi-
-// select with shift-range and cmd-toggle, group / ungroup, and inline rename.
+// The Elements tree: every element in the document, organized into nesting containers (group / clip).
+// The reliable way to (re)select things — including an element dragged off the bed or hidden inside a
+// collapsed container. Selection here drives the same store as clicking the canvas, both ways. Built
+// for many elements (SVG import drops its shapes into one container): collapse, search, multi-select
+// with shift-range and cmd-toggle, group / ungroup / clip / release, and inline rename.
 //
-// Perf: the document/groups/query → row-list computation is memoized, the per-element rows are a
-// memoized component, and handlers are stable — so a generation tick (which re-renders the whole
-// tree via the shared `genStatus`) or a selection change re-renders only the rows that actually
-// changed, not every row.
+// Perf: the document/query → row-list computation is memoized, the per-element rows are a memoized
+// component, and handlers are stable — so a generation tick (which re-renders the whole tree via the
+// shared `genStatus`) or a selection change re-renders only the rows that actually changed.
 import { memo, useCallback, useMemo, useRef, useState } from 'react'
 import {
   ChevronRight,
@@ -29,6 +28,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { useDoc } from '../store/document'
+import { isContainer } from '../elements/registry'
 import { useGeneration, needsManualRegen } from '../core/generation'
 import { useHover } from '../store/hover'
 import type { DocElement } from '../core/types'
@@ -63,6 +63,7 @@ function derivedName(el: DocElement): string {
   }
   if (el.type === 'raster') return 'Image'
   if (el.type === 'clip') return 'Clip'
+  if (el.type === 'group') return 'Group'
   return el.type
 }
 
@@ -77,6 +78,7 @@ const TYPE_ICON: Record<string, LucideIcon> = {
   path: Spline,
   raster: ImageIcon,
   clip: Scissors,
+  group: Folder,
 }
 
 /** The generation badge (loading / generating / error / edited) for an element row. */
@@ -179,14 +181,10 @@ const ElementRow = memo(function ElementRow(p: RowProps) {
   )
 })
 
-type Row =
-  | { kind: 'element'; el: DocElement }
-  | { kind: 'group'; id: string; name: string; members: DocElement[]; count: number; expanded: boolean }
-  | { kind: 'clip'; el: DocElement }
+type Row = { kind: 'element'; el: DocElement } | { kind: 'container'; el: DocElement }
 
 export function ElementsTree() {
   const elements = useDoc((s) => s.elements)
-  const groups = useDoc((s) => s.groups)
   const selectedIds = useDoc((s) => s.selectedIds)
   const pens = useDoc((s) => s.profile.pens)
   const select = useDoc((s) => s.select)
@@ -195,20 +193,18 @@ export function ElementsTree() {
   const createGroup = useDoc((s) => s.createGroup)
   const ungroup = useDoc((s) => s.ungroup)
   const clipSelected = useDoc((s) => s.clipSelected)
-  const renameGroup = useDoc((s) => s.renameGroup)
-  const setGroupCollapsed = useDoc((s) => s.setGroupCollapsed)
   const setElementName = useDoc((s) => s.setElementName)
   const unclip = useDoc((s) => s.unclip)
   const genStatus = useGeneration((s) => s.status)
   const setHover = useHover((s) => s.set)
 
   const [query, setQuery] = useState('')
-  const [editing, setEditing] = useState<{ kind: 'element' | 'group'; id: string } | null>(null)
-  // Clips have no persisted collapsed flag (unlike groups) — track expand state locally.
-  const [collapsedClips, setCollapsedClips] = useState<Set<string>>(new Set())
-  const toggleClip = useCallback(
+  const [editing, setEditing] = useState<string | null>(null)
+  // Containers track their expand state locally (it isn't persisted).
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
+  const toggleContainer = useCallback(
     (id: string) =>
-      setCollapsedClips((prev) => {
+      setCollapsed((prev) => {
         const next = new Set(prev)
         next.has(id) ? next.delete(id) : next.add(id)
         return next
@@ -219,63 +215,45 @@ export function ElementsTree() {
 
   // Row list depends only on the document + filter — memoized so a selection change or a generation
   // tick (which re-renders this component) doesn't recompute the whole O(n) grouping.
-  const { rows, flatIds, membersByClip } = useMemo(() => {
+  const { rows, flatIds, membersByContainer } = useMemo(() => {
     const q = query.trim().toLowerCase()
-    const groupsById = new Map(groups.map((g) => [g.id, g]))
     const matchesEl = (el: DocElement) => !q || labelOf(el).toLowerCase().includes(q) || el.type.includes(q)
 
-    const clipIds = new Set(elements.filter((e) => e.type === 'clip').map((e) => e.id))
-    const membersByClip = new Map<string, DocElement[]>()
+    const containerIds = new Set(elements.filter((e) => isContainer(e.type)).map((e) => e.id))
+    const membersByContainer = new Map<string, DocElement[]>()
     for (const el of elements)
-      if (el.clipParent && clipIds.has(el.clipParent)) {
-        const arr = membersByClip.get(el.clipParent) ?? []
+      if (el.parent && containerIds.has(el.parent)) {
+        const arr = membersByContainer.get(el.parent) ?? []
         arr.push(el)
-        membersByClip.set(el.clipParent, arr)
+        membersByContainer.set(el.parent, arr)
       }
 
-    const membersByGroup = new Map<string, DocElement[]>()
-    for (const el of elements) {
-      if (el.groupId && groupsById.has(el.groupId)) {
-        const arr = membersByGroup.get(el.groupId) ?? []
-        arr.push(el)
-        membersByGroup.set(el.groupId, arr)
-      }
+    // A container matches the query if it (or any descendant) matches — so search reveals nested hits.
+    const containerMatches = (el: DocElement): boolean => {
+      if (matchesEl(el)) return true
+      return (membersByContainer.get(el.id) ?? []).some((m) => (isContainer(m.type) ? containerMatches(m) : matchesEl(m)))
     }
 
     const out: Row[] = []
-    const seenGroup = new Set<string>()
     for (const el of elements) {
-      if (el.clipParent && clipIds.has(el.clipParent)) continue // shown nested under its clip
-      if (el.groupId && groupsById.has(el.groupId)) {
-        const g = groupsById.get(el.groupId)!
-        if (seenGroup.has(g.id)) continue
-        seenGroup.add(g.id)
-        const all = membersByGroup.get(g.id)!
-        const members = q ? all.filter(matchesEl) : all
-        const groupMatches = !q || g.name.toLowerCase().includes(q)
-        if (q && !groupMatches && members.length === 0) continue
-        out.push({ kind: 'group', id: g.id, name: g.name, members, count: all.length, expanded: q ? true : !g.collapsed })
-      } else if (el.type === 'clip') {
-        out.push({ kind: 'clip', el })
+      if (el.parent && containerIds.has(el.parent)) continue // shown nested under its container
+      if (isContainer(el.type)) {
+        if (!q || containerMatches(el)) out.push({ kind: 'container', el })
       } else if (matchesEl(el)) {
         out.push({ kind: 'element', el })
       }
     }
 
-    // Flat order (for shift-range select), recursing into expanded clips.
+    // Flat order (for shift-range select), recursing into expanded containers.
     const flat: string[] = []
-    const pushClip = (clipEl: DocElement) => {
-      flat.push(clipEl.id)
-      if (collapsedClips.has(clipEl.id)) return
-      for (const m of membersByClip.get(clipEl.id) ?? []) (m.type === 'clip' ? pushClip(m) : flat.push(m.id))
+    const pushContainer = (el: DocElement) => {
+      flat.push(el.id)
+      if (!q && collapsed.has(el.id)) return
+      for (const m of membersByContainer.get(el.id) ?? []) (isContainer(m.type) ? pushContainer(m) : flat.push(m.id))
     }
-    for (const r of out) {
-      if (r.kind === 'element') flat.push(r.el.id)
-      else if (r.kind === 'clip') pushClip(r.el)
-      else if (r.expanded) for (const m of r.members) flat.push(m.id)
-    }
-    return { rows: out, flatIds: flat, membersByClip }
-  }, [elements, groups, query, collapsedClips])
+    for (const r of out) (r.kind === 'container' ? pushContainer(r.el) : flat.push(r.el.id))
+    return { rows: out, flatIds: flat, membersByContainer }
+  }, [elements, query, collapsed])
 
   // flatIds via a ref so the click handler can stay stable (shift-range reads the latest order).
   const flatIdsRef = useRef<string[]>(flatIds)
@@ -299,7 +277,7 @@ export function ElementsTree() {
     },
     [select, selectMany],
   )
-  const onStartRename = useCallback((id: string) => setEditing({ kind: 'element', id }), [])
+  const onStartRename = useCallback((id: string) => setEditing(id), [])
   const onCommitName = useCallback((id: string, val: string) => {
     setElementName(id, val.trim())
     setEditing(null)
@@ -313,21 +291,10 @@ export function ElementsTree() {
   const colorFor = (pen: number) => pens.find((p) => p.id === pen)?.color ?? '#1a1a1a'
   const penName = (pen: number) => pens.find((p) => p.id === pen)?.name ?? pen
 
-  const clickGroup = (members: DocElement[], e: { metaKey: boolean; ctrlKey: boolean }) => {
-    const ids = members.map((m) => m.id)
-    if (e.metaKey || e.ctrlKey) {
-      const allSel = ids.length > 0 && ids.every((i) => sel.has(i))
-      selectMany(allSel ? selectedIds.filter((i) => !ids.includes(i)) : [...new Set([...selectedIds, ...ids])])
-    } else {
-      selectMany(ids)
-    }
-    anchor.current = ids[0] ?? null
-  }
-
   // Header actions over the current selection.
   const selectedEls = elements.filter((e) => sel.has(e.id))
   const canGroup = selectedEls.length >= 2
-  const ungroupIds = [...new Set(selectedEls.map((e) => e.groupId).filter((g): g is string => !!g))]
+  const ungroupIds = selectedEls.filter((e) => e.type === 'group').map((e) => e.id)
 
   const renderElement = (el: DocElement, nested: boolean) => {
     const g = genStatus[el.id]
@@ -346,49 +313,52 @@ export function ElementsTree() {
         badgeWarn={badge.warn}
         badgeBusy={badge.busy}
         badgeTitle={g?.phase ?? (dirty ? 'edited' : '')}
-        editing={editing?.kind === 'element' && editing.id === el.id}
+        editing={editing === el.id}
         {...handlers}
       />
     )
   }
 
-  // A clip row: a collapsible header (selects the clip itself — so the Transformer moves the whole
-  // composition) over its nested mask + members, recursing for nested clips.
-  const renderClipRow = (clipEl: DocElement, depth: number): JSX.Element => {
-    const members = membersByClip.get(clipEl.id) ?? []
-    const expanded = !collapsedClips.has(clipEl.id)
-    const isEditing = editing?.kind === 'element' && editing.id === clipEl.id
+  // A container row: a collapsible header (selects the container itself — so the Transformer moves the
+  // whole composition) over its nested members, recursing for nested containers. A clip additionally
+  // shows a Release action; a group shows Ungroup.
+  const renderContainerRow = (el: DocElement, depth: number): JSX.Element => {
+    const members = membersByContainer.get(el.id) ?? []
+    const expanded = !!query.trim() || !collapsed.has(el.id)
+    const isEditing = editing === el.id
+    const isClip = el.type === 'clip'
+    const ContainerIcon = isClip ? Scissors : Folder
     return (
-      <li key={clipEl.id} className="flex flex-col gap-0.5">
+      <li key={el.id} className="flex flex-col gap-0.5">
         <div
           className={cx(
             'group flex cursor-pointer items-center gap-1.5 rounded-md border px-1.5 py-1.5 text-sm transition-colors',
             depth > 0 && 'ml-4',
-            sel.has(clipEl.id) ? 'border-accent-border bg-accent-subtle' : 'border-transparent hover:bg-bg',
+            sel.has(el.id) ? 'border-accent-border bg-accent-subtle' : 'border-transparent hover:bg-bg',
           )}
-          onClick={(e) => onRowClick(clipEl.id, e)}
-          onMouseEnter={() => setHover(clipEl.id)}
+          onClick={(e) => onRowClick(el.id, e)}
+          onMouseEnter={() => setHover(el.id)}
           onMouseLeave={() => setHover(null)}
         >
           <button
             className="rounded p-0.5 text-muted hover:text-text"
             title={expanded ? 'Collapse' : 'Expand'}
-            aria-label={expanded ? 'Collapse clip' : 'Expand clip'}
+            aria-label={expanded ? 'Collapse' : 'Expand'}
             onClick={(e) => {
               e.stopPropagation()
-              toggleClip(clipEl.id)
+              if (!query.trim()) toggleContainer(el.id)
             }}
           >
             {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
           </button>
-          <Scissors size={14} className="shrink-0 text-faint" />
+          <ContainerIcon size={14} className="shrink-0 text-faint" />
           {isEditing ? (
             <input
               autoFocus
-              defaultValue={labelOf(clipEl)}
+              defaultValue={labelOf(el)}
               className="min-w-0 flex-1 rounded bg-surface px-1 text-sm text-text outline-none ring-1 ring-accent/50"
               onClick={(e) => e.stopPropagation()}
-              onBlur={(e) => onCommitName(clipEl.id, e.target.value)}
+              onBlur={(e) => onCommitName(el.id, e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
                 if (e.key === 'Escape') onCancelRename()
@@ -399,31 +369,31 @@ export function ElementsTree() {
               className="min-w-0 flex-1 truncate"
               onDoubleClick={(e) => {
                 e.stopPropagation()
-                onStartRename(clipEl.id)
+                onStartRename(el.id)
               }}
             >
-              {labelOf(clipEl)}
+              {labelOf(el)}
             </span>
           )}
           <span className="shrink-0 text-2xs text-faint">{members.length}</span>
           <button
             className="rounded p-1 text-faint opacity-60 transition-colors hover:bg-surface hover:text-text sm:opacity-0 sm:group-hover:opacity-100"
-            title="Release clip"
-            aria-label="Release clip"
+            title={isClip ? 'Release clip' : 'Ungroup'}
+            aria-label={isClip ? 'Release clip' : 'Ungroup'}
             onClick={(e) => {
               e.stopPropagation()
-              unclip(clipEl.id)
+              isClip ? unclip(el.id) : ungroup(el.id)
             }}
           >
-            <Crop size={14} />
+            {isClip ? <Crop size={14} /> : <Ungroup size={14} />}
           </button>
           <button
             className="rounded p-1 text-faint opacity-60 transition-colors hover:bg-surface hover:text-accent-text sm:opacity-0 sm:group-hover:opacity-100"
-            title="Delete clip"
-            aria-label="Delete clip"
+            title={isClip ? 'Delete clip' : 'Delete group'}
+            aria-label={isClip ? 'Delete clip' : 'Delete group'}
             onClick={(e) => {
               e.stopPropagation()
-              removeElement(clipEl.id)
+              removeElement(el.id)
             }}
           >
             <Trash2 size={14} />
@@ -431,7 +401,7 @@ export function ElementsTree() {
         </div>
         {expanded && (
           <ul className="flex flex-col gap-0.5">
-            {members.map((m) => (m.type === 'clip' ? renderClipRow(m, depth + 1) : renderElement(m, true)))}
+            {members.map((m) => (isContainer(m.type) ? renderContainerRow(m, depth + 1) : renderElement(m, true)))}
           </ul>
         )}
       </li>
@@ -460,7 +430,7 @@ export function ElementsTree() {
               aria-label="Group selection"
               onClick={() => {
                 const id = createGroup(selectedEls.map((e) => e.id))
-                if (id) setEditing({ kind: 'group', id })
+                if (id) setEditing(id)
               }}
             >
               <GroupIcon size={15} />
@@ -494,81 +464,7 @@ export function ElementsTree() {
       {/* The row list scrolls on its own (capped) so a big import doesn't push the property editor
           below the fold — the Elements header + filter above stay pinned. */}
       <ul className="-mr-1 flex max-h-[45vh] flex-col gap-0.5 overflow-y-auto pr-1">
-        {rows.map((r) => {
-          if (r.kind === 'element') return renderElement(r.el, false)
-          if (r.kind === 'clip') return renderClipRow(r.el, 0)
-          const ids = r.members.map((m) => m.id)
-          const allSel = ids.length > 0 && ids.every((i) => sel.has(i))
-          const someSel = !allSel && ids.some((i) => sel.has(i))
-          const isEditing = editing?.kind === 'group' && editing.id === r.id
-          return (
-            <li key={r.id} className="flex flex-col gap-0.5">
-              <div
-                className={cx(
-                  'group flex cursor-pointer items-center gap-1.5 rounded-md border px-1.5 py-1.5 text-sm transition-colors',
-                  allSel
-                    ? 'border-accent-border bg-accent-subtle'
-                    : someSel
-                      ? 'border-accent-border/40 hover:bg-bg'
-                      : 'border-transparent hover:bg-bg',
-                )}
-                onClick={(e) => clickGroup(r.members, e)}
-              >
-                <button
-                  className="rounded p-0.5 text-muted hover:text-text"
-                  title={r.expanded ? 'Collapse' : 'Expand'}
-                  aria-label={r.expanded ? 'Collapse group' : 'Expand group'}
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    if (!query.trim()) setGroupCollapsed(r.id, r.expanded)
-                  }}
-                >
-                  {r.expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                </button>
-                <Folder size={14} className="shrink-0 text-faint" />
-                {isEditing ? (
-                  <input
-                    autoFocus
-                    defaultValue={r.name}
-                    className="min-w-0 flex-1 rounded bg-surface px-1 text-sm text-text outline-none ring-1 ring-accent/50"
-                    onClick={(e) => e.stopPropagation()}
-                    onBlur={(e) => {
-                      renameGroup(r.id, e.target.value.trim() || 'Group')
-                      setEditing(null)
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
-                      if (e.key === 'Escape') setEditing(null)
-                    }}
-                  />
-                ) : (
-                  <span
-                    className="min-w-0 flex-1 truncate"
-                    onDoubleClick={(e) => {
-                      e.stopPropagation()
-                      setEditing({ kind: 'group', id: r.id })
-                    }}
-                  >
-                    {r.name}
-                  </span>
-                )}
-                <span className="shrink-0 text-2xs text-faint">{r.count}</span>
-                <button
-                  className="rounded p-1 text-faint opacity-60 transition-colors hover:bg-surface hover:text-text sm:opacity-0 sm:group-hover:opacity-100"
-                  title="Ungroup"
-                  aria-label="Ungroup"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    ungroup(r.id)
-                  }}
-                >
-                  <Ungroup size={14} />
-                </button>
-              </div>
-              {r.expanded && <ul className="flex flex-col gap-0.5">{r.members.map((m) => renderElement(m, true))}</ul>}
-            </li>
-          )
-        })}
+        {rows.map((r) => (r.kind === 'element' ? renderElement(r.el, false) : renderContainerRow(r.el, 0)))}
       </ul>
     </>
   )

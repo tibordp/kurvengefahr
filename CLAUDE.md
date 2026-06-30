@@ -86,6 +86,28 @@ in the Stroke IR. `emit` prepends a start-of-print move over it at high clearanc
 Handwriting plus vector shapes (`shapes/`: `rect`, `ellipse`, `path`), all on the `Stroke[]` IR via
 registry `generate()`. Non-obvious bits:
 
+- **Containers are real elements, not tags.** `group` and `clip` are registered element types with
+  `container: true` (no generator). Membership is a single `DocElement.parent` (the container's id);
+  a member's `transform` is **container-local** and composes up the `parent` chain
+  (`effectiveTransform`), so a container moves/scales as one nested object. A `group` just unions its
+  members; a `clip` additionally clips them to a mask member (`clipRole: 'mask'`). Composition lives
+  in `clipGeometry.ts` (`groupLocalGeometry`/`clipLocalGeometry`), rendered by one `ContainerNode`.
+  Grouping (`createGroup`) tags members + appends an identity-transform container after them (z-order
+  invariant: members precede their container); `ungroup`/`unclip` bake the container transform back
+  into members. Deleting a container cascades to members (`withDescendants`); empty containers are
+  pruned (`pruneEmptyContainers`).
+- **Non-destructive filters** (`src/filters`, `crate/src/filters/`): a per-element `DocElement.filters`
+  stack (roughen / wave / sketch / twist / bulge) applied in Rust, in **local space before `place`**,
+  via `filteredLocal`. The **source stays editable** — a `path`'s nodes still edit its *pre-filter*
+  shape; the canvas draws the post-filter strokes with the pre-filter outline shown as a faint ghost
+  (`GhostLayer`, a read-only overlay) when selected. Filters compose with containers: a member's
+  filters apply inside the group, then the container's own filters apply over the combined result —
+  so a group/clip warp is **one coherent field**. Like raster, the param *union* crosses the WASM
+  boundary as one JSON string (`filters::FilterSpec` is the schema); adding a filter = a Rust submodule
+  + match arm + serde fields + a `src/filters/registry.ts` entry (which the inspector renders
+  generically). Seeded filters (roughen/sketch) are deterministic per `seed`. Filters are NOT a
+  geometry param (they live beside `pen`/`pressure`), so editing them never regenerates.
+
 - **Tool ≠ type:** the line/pen/freehand tools all create a `path` (`{nodes, closed}`, handles
   relative to anchor; zero-length handle ⇒ corner, so polyline + Bézier share one type).
 - **Tessellation + fill are Rust** (`crate/src/shapes.rs`, `hatch.rs`), called *synchronously* from
@@ -116,15 +138,23 @@ registry `generate()`. Non-obvious bits:
 
 ## Pipeline (`src/core/pipeline`)
 
-generate (Rust, per element, **memoized**) → place (affine local→page) → filters (Stroke→Stroke) →
-clip (Rust, to drawable rect) → optimize (Rust, per-pen + chain-aware greedy NN) → emit (G-code).
+generate (Rust, per element, **memoized**) → **filter** (Rust filter stack, local mm, **memoized**) →
+place (affine local→page) → clip (Rust, to drawable rect) → optimize (Rust, per-pen + chain-aware
+greedy NN) → emit (G-code).
 
-- `buildPageGeometry` = generate+place+filters; `buildPlottableGeometry` = +clip. Both **Generate
-  and Preview** build on the latter, so they agree on what plots.
+- `filteredLocal(el)` (`clipGeometry.ts`) is the single local-geometry accessor — it applies the
+  element's filter stack to its pre-filter `baseLocal` (a generator's output, or a *container's*
+  composition of already-filtered members), memoized on (base ref + `filters` ref). **Everything that
+  renders/composes/plots goes through it** (ElementNode, ContainerNode, buildPageGeometry,
+  convertToPath, marquee/hover bounds), so the canvas shows exactly what plots.
+- `buildPageGeometry` = generate+filter+place (+pen/pressure/group stamping, dashing);
+  `buildPlottableGeometry` = +clip. Both **Generate and Preview** build on the latter, so they agree
+  on what plots.
 - **Invalidation taxonomy** (keeps it snappy): text/params → regenerate that element;
-  transform/**pen** → re-place only; feeds/Z/preamble/offset → re-emit only.
-- `place`/`filters` are the only pure-geometry TS bits left (trivial/inactive); fold them into Rust
-  if/when consolidating the pipeline into one pass (which also drops the clip↔optimize marshal).
+  **filters**/transform/**pen**/pressure → re-filter/re-place only (never a regenerate);
+  feeds/Z/preamble/offset → re-emit only.
+- `place` is the only pure-geometry TS bit left; fold it into Rust if/when consolidating the pipeline
+  into one pass (which also drops the clip↔optimize marshal).
 
 ## WASM boundary
 
@@ -206,8 +236,6 @@ soup, which rots as complexity grows.
 
 - **Signature accent = signal red `#E5484D`** — a nod to *Achtung, die Kurve!*, the curve/snake game
   the project is named after (NOT a road sign). Keep neon-trail energy in the accent + logo only.
-- **The Konva canvas is finished — do not restyle it.** The render path (`ElementNode`,
-  `PreviewLayer`, `viewport.ts`) is off-limits; only the chrome around it is fair game.
 - **Responsive**, desktop-primary: below `md` (768px) the inspector becomes a slide-over drawer
   (`store/ui.ts`).
 

@@ -23,6 +23,8 @@ import {
   Link2,
   Ungroup,
   Printer,
+  ArrowUp,
+  ArrowDown,
 } from 'lucide-react'
 import { useDoc, type AlignEdge } from '../store/document'
 import { useUI } from '../store/ui'
@@ -43,8 +45,9 @@ import {
 } from '../output/plot'
 import { downloadJson, pickJsonFile } from '../output/download'
 import { substitution_note } from '../core/wasm'
-import type { Pen } from '../core/types'
+import type { Pen, FilterSpec, FilterType } from '../core/types'
 import { pressureEnabled } from '../core/types'
+import { FILTER_DEFS, filterDef, defaultFilter } from '../filters/registry'
 import { validateProfile } from '../core/profileValidation'
 import type { HandwritingParams } from '../elements/handwriting'
 import { SEEDED_METHODS, type RasterParams, type RasterMethod } from '../elements/raster'
@@ -1019,6 +1022,106 @@ function FiducialSection() {
   )
 }
 
+/** Non-destructive filter stack for the selected element (any type, incl. containers). Each filter
+ *  toggles, reorders, and removes; its numeric controls render generically from the registry. The
+ *  source geometry is untouched — a path stays node-editable, and the canvas shows the pre-filter
+ *  shape as a ghost wireframe. Edits are re-filter/re-place only (never a regenerate). */
+function FiltersSection({ id, filters }: { id: string; filters: FilterSpec[] }) {
+  const setFilters = useDoc((s) => s.setFilters)
+  const patch = (i: number, p: Partial<Record<string, unknown>>) =>
+    setFilters(id, filters.map((f, j) => (j === i ? ({ ...f, ...p } as FilterSpec) : f)))
+  const remove = (i: number) => setFilters(id, filters.filter((_, j) => j !== i))
+  const move = (i: number, dir: -1 | 1) => {
+    const j = i + dir
+    if (j < 0 || j >= filters.length) return
+    const next = filters.slice()
+    ;[next[i], next[j]] = [next[j], next[i]]
+    setFilters(id, next)
+  }
+  const add = (type: FilterType) => setFilters(id, [...filters, defaultFilter(type)])
+
+  return (
+    <>
+      <SectionTitle>Filters</SectionTitle>
+      {filters.map((f, i) => {
+        const def = filterDef(f.type)
+        if (!def) return null
+        const val = f as unknown as Record<string, number>
+        return (
+          <div key={i} className="mb-2 rounded-md border border-border p-2">
+            <div className="flex items-center gap-1.5">
+              <input
+                type="checkbox"
+                className="h-3.5 w-3.5"
+                checked={f.enabled}
+                title={f.enabled ? 'Disable filter' : 'Enable filter'}
+                aria-label={f.enabled ? 'Disable filter' : 'Enable filter'}
+                onChange={(e) => patch(i, { enabled: e.target.checked })}
+              />
+              <span className={cx('min-w-0 flex-1 truncate text-sm', !f.enabled && 'text-faint line-through')}>
+                {def.label}
+              </span>
+              <IconButton aria-label="Move up" title="Move up" disabled={i === 0} onClick={() => move(i, -1)}>
+                <ArrowUp size={14} />
+              </IconButton>
+              <IconButton aria-label="Move down" title="Move down" disabled={i === filters.length - 1} onClick={() => move(i, 1)}>
+                <ArrowDown size={14} />
+              </IconButton>
+              <IconButton aria-label="Remove filter" title="Remove filter" onClick={() => remove(i)}>
+                <Trash2 size={14} />
+              </IconButton>
+            </div>
+            {f.enabled && (
+              <div className="mt-2">
+                {def.controls.map((c) => (
+                  <SliderNum
+                    key={c.key}
+                    label={c.label}
+                    min={c.min}
+                    max={c.max}
+                    step={c.step}
+                    int={c.int}
+                    hardMax={!!c.int || c.key === 'strength'}
+                    value={val[c.key] ?? 0}
+                    onChange={(v) => patch(i, { [c.key]: v })}
+                  />
+                ))}
+                {def.seeded && (
+                  <Button
+                    className="mt-1 w-full"
+                    title="Re-roll the random variation"
+                    onClick={() => patch(i, { seed: Math.floor(Math.random() * 1e9) })}
+                  >
+                    <Dices size={15} /> Re-roll
+                  </Button>
+                )}
+              </div>
+            )}
+          </div>
+        )
+      })}
+      <Field label="Add">
+        <select
+          className={controlClass}
+          value=""
+          onChange={(e) => {
+            const v = e.target.value
+            if (v) add(v as FilterType)
+            e.target.value = ''
+          }}
+        >
+          <option value="">Add filter…</option>
+          {FILTER_DEFS.map((d) => (
+            <option key={d.type} value={d.type}>
+              {d.label}
+            </option>
+          ))}
+        </select>
+      </Field>
+    </>
+  )
+}
+
 function ElementSection() {
   const selectedIds = useDoc((s) => s.selectedIds)
   const element = useDoc((s) =>
@@ -1081,9 +1184,11 @@ function ElementSection() {
         </>
       )}
 
-      <SectionTitle>Stroke</SectionTitle>
+      {/* Pen pressure + dashed style are per-stroke properties — meaningless on a container (its
+          members carry their own), so the whole Stroke section is hidden for multi-pen types. */}
       {!isMultiPen(element.type) && (
         <>
+          <SectionTitle>Stroke</SectionTitle>
           <SliderNum
             label="Pressure (%)"
             title={pressureOn ? 'Pen pressure, light to full.' : 'Machine has no variable pressure.'}
@@ -1099,24 +1204,26 @@ function ElementSection() {
           {!pressureOn && (
             <p className="-mt-1 mb-2 text-2xs text-faint">Machine has no variable pressure.</p>
           )}
+          <Field label="Dashed">
+            <input
+              type="checkbox"
+              className="h-4 w-4 justify-self-start"
+              checked={!!element.dash}
+              onChange={(e) => setDash(element.id, e.target.checked ? { dash: 2, gap: 2 } : null)}
+            />
+          </Field>
+          {element.dash && (
+            <>
+              <Num label="Dash (mm)" value={element.dash.dash} step={0.5}
+                onChange={(v) => setDash(element.id, { dash: Math.max(0.1, v), gap: element.dash!.gap })} />
+              <Num label="Gap (mm)" value={element.dash.gap} step={0.5}
+                onChange={(v) => setDash(element.id, { dash: element.dash!.dash, gap: Math.max(0.1, v) })} />
+            </>
+          )}
         </>
       )}
-      <Field label="Dashed">
-        <input
-          type="checkbox"
-          className="h-4 w-4 justify-self-start"
-          checked={!!element.dash}
-          onChange={(e) => setDash(element.id, e.target.checked ? { dash: 2, gap: 2 } : null)}
-        />
-      </Field>
-      {element.dash && (
-        <>
-          <Num label="Dash (mm)" value={element.dash.dash} step={0.5}
-            onChange={(v) => setDash(element.id, { dash: Math.max(0.1, v), gap: element.dash!.gap })} />
-          <Num label="Gap (mm)" value={element.dash.gap} step={0.5}
-            onChange={(v) => setDash(element.id, { dash: element.dash!.dash, gap: Math.max(0.1, v) })} />
-        </>
-      )}
+
+      <FiltersSection id={element.id} filters={element.filters ?? []} />
 
       <SectionTitle>Transform</SectionTitle>
       <Num label="X (mm)" value={t.x} step={1} onChange={(v) => setTransform(element.id, { x: v })} />

@@ -17,7 +17,7 @@ export async function exportGcode(): Promise<void> {
     toast.error('Fix the machine profile before generating G-code.')
     return
   }
-  const gcode = await runPipeline(elements, profile, [], fiducial)
+  const gcode = await runPipeline(elements, profile, fiducial)
   await downloadSink.send('kurvengefahr.gcode', gcode)
 }
 
@@ -30,7 +30,7 @@ export async function plotGcode(): Promise<void> {
     toast.error('Fix the machine profile before plotting.')
     return
   }
-  const gcode = await runPipeline(elements, profile, [], fiducial)
+  const gcode = await runPipeline(elements, profile, fiducial)
   const name = (useDocuments.getState().activeName || 'kurvengefahr').replace(/\s+/g, '-')
   await plot(profile, gcode, `${name}.gcode`)
 }

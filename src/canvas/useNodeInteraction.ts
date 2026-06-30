@@ -1,11 +1,11 @@
-// Shared canvas interaction for a positioned node (ElementNode, ClipNode): click-select, the
+// Shared canvas interaction for a positioned node (ElementNode, ContainerNode): click-select, the
 // grid-snapped multi-node drag (one anchor drives a shared delta), and resize/rotate commit that
-// bakes scale into params for shape types (clip/handwriting keep scale in the transform). Extracted
-// so a clip and an ordinary element drag through exactly the same gesture (and one undo step).
+// bakes scale into params for shape types (containers/handwriting keep scale in the transform).
+// Extracted so a container and an ordinary element drag through exactly the same gesture (one step).
 //
-// Clip members are the exception: their stored transform is *clip-local*, but the canvas works in
-// page space, so a member drags/transforms solo (no shared gesture) and commits through the inverse
-// of its clip chain — keeping it pinned under the clip while you edit it in place.
+// Container members are the exception: their stored transform is *container-local*, but the canvas
+// works in page space, so a member drags/transforms solo (no shared gesture) and commits through the
+// inverse of its container chain — keeping it pinned under the container while editing in place.
 import type Konva from 'konva'
 import type { DocElement, Transform } from '../core/types'
 import { applyScale, bakesScale } from '../elements/registry'
@@ -35,13 +35,13 @@ export interface NodeHandlers {
   onTransformEnd: (e: Konva.KonvaEventObject<Event>) => void
 }
 
-/** The effective page transform of a clip member's *parent* (its clip chain) — what to invert to
- *  turn a page-space node transform back into the member's stored clip-local one. */
+/** The effective page transform of a container member's *parent* (its container chain) — what to
+ *  invert to turn a page-space node transform back into the member's stored container-local one. */
 function parentChain(element: DocElement): Transform {
-  if (!element.clipParent) return IDENTITY
+  if (!element.parent) return IDENTITY
   const { elements } = useDoc.getState()
   const byId = new Map(elements.map((e) => [e.id, e]))
-  const parent = byId.get(element.clipParent)
+  const parent = byId.get(element.parent)
   return parent ? effectiveTransform(parent, byId) : IDENTITY
 }
 
@@ -72,7 +72,7 @@ export function useNodeInteraction(element: DocElement): NodeHandlers {
     }
   }
 
-  const isMember = !!element.clipParent
+  const isMember = !!element.parent
 
   return {
     onMouseDown: (e) => {

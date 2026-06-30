@@ -78,7 +78,7 @@ export function addDxfElements(bytes: Uint8Array, opts: DxfImportOptions): numbe
   // DXF is line art — collapse to one compound path per pen.
   const merged = mergePathSpecsByPen(specs)
   if (!merged.length) return 0
-  const group = merged.length > 1 ? { name: opts.groupName || 'DXF import', collapsed: true } : undefined
+  const group = merged.length > 1 ? { name: opts.groupName || 'DXF import' } : undefined
   useDoc.getState().addElements(merged, group)
   return merged.length
 }

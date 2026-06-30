@@ -2,20 +2,21 @@
 // inspector are pure views over this; the canvas library (Konva) never becomes authoritative.
 // On a Konva transform-end we read the affine back into here.
 import { create } from 'zustand'
-import type { DocElement, Fiducial, Group, MachineProfile, PenId, Transform } from '../core/types'
+import type { DocElement, Fiducial, FilterSpec, MachineProfile, PenId, Transform } from '../core/types'
 import { IDENTITY_TRANSFORM } from '../core/types'
-import { dropFromCache, generateLocal } from '../elements/registry'
+import { dropFromCache, generateLocal, isContainer } from '../elements/registry'
 import { defaultHandwritingParams } from '../elements/handwriting'
 import '../elements/shapes' // side-effect: registers rect/ellipse/path before persistence boot
 import '../elements/text' // side-effect: registers the text element before persistence boot
 import '../elements/generative' // side-effect: registers the generative element before persistence boot
 import '../elements/raster' // side-effect: registers the raster image type before persistence boot
 import '../elements/clip' // side-effect: registers the clip container element before persistence boot
+import '../elements/group' // side-effect: registers the group container element before persistence boot
 import { PRUSA_MK4, findBuiltinProfile } from './profiles'
 import { writeDefaultProfile } from './persistence/storage'
 import { useLibrary } from './library'
 import { place, transformToMatrix, composeTransforms, type Matrix } from '../core/pipeline/place'
-import { clipLocalGeometry } from '../core/pipeline/clipGeometry'
+import { elementLocalGeometry } from '../core/pipeline/clipGeometry'
 import type { DocSnapshot } from './persistence/schema'
 import type { Geometry, Point } from '../core/types'
 import { cornerNode, defaultHatch, pathOutlineStrokes, weldContours } from '../elements/shapes'
@@ -134,7 +135,8 @@ function elementToPath(el: DocElement): DocElement | null {
     params: { contours, hatch } as PathParams,
     pen: el.pen,
     ...(el.pressure !== undefined ? { pressure: el.pressure } : {}),
-    ...(el.groupId ? { groupId: el.groupId } : {}),
+    ...(el.parent ? { parent: el.parent } : {}),
+    ...(el.clipRole ? { clipRole: el.clipRole } : {}),
     ...(el.name ? { name: el.name } : {}),
   }
 }
@@ -159,28 +161,34 @@ function localContours(el: DocElement): Contour[] | null {
   return p ? (p.params as PathParams).contours : null
 }
 
-/** Drop groups left with no members (e.g. after deleting their last element). */
-function pruneGroups(elements: DocElement[], groups: Group[]): Group[] {
-  const used = new Set<string>()
-  for (const e of elements) if (e.groupId) used.add(e.groupId)
-  return groups.filter((g) => used.has(g.id))
+/** Drop container elements (group/clip) left with no members (e.g. after deleting their last
+ *  member, or a boolean/convert consuming them). */
+function pruneEmptyContainers(elements: DocElement[]): DocElement[] {
+  const hasMembers = new Set<string>()
+  for (const e of elements) if (e.parent) hasMembers.add(e.parent)
+  return elements.filter((e) => !isContainer(e.type) || hasMembers.has(e.id))
 }
 
-/** Expand an id set to include the members of any clip in it — deleting a clip takes its mask +
- *  clipped contents with it (unclip first to keep them). */
-function withClipMembers(ids: Set<string>, elements: DocElement[]): Set<string> {
+/** Expand an id set to include every element transitively under any container in it — deleting a
+ *  container takes its members (and nested containers' members) with it (unclip/ungroup to keep
+ *  them). */
+function withDescendants(ids: Set<string>, elements: DocElement[]): Set<string> {
   const out = new Set(ids)
-  for (const e of elements) if (e.clipParent && out.has(e.clipParent)) out.add(e.id)
+  let added = true
+  while (added) {
+    added = false
+    for (const e of elements) if (e.parent && out.has(e.parent) && !out.has(e.id)) (out.add(e.id), (added = true))
+  }
   return out
 }
 
-/** All elements transitively under a clip (members, nested clips' members, …). */
-function clipDescendants(clipId: string, elements: DocElement[]): Set<string> {
+/** All elements transitively under a container (members, nested containers' members, …). */
+function descendants(id: string, elements: DocElement[]): Set<string> {
   const out = new Set<string>()
-  const stack = [clipId]
+  const stack = [id]
   while (stack.length) {
-    const id = stack.pop()!
-    for (const e of elements) if (e.clipParent === id && !out.has(e.id)) (out.add(e.id), stack.push(e.id))
+    const cur = stack.pop()!
+    for (const e of elements) if (e.parent === cur && !out.has(e.id)) (out.add(e.id), stack.push(e.id))
   }
   return out
 }
@@ -199,24 +207,23 @@ interface DocStore {
   selectedIds: string[]
   /** The document's single alignment fiducial (page-space mm), or null. */
   fiducial: Fiducial | null
-  /** Organizational element groups for the Elements tree (membership is each element's `groupId`). */
-  groups: Group[]
 
   addHandwriting: (text?: string, at?: { x: number; y: number }) => void
   /** Add an element of any registered type at a page-space transform; selects it. Returns its id. */
   addElement: (type: string, params: unknown, transform?: Partial<Transform>) => string
-  /** Add many elements at once (one history step); selects them all. Optionally wrap them in a new
-   *  group (e.g. an SVG import). Returns their ids. */
+  /** Add many elements at once (one history step). Optionally wrap them in a new `group` container
+   *  (e.g. an SVG import) — then the group is selected; otherwise the elements are. Returns the
+   *  member ids (not the container's). */
   addElements: (
     specs: { type: string; params: unknown; pen?: PenId; transform?: Partial<Transform> }[],
-    group?: { name: string; collapsed?: boolean },
+    group?: { name: string },
   ) => string[]
-  /** Group the given elements under a new group; returns its id (empty string if <1 element). */
+  /** Group the given elements under a new `group` container; returns its id (empty string if <1
+   *  element). Members keep their page positions (the container starts at identity). */
   createGroup: (elementIds: string[], name?: string) => string
-  /** Dissolve a group, returning its members to the top level. */
-  ungroup: (groupId: string) => void
-  renameGroup: (groupId: string, name: string) => void
-  setGroupCollapsed: (groupId: string, collapsed: boolean) => void
+  /** Dissolve a `group` container, baking its transform into members and returning them to the top
+   *  level. */
+  ungroup: (id: string) => void
   /** Set (or clear, with '') an element's display name. */
   setElementName: (id: string, name: string) => void
   removeElement: (id: string) => void
@@ -267,6 +274,9 @@ interface DocStore {
   setDash: (id: string, dash: { dash: number; gap: number } | null) => void
   /** Set an element's pen pressure (0..1). Not a param — invalidates only Place/Emit. */
   setPressure: (id: string, pressure: number) => void
+  /** Set (or clear, with []) an element's non-destructive filter stack. Not a param — invalidates
+   *  only re-filter/re-place (the source stays editable), never a regenerate. */
+  setFilters: (id: string, filters: FilterSpec[]) => void
   /** Assign every selected element to a pen. */
   setPenSelected: (pen: PenId) => void
   /** Set the pen pressure (0..1) on every selected element. */
@@ -293,7 +303,6 @@ export const useDoc = create<DocStore>((set) => ({
   profile: PRUSA_MK4,
   selectedIds: [],
   fiducial: null,
-  groups: [],
 
   addHandwriting: (text = 'Kurvengefahr', at = { x: 20, y: 20 }) =>
     set((state) => {
@@ -326,15 +335,17 @@ export const useDoc = create<DocStore>((set) => ({
       transform: { ...IDENTITY_TRANSFORM, ...s.transform },
       params: s.params,
       pen: s.pen ?? 0,
-      ...(groupId ? { groupId } : {}),
+      ...(groupId ? { parent: groupId } : {}),
     }))
+    // A group container (identity transform) appended after its members, so members keep their page
+    // positions and the whole import transforms as one unit.
+    const container: DocElement[] =
+      group && groupId
+        ? [{ id: groupId, type: 'group', transform: { ...IDENTITY_TRANSFORM }, params: {}, pen: 0, name: group.name }]
+        : []
     set((state) => ({
-      elements: [...state.elements, ...created],
-      groups:
-        group && groupId
-          ? [...state.groups, { id: groupId, name: group.name, collapsed: group.collapsed ?? false }]
-          : state.groups,
-      selectedIds: created.map((c) => c.id),
+      elements: [...state.elements, ...created, ...container],
+      selectedIds: groupId ? [groupId] : created.map((c) => c.id),
     }))
     return created.map((c) => c.id)
   },
@@ -343,25 +354,39 @@ export const useDoc = create<DocStore>((set) => ({
     const ids = new Set(elementIds)
     if (ids.size < 1) return ''
     const groupId = crypto.randomUUID()
-    set((state) => ({
-      elements: state.elements.map((e) => (ids.has(e.id) ? { ...e, groupId } : e)),
-      groups: [...state.groups, { id: groupId, name: name ?? 'Group', collapsed: false }],
-    }))
+    set((state) => {
+      // Tag the members (keeping their transforms — the container starts at identity, so group-local
+      // == page space and nothing visually moves), and append the container after them (z-order).
+      const elements = state.elements.map((e) => (ids.has(e.id) ? { ...e, parent: groupId } : e))
+      const container: DocElement = {
+        id: groupId,
+        type: 'group',
+        transform: { ...IDENTITY_TRANSFORM },
+        params: {},
+        pen: 0,
+        ...(name ? { name } : {}),
+      }
+      return { elements: [...elements, container], selectedIds: [groupId] }
+    })
     return groupId
   },
 
-  ungroup: (groupId) =>
-    set((state) => ({
-      elements: state.elements.map((e) =>
-        e.groupId === groupId ? (({ groupId: _drop, ...rest }) => rest)(e) : e,
-      ),
-      groups: state.groups.filter((g) => g.id !== groupId),
-    })),
-
-  renameGroup: (groupId, name) =>
-    set((state) => ({
-      groups: state.groups.map((g) => (g.id === groupId ? { ...g, name } : g)),
-    })),
+  ungroup: (id) =>
+    set((state) => {
+      const group = state.elements.find((e) => e.id === id && e.type === 'group')
+      if (!group) return {}
+      const restored: string[] = []
+      const elements = state.elements
+        .filter((e) => e.id !== id)
+        .map((e) => {
+          if (e.parent !== id) return e
+          restored.push(e.id)
+          const { parent: _p, ...rest } = e
+          return { ...rest, transform: composeTransforms(group.transform, e.transform) }
+        })
+      dropFromCache(id)
+      return { elements: pruneEmptyContainers(elements), selectedIds: restored }
+    }),
 
   setElementName: (id, name) =>
     set((state) => ({
@@ -370,29 +395,23 @@ export const useDoc = create<DocStore>((set) => ({
       ),
     })),
 
-  setGroupCollapsed: (groupId, collapsed) =>
-    set((state) => ({
-      groups: state.groups.map((g) => (g.id === groupId ? { ...g, collapsed } : g)),
-    })),
-
   removeElement: (id) =>
     set((state) => {
-      const kill = withClipMembers(new Set([id]), state.elements)
+      const kill = withDescendants(new Set([id]), state.elements)
       kill.forEach(dropFromCache)
-      const elements = state.elements.filter((e) => !kill.has(e.id))
+      const elements = pruneEmptyContainers(state.elements.filter((e) => !kill.has(e.id)))
       return {
         elements,
-        groups: pruneGroups(elements, state.groups),
         selectedIds: state.selectedIds.filter((s) => !kill.has(s)),
       }
     }),
 
   removeSelected: () =>
     set((state) => {
-      const kill = withClipMembers(new Set(state.selectedIds), state.elements)
+      const kill = withDescendants(new Set(state.selectedIds), state.elements)
       kill.forEach(dropFromCache)
-      const elements = state.elements.filter((e) => !kill.has(e.id))
-      return { elements, groups: pruneGroups(elements, state.groups), selectedIds: [] }
+      const elements = pruneEmptyContainers(state.elements.filter((e) => !kill.has(e.id)))
+      return { elements, selectedIds: [] }
     }),
 
   duplicateElement: (id) =>
@@ -418,7 +437,7 @@ export const useDoc = create<DocStore>((set) => ({
       const copies = state.elements
         .filter((e) => sel.has(e.id))
         .map((el) => {
-          const { id: _id, groupId: _g, ...rest } = structuredClone(el)
+          const { id: _id, parent: _p, clipRole: _cr, ...rest } = structuredClone(el)
           return { ...rest, id: crypto.randomUUID(), transform: { ...rest.transform, x: rest.transform.x + 5, y: rest.transform.y + 5 } }
         })
       if (!copies.length) return {}
@@ -519,10 +538,9 @@ export const useDoc = create<DocStore>((set) => ({
       }
       const removed = new Set(shapes.map((s) => s.el.id))
       removed.forEach(dropFromCache)
-      const elements = [...state.elements.filter((e) => !removed.has(e.id)), newEl]
+      const elements = pruneEmptyContainers([...state.elements.filter((e) => !removed.has(e.id)), newEl])
       return {
         elements,
-        groups: pruneGroups(elements, state.groups),
         selectedIds: [newEl.id],
       }
     }),
@@ -554,8 +572,8 @@ export const useDoc = create<DocStore>((set) => ({
       }
       const removed = new Set(sel.map((e) => e.id))
       removed.forEach(dropFromCache)
-      const elements = [...state.elements.filter((e) => !removed.has(e.id)), newEl]
-      return { elements, groups: pruneGroups(elements, state.groups), selectedIds: [newEl.id] }
+      const elements = pruneEmptyContainers([...state.elements.filter((e) => !removed.has(e.id)), newEl])
+      return { elements, selectedIds: [newEl.id] }
     }),
 
   clipSelected: () =>
@@ -567,7 +585,7 @@ export const useDoc = create<DocStore>((set) => ({
       const selIds = new Set(sel.map((e) => e.id))
       const clip: DocElement = { id: clipId, type: 'clip', transform: { ...IDENTITY_TRANSFORM }, params: {}, pen: 0 }
       const elements = state.elements.map((e) =>
-        selIds.has(e.id) ? { ...e, clipParent: clipId, ...(e.id === maskId ? { clipRole: 'mask' as const } : {}) } : e,
+        selIds.has(e.id) ? { ...e, parent: clipId, ...(e.id === maskId ? { clipRole: 'mask' as const } : {}) } : e,
       )
       elements.push(clip)
       return { elements, selectedIds: [clipId] }
@@ -581,13 +599,13 @@ export const useDoc = create<DocStore>((set) => ({
       const elements = state.elements
         .filter((e) => e.id !== clipId)
         .map((e) => {
-          if (e.clipParent !== clipId) return e
+          if (e.parent !== clipId) return e
           restored.push(e.id)
-          const { clipParent: _cp, clipRole: _cr, ...rest } = e
+          const { parent: _p, clipRole: _cr, ...rest } = e
           return { ...rest, transform: composeTransforms(clip.transform, e.transform) }
         })
       dropFromCache(clipId)
-      return { elements, groups: pruneGroups(elements, state.groups), selectedIds: restored }
+      return { elements: pruneEmptyContainers(elements), selectedIds: restored }
     }),
 
   weldSelected: () =>
@@ -630,7 +648,7 @@ export const useDoc = create<DocStore>((set) => ({
   addPasted: (els) => {
     if (!els.length) return []
     const created: DocElement[] = els.map((e) => {
-      const { id: _id, groupId: _drop, ...rest } = structuredClone(e)
+      const { id: _id, parent: _p, clipRole: _cr, ...rest } = structuredClone(e)
       return {
         ...rest,
         id: crypto.randomUUID(),
@@ -645,50 +663,58 @@ export const useDoc = create<DocStore>((set) => ({
     set((state) => {
       const targets = new Set(ids ?? state.selectedIds)
       const idMap = new Map<string, string>()
-      const removed = new Set<string>() // clip members consumed by a flattened clip
-      let groups = state.groups
+      const removed = new Set<string>() // container members consumed by a flattened container
       let changed = false
 
-      // Clips flatten *destructively*: bake the clipped composition into path(s) (one per pen so
-      // colours survive, grouped if several) and drop the clip + all its members.
+      // Containers flatten *destructively*: bake the composed (group) / clipped (clip) geometry into
+      // path(s) (one per pen so colours survive, grouped if several) and drop the container + members.
       const membersOf = new Map<string, DocElement[]>()
       for (const e of state.elements)
-        if (e.clipParent) membersOf.set(e.clipParent, [...(membersOf.get(e.clipParent) ?? []), e])
+        if (e.parent) membersOf.set(e.parent, [...(membersOf.get(e.parent) ?? []), e])
 
       const out: DocElement[] = []
       for (const el of state.elements) {
-        if (targets.has(el.id) && el.type === 'clip') {
+        if (targets.has(el.id) && isContainer(el.type)) {
           const byPen = new Map<number, Contour[]>()
-          for (const s of clipLocalGeometry(el, membersOf)) {
+          for (const s of elementLocalGeometry(el, membersOf)) {
             const c = pointsToContour(s.points)
             if (c.nodes.length >= 2) byPen.set(s.pen, [...(byPen.get(s.pen) ?? []), c])
           }
           if (byPen.size === 0) {
-            out.push(el) // nothing inside the mask — leave the clip alone
+            out.push(el) // nothing to bake — leave the container alone
             continue
           }
           changed = true
           dropFromCache(el.id)
-          for (const d of clipDescendants(el.id, state.elements)) {
+          for (const d of descendants(el.id, state.elements)) {
             removed.add(d)
             dropFromCache(d)
           }
+          const multi = byPen.size > 1
+          const gid = multi ? crypto.randomUUID() : undefined
           const paths: DocElement[] = [...byPen.entries()].map(([pen, contours]) => ({
             id: crypto.randomUUID(),
             type: 'path',
             transform: { ...el.transform },
             params: { contours, hatch: defaultHatch() } as PathParams,
             pen,
-            ...(el.groupId ? { groupId: el.groupId } : {}),
+            // A single result inherits the container's own parent; multiple are wrapped in a new group
+            // (below) that inherits it instead.
+            ...(gid ? { parent: gid } : el.parent ? { parent: el.parent } : {}),
             ...(el.name ? { name: el.name } : {}),
           }))
-          if (paths.length > 1) {
-            const gid = crypto.randomUUID()
-            for (const p of paths) p.groupId = gid
-            groups = [...groups, { id: gid, name: el.name ?? 'Clip', collapsed: false }]
-          }
-          idMap.set(el.id, paths[0].id)
           out.push(...paths)
+          if (gid)
+            out.push({
+              id: gid,
+              type: 'group',
+              transform: { ...IDENTITY_TRANSFORM },
+              params: {},
+              pen: 0,
+              name: el.name ?? 'Group',
+              ...(el.parent ? { parent: el.parent } : {}),
+            })
+          idMap.set(el.id, paths[0].id)
           continue
         }
         if (targets.has(el.id) && el.type !== 'path') {
@@ -704,11 +730,10 @@ export const useDoc = create<DocStore>((set) => ({
         out.push(el)
       }
       if (!changed) return {}
-      // Drop any consumed clip members (they may have appeared in the array before their clip).
-      const elements = out.filter((e) => !removed.has(e.id))
+      // Drop any consumed container members (they may have appeared in the array before their container).
+      const elements = pruneEmptyContainers(out.filter((e) => !removed.has(e.id)))
       return {
         elements,
-        groups: pruneGroups(elements, groups),
         selectedIds: state.selectedIds.map((id) => idMap.get(id) ?? id).filter((id) => !removed.has(id)),
       }
     }),
@@ -772,6 +797,13 @@ export const useDoc = create<DocStore>((set) => ({
       return { elements: state.elements.map((e) => (e.id === id ? { ...e, pressure: p } : e)) }
     }),
 
+  setFilters: (id, filters) =>
+    set((state) => ({
+      elements: state.elements.map((e) =>
+        e.id === id ? (filters.length ? { ...e, filters } : (({ filters: _drop, ...rest }) => rest)(e)) : e,
+      ),
+    })),
+
   setPenSelected: (pen) =>
     set((state) => {
       const sel = new Set(state.selectedIds)
@@ -809,7 +841,6 @@ export const useDoc = create<DocStore>((set) => ({
       profile: snapshot.profile,
       selectedIds: snapshot.selectedIds,
       fiducial: snapshot.fiducial,
-      groups: snapshot.groups ?? [],
     }),
 
   notifyGeometry: (id) =>

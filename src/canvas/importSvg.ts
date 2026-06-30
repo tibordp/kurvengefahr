@@ -142,7 +142,7 @@ export function addSvgElements(bytes: Uint8Array, opts: SvgImportOptions): numbe
   const merged = mergePathSpecsByPen(specs)
   if (!merged.length) return 0
   // Collect the import into one collapsed group so a busy SVG doesn't flood the elements tree.
-  const group = merged.length > 1 ? { name: opts.groupName || 'SVG import', collapsed: true } : undefined
+  const group = merged.length > 1 ? { name: opts.groupName || 'SVG import' } : undefined
   useDoc.getState().addElements(merged, group)
   return merged.length
 }
