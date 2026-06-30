@@ -7,7 +7,8 @@
 // textarea out from under an active edit).
 import { create } from 'zustand'
 import { PRUSA_MK4 } from './profiles'
-import { useDoc } from './document'
+import { useDoc, cloneSubtrees } from './document'
+import { usePreview } from './preview'
 import {
   reset as resetHistory,
   wireHistory,
@@ -66,6 +67,7 @@ export const useDocuments = create<DocsStore>((set, get) => ({
     const prev = get().activeId
     flushSave()
     leaveHistory(prev) // stash the outgoing doc's undo stack before we replace the canvas
+    usePreview.getState().exit() // close any open toolpath preview — it belongs to the old doc
     const id = crypto.randomUUID()
     storage.setActiveId(id)
     useDoc.getState().loadDocument(emptySnapshot())
@@ -83,6 +85,7 @@ export const useDocuments = create<DocsStore>((set, get) => ({
     const prev = get().activeId
     flushSave()
     leaveHistory(prev)
+    usePreview.getState().exit()
     storage.setActiveId(id)
     useDoc.getState().loadDocument(snapshotOf(doc))
     autoName = null // a real, saved name
@@ -118,17 +121,15 @@ export const useDocuments = create<DocsStore>((set, get) => ({
 
   duplicateSelectionToNewDoc: () => {
     const { elements, selectedIds, profile } = useDoc.getState()
-    const sel = elements.filter((e) => selectedIds.includes(e.id))
-    if (!sel.length) return
-    const cloned = sel.map((e) => {
-      const { parent: _p, clipRole: _cr, ...rest } = structuredClone(e)
-      return { ...rest, id: crypto.randomUUID() }
-    })
+    if (!selectedIds.length) return
+    // Clone whole subtrees (containers carry their members) with no offset — it's a fresh document.
+    const { copies, newRootIds } = cloneSubtrees(selectedIds, elements, 0, 0)
+    if (!copies.length) return
     const base = get().activeName.trim() || 'Untitled'
     get().loadImported(`${base} copy`, {
-      elements: cloned,
+      elements: copies,
       profile: structuredClone(profile),
-      selectedIds: cloned.map((c) => c.id),
+      selectedIds: newRootIds,
       fiducial: null,
     })
   },
@@ -137,6 +138,7 @@ export const useDocuments = create<DocsStore>((set, get) => ({
     const prev = get().activeId
     flushSave()
     leaveHistory(prev)
+    usePreview.getState().exit()
     const id = crypto.randomUUID()
     storage.setActiveId(id)
     useDoc.getState().loadDocument(snapshot)
@@ -231,6 +233,7 @@ function isEditingText(): boolean {
 
 function applyRemote(doc: StoredDoc): void {
   useDoc.getState().loadDocument(snapshotOf(doc))
+  usePreview.getState().exit()
   autoName = null // the remote doc has a real, saved name
   useDocuments.setState({ activeName: doc.name })
   lastContent = contentKey() // echo guard: our own autosave now sees no change

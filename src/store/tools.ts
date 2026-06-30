@@ -3,6 +3,7 @@
 // canvas/DrawingLayer.tsx). Tools auto-return to `select` after committing a shape (the pen
 // continues until the path is finished).
 import { create } from 'zustand'
+import { usePreview } from './preview'
 
 export type Tool =
   | 'select'
@@ -23,5 +24,11 @@ interface ToolsStore {
 
 export const useTools = create<ToolsStore>((set) => ({
   tool: 'select',
-  setTool: (tool) => set({ tool }),
+  // Tools and the toolpath preview are mutually exclusive modes: arming any tool (by button or
+  // shortcut) drops out of the read-only preview back into editing, so a tool is never a dead,
+  // unusable button while previewing. Entering preview resets the tool to `select` (see Toolbar).
+  setTool: (tool) => {
+    if (usePreview.getState().active) usePreview.getState().exit()
+    set({ tool })
+  },
 }))

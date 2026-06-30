@@ -3,17 +3,18 @@
 // recognizes that marker (our elements) and/or an image file (→ a raster element). The keyboard path
 // runs through the native copy/cut/paste events (App's `useSystemClipboard`, the only place with
 // synchronous clipboard access); the palette/menu buttons use the async Clipboard API helpers here.
-import { useDoc } from './document'
+import { useDoc, subtreeElements } from './document'
 import { sanitizeElements } from './persistence/schema'
 import type { DocElement } from '../core/types'
 
 /** Marker prefixing our JSON in `text/plain`, so paste can tell our payload from arbitrary text. */
 const PREFIX = 'kg-clip/v1:'
 
-/** Serialize the current selection to a clipboard string, or null if nothing is selected. */
+/** Serialize the current selection to a clipboard string, or null if nothing is selected. A selected
+ *  container carries its whole member subtree, so it pastes as a complete group/clip, not a shell. */
 export function serializeSelection(): string | null {
   const { elements, selectedIds } = useDoc.getState()
-  const sel = elements.filter((e) => selectedIds.includes(e.id))
+  const sel = subtreeElements(selectedIds, elements)
   return sel.length ? PREFIX + JSON.stringify(sel) : null
 }
 

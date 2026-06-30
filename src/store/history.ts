@@ -9,6 +9,7 @@
 // fingerprint ignores it for free.
 import { create } from 'zustand'
 import { useDoc } from './document'
+import { usePreview } from './preview'
 import { referencedImageIds } from './images'
 import type { DocSnapshot } from './persistence/schema'
 
@@ -213,6 +214,12 @@ export function wireHistory(): void {
       presentFp = fp(cur)
       return
     }
+    // Any *real* content change (not a selection-only change or a geometry ref-bump) drops the
+    // read-only preview back to editing — the inspector stays interactive during preview, so an edit
+    // there must snap out of it. Guarded by `active` (and checked before the gesture-coalesce return,
+    // so it fires on the first tick of an inspector slider session) so the cost — a fingerprint — is
+    // only paid while previewing, never on the canvas-drag hot path.
+    if (usePreview.getState().active && fp(cur) !== presentFp) usePreview.getState().exit()
     if (depth > 0) {
       present = cur // inside a gesture / field session → coalesce; fp is checked at end()
       return

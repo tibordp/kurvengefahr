@@ -193,6 +193,56 @@ function descendants(id: string, elements: DocElement[]): Set<string> {
   return out
 }
 
+/** The given roots plus (for containers) their whole member subtree, in document order (members
+ *  before their container — the z-order invariant). The unit of copy/duplicate/serialize, so a
+ *  clip/group always travels with its contents, never as an empty shell. */
+export function subtreeElements(rootIds: string[], elements: DocElement[]): DocElement[] {
+  const want = new Set<string>(rootIds)
+  for (const id of rootIds) for (const d of descendants(id, elements)) want.add(d)
+  return elements.filter((e) => want.has(e.id))
+}
+
+/** Deep-clone a *self-contained* element list (e.g. {@link subtreeElements} output, or a pasted
+ *  payload): fresh ids, `parent` remapped within the list. An element whose parent isn't in the list
+ *  is a **root** — it drops to the top level (parent + stray mask role cleared) and is offset by
+ *  (dx,dy); members keep their container-local transforms. Input order is preserved. */
+export function cloneElementList(
+  els: DocElement[],
+  dx = 5,
+  dy = 5,
+): { clones: DocElement[]; idMap: Map<string, string> } {
+  const idMap = new Map<string, string>()
+  for (const e of els) idMap.set(e.id, crypto.randomUUID())
+  const clones = els.map((e) => {
+    const clone = structuredClone(e)
+    clone.id = idMap.get(e.id)!
+    if (clone.parent && idMap.has(clone.parent)) {
+      clone.parent = idMap.get(clone.parent)!
+    } else {
+      delete clone.parent
+      delete clone.clipRole
+      clone.transform = { ...clone.transform, x: clone.transform.x + dx, y: clone.transform.y + dy }
+    }
+    return clone
+  })
+  return { clones, idMap }
+}
+
+/** Deep-clone the given roots and (for containers) their whole member subtree, offsetting the roots.
+ *  Used by duplicate so a clip/group clones as a whole tree, not an empty shell. `newRootIds` are the
+ *  cloned ids of the requested roots that landed at the top level. */
+export function cloneSubtrees(
+  rootIds: string[],
+  elements: DocElement[],
+  dx = 5,
+  dy = 5,
+): { copies: DocElement[]; newRootIds: string[] } {
+  const { clones, idMap } = cloneElementList(subtreeElements(rootIds, elements), dx, dy)
+  const topLevel = new Set(clones.filter((c) => !c.parent).map((c) => c.id))
+  const newRootIds = rootIds.map((id) => idMap.get(id)).filter((id): id is string => !!id && topLevel.has(id))
+  return { copies: clones, newRootIds }
+}
+
 /** The hatch a closed shape carries (so a boolean result inherits the topmost shape's fill). */
 function hatchOf(el: DocElement): Hatch {
   if (el.type === 'rect') return (el.params as RectParams).hatch
@@ -416,32 +466,17 @@ export const useDoc = create<DocStore>((set) => ({
 
   duplicateElement: (id) =>
     set((state) => {
-      const el = state.elements.find((e) => e.id === id)
-      if (!el) return {}
-      const copy: DocElement = {
-        id: crypto.randomUUID(),
-        type: el.type,
-        transform: { ...el.transform, x: el.transform.x + 5, y: el.transform.y + 5 },
-        params: structuredClone(el.params),
-        pen: el.pen,
-        ...(el.pressure !== undefined ? { pressure: el.pressure } : {}),
-      }
-      return { elements: [...state.elements, copy], selectedIds: [copy.id] }
+      if (!state.elements.some((e) => e.id === id)) return {}
+      const { copies, newRootIds } = cloneSubtrees([id], state.elements)
+      if (!copies.length) return {}
+      return { elements: [...state.elements, ...copies], selectedIds: newRootIds }
     }),
 
   duplicateSelected: () =>
     set((state) => {
-      const sel = new Set(state.selectedIds)
-      // Clone the whole element (preserving dash, name, … — not a hand-picked field list that silently
-      // drops things) with fresh ids and a small offset; group membership is dropped, like paste.
-      const copies = state.elements
-        .filter((e) => sel.has(e.id))
-        .map((el) => {
-          const { id: _id, parent: _p, clipRole: _cr, ...rest } = structuredClone(el)
-          return { ...rest, id: crypto.randomUUID(), transform: { ...rest.transform, x: rest.transform.x + 5, y: rest.transform.y + 5 } }
-        })
+      const { copies, newRootIds } = cloneSubtrees(state.selectedIds, state.elements)
       if (!copies.length) return {}
-      return { elements: [...state.elements, ...copies], selectedIds: copies.map((c) => c.id) }
+      return { elements: [...state.elements, ...copies], selectedIds: newRootIds }
     }),
 
   select: (id, additive = false) =>
@@ -647,16 +682,15 @@ export const useDoc = create<DocStore>((set) => ({
 
   addPasted: (els) => {
     if (!els.length) return []
-    const created: DocElement[] = els.map((e) => {
-      const { id: _id, parent: _p, clipRole: _cr, ...rest } = structuredClone(e)
-      return {
-        ...rest,
-        id: crypto.randomUUID(),
-        transform: { ...rest.transform, x: rest.transform.x + 5, y: rest.transform.y + 5 },
-      }
-    })
-    set((state) => ({ elements: [...state.elements, ...created], selectedIds: created.map((c) => c.id) }))
-    return created.map((c) => c.id)
+    // The payload is a self-contained subtree (a container carries its members), so remap parents
+    // within it rather than dropping them — paste a group and you get the whole group back.
+    const { clones } = cloneElementList(els)
+    const roots = clones.filter((c) => !c.parent).map((c) => c.id)
+    set((state) => ({
+      elements: [...state.elements, ...clones],
+      selectedIds: roots.length ? roots : clones.map((c) => c.id),
+    }))
+    return clones.map((c) => c.id)
   },
 
   convertToPath: (ids) =>

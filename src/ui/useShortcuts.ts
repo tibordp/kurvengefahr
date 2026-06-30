@@ -50,6 +50,14 @@ export function useShortcuts(): void {
 
       if (isTyping(e.target)) return
 
+      // Escape snaps out of the read-only preview back to editing (handled before tool/canvas Escape
+      // uses, which are no-ops during preview anyway).
+      if (e.key === 'Escape' && usePreview.getState().active) {
+        e.preventDefault()
+        usePreview.getState().exit()
+        return
+      }
+
       // Undo / redo. After the typing guard, so a focused text field keeps native text-undo (the
       // field's own focus-session still coalesces into one app-level step on blur).
       if ((e.metaKey || e.ctrlKey) && (e.key === 'z' || e.key === 'Z')) {

@@ -101,7 +101,6 @@ interface RowHandlers {
 
 interface RowProps extends RowHandlers {
   el: DocElement
-  nested: boolean
   label: string
   selected: boolean
   color: string
@@ -122,7 +121,6 @@ const ElementRow = memo(function ElementRow(p: RowProps) {
     <li
       className={cx(
         'group flex cursor-pointer items-center gap-2 rounded-md border px-2 py-1.5 text-sm transition-colors',
-        p.nested && 'ml-4',
         p.selected ? 'border-accent-border bg-accent-subtle' : 'border-transparent hover:bg-bg',
       )}
       onMouseEnter={() => p.onHover(el.id)}
@@ -296,7 +294,7 @@ export function ElementsTree() {
   const canGroup = selectedEls.length >= 2
   const ungroupIds = selectedEls.filter((e) => e.type === 'group').map((e) => e.id)
 
-  const renderElement = (el: DocElement, nested: boolean) => {
+  const renderElement = (el: DocElement) => {
     const g = genStatus[el.id]
     const dirty = !g && needsManualRegen(el.id, el.type, el.params)
     const badge = statusBadge(g?.phase, dirty)
@@ -304,7 +302,6 @@ export function ElementsTree() {
       <ElementRow
         key={el.id}
         el={el}
-        nested={nested}
         label={el.clipRole === 'mask' ? `Mask · ${labelOf(el)}` : labelOf(el)}
         selected={sel.has(el.id)}
         color={colorFor(el.pen)}
@@ -322,7 +319,7 @@ export function ElementsTree() {
   // A container row: a collapsible header (selects the container itself — so the Transformer moves the
   // whole composition) over its nested members, recursing for nested containers. A clip additionally
   // shows a Release action; a group shows Ungroup.
-  const renderContainerRow = (el: DocElement, depth: number): JSX.Element => {
+  const renderContainerRow = (el: DocElement): JSX.Element => {
     const members = membersByContainer.get(el.id) ?? []
     const expanded = !!query.trim() || !collapsed.has(el.id)
     const isEditing = editing === el.id
@@ -333,7 +330,6 @@ export function ElementsTree() {
         <div
           className={cx(
             'group flex cursor-pointer items-center gap-1.5 rounded-md border px-1.5 py-1.5 text-sm transition-colors',
-            depth > 0 && 'ml-4',
             sel.has(el.id) ? 'border-accent-border bg-accent-subtle' : 'border-transparent hover:bg-bg',
           )}
           onClick={(e) => onRowClick(el.id, e)}
@@ -400,8 +396,10 @@ export function ElementsTree() {
           </button>
         </div>
         {expanded && (
-          <ul className="flex flex-col gap-0.5">
-            {members.map((m) => (isContainer(m.type) ? renderContainerRow(m, depth + 1) : renderElement(m, true)))}
+          // Indent + a guide rule per nesting level — depth accumulates through the DOM, so 2nd- and
+          // 3rd-level items sit at their true depth (not a single flat indent).
+          <ul className="ml-3 flex flex-col gap-0.5 border-l border-border/60 pl-1">
+            {members.map((m) => (isContainer(m.type) ? renderContainerRow(m) : renderElement(m)))}
           </ul>
         )}
       </li>
@@ -464,7 +462,7 @@ export function ElementsTree() {
       {/* The row list scrolls on its own (capped) so a big import doesn't push the property editor
           below the fold — the Elements header + filter above stay pinned. */}
       <ul className="-mr-1 flex max-h-[45vh] flex-col gap-0.5 overflow-y-auto pr-1">
-        {rows.map((r) => (r.kind === 'element' ? renderElement(r.el, false) : renderContainerRow(r.el, 0)))}
+        {rows.map((r) => (r.kind === 'element' ? renderElement(r.el) : renderContainerRow(r.el)))}
       </ul>
     </>
   )

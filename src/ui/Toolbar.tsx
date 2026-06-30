@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { RotateCw, Play, Pencil, Download, Printer, PanelRight, CircleHelp, Undo2, Redo2 } from 'lucide-react'
 import { useDoc } from '../store/document'
 import { usePreview } from '../store/preview'
+import { useTools } from '../store/tools'
 import { useUI } from '../store/ui'
 import { useHistory, undo, redo } from '../store/history'
 import { regenerateAll, needsManualRegen } from '../core/generation'
@@ -83,6 +84,9 @@ export function Toolbar() {
       const park = penParkInPage(profile)
       const plottable = buildPlottableGeometry(elements, profile)
       const optimized = await optimizeGeometry(plottable, park, profile.pens.map((p) => p.id))
+      // Preview is a read-only mode — disarm any drawing tool so the toolbar reflects it and exiting
+      // doesn't drop you back into a half-armed tool.
+      useTools.getState().setTool('select')
       usePreview.getState().enter(buildToolpath(optimized, park, fiducial))
     } finally {
       setPreparing(false)
