@@ -468,11 +468,15 @@ export function Canvas() {
       } else {
         const ids: string[] = []
         for (const el of doc.elements) {
+          // Clip members are selected via their clip, not individually; a clip is bounded by its
+          // clipped composition (its own generateLocal is empty).
+          if (el.clipParent && clipIds.has(el.clipParent)) continue
+          const local = el.type === 'clip' ? clipLocalGeometry(el, membersOf) : generateLocal(el)
           let bx0 = Infinity
           let by0 = Infinity
           let bx1 = -Infinity
           let by1 = -Infinity
-          for (const s of place(generateLocal(el), el.transform))
+          for (const s of place(local, el.transform))
             for (const pt of s.points) {
               if (pt.x < bx0) bx0 = pt.x
               if (pt.y < by0) by0 = pt.y
