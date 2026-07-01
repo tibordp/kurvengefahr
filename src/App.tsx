@@ -29,6 +29,12 @@ function useSystemClipboard() {
       const t = document.activeElement as HTMLElement | null
       return !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)
     }
+    // The user is selecting real page text (a label, banner, help copy) — let the browser copy that
+    // text rather than hijacking the shortcut to copy the selected canvas element.
+    const selectingText = () => {
+      const sel = window.getSelection()
+      return !!sel && !sel.isCollapsed && sel.toString().trim().length > 0
+    }
     const writeSelection = (e: ClipboardEvent): boolean => {
       const data = serializeSelection()
       if (!data) return false
@@ -37,10 +43,10 @@ function useSystemClipboard() {
       return true
     }
     const onCopy = (e: ClipboardEvent) => {
-      if (!typing()) writeSelection(e)
+      if (!typing() && !selectingText()) writeSelection(e)
     }
     const onCut = (e: ClipboardEvent) => {
-      if (!typing() && writeSelection(e)) useDoc.getState().removeSelected()
+      if (!typing() && !selectingText() && writeSelection(e)) useDoc.getState().removeSelected()
     }
     const onPaste = (e: ClipboardEvent) => {
       if (typing()) return

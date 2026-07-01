@@ -1757,10 +1757,6 @@ function PreferencesSection() {
           ))}
         </div>
       </Field>
-      <p className="mt-1 text-2xs text-faint">
-        System follows your OS appearance. The drawing canvas stays light — the white page is the
-        plotted result.
-      </p>
     </>
   )
 }

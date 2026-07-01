@@ -6,7 +6,12 @@ import { useDoc } from '../store/document'
 import { useDocuments } from '../store/documents'
 import { toast } from '../store/toast'
 import { downloadSink } from './sink'
+import { safeFilename } from './download'
 import { plot } from './plot'
+
+/** G-code filename from the active document's name (e.g. `my-drawing.gcode`), shared by the download
+ *  and the Bridge/PrusaLink send so both name the file the same way. */
+const gcodeFilename = () => `${safeFilename(useDocuments.getState().activeName, 'kurvengefahr')}.gcode`
 
 /** Build G-code for the whole page and hand it to the download sink. No-op on an empty document.
  *  Refuses (with a toast) when the machine profile is invalid — the UI also disables the action. */
@@ -18,7 +23,7 @@ export async function exportGcode(): Promise<void> {
     return
   }
   const gcode = await runPipeline(elements, profile, fiducial)
-  await downloadSink.send('kurvengefahr.gcode', gcode)
+  await downloadSink.send(gcodeFilename(), gcode)
 }
 
 /** Build the same G-code and send it straight to the profile's bound physical device. No-op on an
@@ -31,6 +36,5 @@ export async function plotGcode(): Promise<void> {
     return
   }
   const gcode = await runPipeline(elements, profile, fiducial)
-  const name = (useDocuments.getState().activeName || 'kurvengefahr').replace(/\s+/g, '-')
-  await plot(profile, gcode, `${name}.gcode`)
+  await plot(profile, gcode, gcodeFilename())
 }
