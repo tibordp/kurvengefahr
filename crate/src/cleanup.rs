@@ -3,11 +3,25 @@
 //!   - **dedupe** coincident segments (shared edges drawn once — common in occluded SVG imports),
 //!   - **chain** touching strokes into continuous polylines (fewer pen-up/pen-down cycles),
 //!   - **drop collinear** interior points (smaller G-code).
-//! Locked chains (nonzero `group`, e.g. handwriting) pass through untouched. Per-pen, so colours
-//! never merge. The optimizer reorders the result afterwards, so output order here doesn't matter.
+//! Locked chains (nonzero `group`, e.g. handwriting) pass through untouched, and so do
+//! **variable-pressure** strokes (raster `pressurehatch`): their exact point sequence *is* the tonal
+//! signal, so dropping "collinear" points would quantize the pressure ramp into visible width bands,
+//! and dedupe/chain are meaningless for a dense parallel rake — cleanup would corrupt, not simplify.
+//! Per-pen, so colours never merge. The optimizer reorders the result afterwards, so output order
+//! here doesn't matter.
 
 use crate::geom::{Point, Stroke};
 use std::collections::HashMap;
+
+/// Whether a stroke's pressure varies along its length — if so its points carry tonal detail, not
+/// just geometry, and cleanup must leave it exactly as-is.
+fn varies_pressure(s: &Stroke) -> bool {
+    let mut pts = s.points.iter();
+    match pts.next() {
+        Some(first) => pts.any(|p| (p.pressure - first.pressure).abs() > 1e-4),
+        None => false,
+    }
+}
 
 /// Quantization for coincidence tests: 1 µm grid (well below any pen width).
 const Q: f32 = 1.0 / crate::tess::COINCIDENT_TOL;
@@ -20,8 +34,8 @@ pub fn cleanup(strokes: &[Stroke]) -> Vec<Stroke> {
     let mut out: Vec<Stroke> = Vec::new();
     let mut by_pen: HashMap<u16, Vec<&Stroke>> = HashMap::new();
     for s in strokes {
-        if s.group != 0 {
-            out.push(s.clone()); // locked chain — leave exactly as-is
+        if s.group != 0 || varies_pressure(s) {
+            out.push(s.clone()); // locked chain or variable-pressure stroke — leave exactly as-is
         } else if s.points.len() >= 2 {
             by_pen.entry(s.pen).or_default().push(s);
         }
@@ -159,7 +173,8 @@ fn clean_pen(strokes: &[&Stroke], pen: u16) -> Vec<Stroke> {
 
 /// Remove interior points that are (near-)collinear with their neighbours. Tolerance is the
 /// perpendicular deviation in mm; tiny so curves are preserved and only redundant points on straight
-/// runs (rect edges, RDP-flattened lines) are dropped.
+/// runs (rect edges, RDP-flattened lines) are dropped. Only reached for uniform-pressure strokes
+/// (variable-pressure ones skip cleanup), so it need not consider pressure.
 fn drop_collinear(pts: &[Point]) -> Vec<Point> {
     const TOL: f32 = crate::tess::COLLINEAR_TOL;
     if pts.len() <= 2 {
@@ -230,7 +245,24 @@ mod tests {
     #[test]
     fn drops_collinear_points() {
         let out = cleanup(&[s(0, &[(0.0, 0.0), (1.0, 0.0), (2.0, 0.0), (3.0, 0.0)])]);
-        assert_eq!(total_points(&out), 2, "straight run collapses to its endpoints");
+        assert_eq!(total_points(&out), 2, "straight run collapses to its endpoints (uniform pressure)");
+    }
+
+    #[test]
+    fn variable_pressure_stroke_passes_through_verbatim() {
+        // A straight run whose pressure ramps 0→1 must survive cleanup with *every* point intact:
+        // decimating it would quantize the tonal ramp into visible width bands (and its exact points
+        // are the tonal signal, not redundant geometry).
+        let n = 21;
+        let pts: Vec<Point> = (0..n)
+            .map(|i| Point { x: i as f32 * 0.5, y: 0.0, pressure: i as f32 / (n as f32 - 1.0) })
+            .collect();
+        let out = cleanup(&[Stroke { points: pts.clone(), pen: 0, reversible: true, group: 0 }]);
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].points.len(), n, "all points kept verbatim (not decimated)");
+        for (o, i) in out[0].points.iter().zip(&pts) {
+            assert!((o.pressure - i.pressure).abs() < 1e-6, "pressure preserved");
+        }
     }
 
     #[test]
@@ -240,3 +272,5 @@ mod tests {
         assert_eq!(out.len(), 3, "two pens stay separate; the locked chain passes through");
     }
 }
+
+

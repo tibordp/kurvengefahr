@@ -57,6 +57,15 @@ weights as pure scalar Rust. The decisions that shape the surrounding code:
 Geometry; everything that makes motion consumes it.** Adding a new input type is just a new
 `generate()` — nothing downstream changes.
 
+**The editor targets an *abstract* pen plotter.** The IR and everything upstream of it (elements,
+filters, optimize, the canvas) speak only in machine-neutral terms — position in mm, a `pen` index,
+an abstract `pressure` 0..1. Turning those into physical motion is the **machine profile + `emit`'s**
+job *alone*. `pressure` is the running example: the IR just carries "how hard, 0..1"; the current
+3D-printer-as-plotter profile realizes it as a pen-down Z (`penZ.downLight`→`down`), but another
+machine type could encode the same 0..1 as a servo angle or spindle force. So keep machine-specific
+concepts out of the core — user-facing copy, IR fields, and generators must not mention Z, feeds, or
+G-code. If something is only meaningful to one machine, it lives in the profile/emit layer.
+
 The metadata is what makes the optimizer and emitter work, and each field encodes an invariant:
 
 - `pen` — **stamped at concatenation** (`buildPageGeometry`) from the element's top-level
@@ -65,14 +74,21 @@ The metadata is what makes the optimizer and emitter work, and each field encode
   and pen groups plot in **palette order**, with the profile's `pause` macro dropped between groups.
   A future *natively multi-colour* element sets per-stroke pens in its generator and opts out of
   stamping via registry `multiPen`.
-- `pressure` (per-point, 0..1) — the element's single `DocElement.pressure` is **stamped onto its
-  points at concatenation** (in `place`, called from `buildPageGeometry`), exactly like `pen`: a
-  cheap re-place/re-emit, never a regenerate; multi-pen types carry per-member pressure instead.
-  `emit` maps it to the pen-down Z, interpolating `penZ.downLight` (light) → `penZ.down` (full).
+- `pressure` (per-point, 0..1) — the element's single `DocElement.pressure` is applied at
+  concatenation as a **gain** (multiplied into each point's pressure, in `place` from
+  `buildPageGeometry` / the container composers), NOT an overwrite — a cheap re-place/re-emit, never a
+  regenerate; multi-pen types (containers) carry per-member pressure instead, so they pass no gain.
+  Because every ordinary generator emits pressure 1, the gain *is* the element value there; a
+  **natively variable-pressure** generator (raster `pressurehatch`, darkness→pressure) keeps its
+  per-point modulation, scaled by the element knob — so it needs **no opt-out**, and it composes
+  through filters (which interpolate pressure) and clips (`clip.rs` interpolates at cuts) for free.
+  `emit` maps the final per-point pressure to the pen-down Z, interpolating `penZ.downLight` (light) →
+  `penZ.down` (full), and **ramps Z per point** (one `Z` on each `G1`) only where it changes along a
+  stroke — constant-pressure strokes emit one Z at pen-down, so their G-code is unchanged.
   **`penZ.downLight` is the pressure switch** (`pressureEnabled()`): absent ⇒ pen up/down only, every
-  stroke at `down`, and the per-element control is disabled in the UI (value kept). On the canvas +
-  preview, pressure shows as line weight only (display, not the real tip width). A future *natively
-  variable-pressure* element sets per-point pressure in its generator and opts out of stamping.
+  point at `down`, and the per-element control is disabled in the UI (value kept). On the canvas +
+  preview, pressure shows as line weight only (display, not the real tip width) — `InkStrokes` draws
+  per-segment width when a stroke's pressure varies, matching the preview and the plot.
 - `reversible` — optimizer may flip stroke direction.
 - `group` — nonzero = one **locked, ordered, contiguous chain** (a handwriting element); 0 = free
   singleton in the global optimization bag.

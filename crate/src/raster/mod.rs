@@ -12,6 +12,7 @@
 //! - **contours** — threshold + trace ink/paper boundary (faithful, line-art).
 //! - **contourmap** — topographic iso-tone lines (marching squares at N levels).
 //! - **hatch** — engraving-style tonal cross-hatch (darker tones accrue more passes).
+//! - **pressurehatch** — one even hatch; tone rides on per-point pen pressure (darker = harder).
 //! - **scanlines** — squiggle scanlines whose wiggle grows with darkness.
 //! - **tsp** — one continuous line threaded through a density-weighted point cloud (TSP art).
 //! - **flowfield** — streamlines that flow along the image's edges.
@@ -50,6 +51,7 @@ pub fn vectorize(rgba: &[u8], width: u32, height: u32, params: &str) -> Vec<Stro
         "centerline" => centerline::centerline(&grid, &p),
         "contourmap" => contourmap::contourmap(&grid, &p),
         "hatch" => tone::hatch(&grid, &p),
+        "pressurehatch" => tone::pressure_hatch(&grid, &p),
         "scanlines" => scanlines::scanlines(&grid, &p),
         "tsp" => tsp::tsp(&grid, &p),
         "voronoi" => cells::voronoi(&grid, &p),
@@ -98,6 +100,8 @@ pub struct Params {
     pub amplitude: f32,
     /// Wiggle frequency (scanlines waves/mm·10, spiral oscillations/turn).
     pub frequency: f32,
+    /// Pressure hatch: contrast of the darkness→pressure map (1 = linear, >1 expands, <1 compresses).
+    pub pressure_contrast: f32,
 
     // tsp / flow — sampling density
     /// 0..1 density of sampled points / seeds.
@@ -122,6 +126,7 @@ impl Default for Params {
             levels: 4,
             amplitude: 1.2,
             frequency: 5.0,
+            pressure_contrast: 1.0,
             detail: 0.5,
             flow_steps: 80,
         }
@@ -271,7 +276,8 @@ mod tests {
     #[test]
     fn every_method_produces_in_bounds_strokes() {
         for method in [
-            "contours", "contourmap", "hatch", "scanlines", "tsp", "flowfield", "spiral",
+            "contours", "contourmap", "hatch", "pressurehatch", "scanlines", "tsp", "flowfield",
+            "spiral",
         ] {
             let out = run(method);
             assert!(!out.is_empty(), "method {method} produced no strokes");

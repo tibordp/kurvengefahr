@@ -657,6 +657,7 @@ const METHOD_LABELS: Record<RasterMethod, string> = {
   centerline: 'Centreline (line art)',
   contourmap: 'Topographic lines',
   hatch: 'Tonal hatching',
+  pressurehatch: 'Pressure hatch',
   scanlines: 'Squiggle scanlines',
   tsp: 'TSP art (one line)',
   voronoi: 'Voronoi mosaic',
@@ -670,6 +671,7 @@ function RasterInspector({ id, params }: { id: string; params: RasterParams }) {
   const up = (patch: Partial<RasterParams>) => setParams(id, { ...params, ...patch })
   const m = params.method
   const seeded = SEEDED_METHODS.has(m)
+  const pressureOn = useDoc((s) => pressureEnabled(s.profile))
 
   return (
     <>
@@ -724,6 +726,23 @@ function RasterInspector({ id, params }: { id: string; params: RasterParams }) {
           <SliderNum label="Tone bands" min={1} max={16} step={1} value={params.levels} hardMax int
             title="How many darkness bands accrue cross-hatch passes, each at its own evenly-spread angle. More = finer tonal range."
             onChange={(v) => up({ levels: v })} />
+        </>
+      )}
+
+      {m === 'pressurehatch' && (
+        <>
+          <SliderNum label="Spacing (mm)" min={0.2} max={8} step={0.1} value={params.spacing}
+            title="Distance between hatch lines. Tone comes from pen pressure, not line density, so this just sets the rake's coarseness." onChange={(v) => up({ spacing: v })} />
+          <SliderNum label="Angle (°)" min={0} max={180} step={5} value={params.angle} hardMax
+            title="Direction of the hatch lines." onChange={(v) => up({ angle: v })} />
+          <SliderNum label="Contrast" min={0} max={4} step={0.1} value={params.pressureContrast ?? 1} hardMax
+            title="Stretch or compress the darkness-to-pressure range around mid grey. Above 1 boosts contrast (for flat source images); below 1 flattens it. 1 is a straight map."
+            onChange={(v) => up({ pressureContrast: v })} />
+          {!pressureOn && (
+            <Banner variant="warn">
+              This machine profile has no pen pressure, so every line plots at full strength.
+            </Banner>
+          )}
         </>
       )}
 

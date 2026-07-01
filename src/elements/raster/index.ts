@@ -17,6 +17,7 @@ export type RasterMethod =
   | 'centerline' // skeleton/centreline tracing for line art (one stroke per line)
   | 'contourmap' // topographic iso-tone lines
   | 'hatch' // engraving-style tonal cross-hatch
+  | 'pressurehatch' // even single hatch; tone rides on per-point pen pressure (darker = harder)
   | 'scanlines' // squiggle scanlines (wiggle ∝ darkness)
   | 'tsp' // one continuous line threaded through a density-weighted point cloud
   | 'voronoi' // Voronoi mosaic of a density-weighted point cloud (small cells where dark)
@@ -61,6 +62,8 @@ export interface RasterParams {
   amplitude: number
   /** Wiggle frequency (scanlines / spiral). */
   frequency: number
+  /** Pressure hatch: contrast of the darkness→pressure map (1 = linear, >1 expands, <1 compresses). */
+  pressureContrast: number
 
   // --- tsp / flowfield ---
   /** 0..1 density of sampled points / seeds. */
@@ -97,7 +100,8 @@ registerElement('raster', {
 const num = (v: unknown, d: number) => (typeof v === 'number' && Number.isFinite(v) ? v : d)
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v))
 const VALID_METHODS: ReadonlySet<string> = new Set([
-  'contours', 'centerline', 'contourmap', 'hatch', 'scanlines', 'tsp', 'voronoi', 'flowfield', 'spiral',
+  'contours', 'centerline', 'contourmap', 'hatch', 'pressurehatch', 'scanlines', 'tsp', 'voronoi',
+  'flowfield', 'spiral',
 ])
 
 /** Coerce arbitrary (persisted/imported, possibly older or malformed) params into a valid
@@ -123,6 +127,7 @@ export function sanitizeRasterParams(raw: unknown): RasterParams {
     levels: clamp(Math.floor(num(p.levels, d.levels)), 1, 16),
     amplitude: Math.max(0, num(p.amplitude, d.amplitude)),
     frequency: Math.max(0.1, num(p.frequency, d.frequency)),
+    pressureContrast: clamp(num(p.pressureContrast, d.pressureContrast), 0, 4),
     detail: clamp(num(p.detail, d.detail), 0, 1),
     flowSteps: clamp(Math.floor(num(p.flowSteps, d.flowSteps)), 4, 4000),
     showUnderlay: typeof p.showUnderlay === 'boolean' ? p.showUnderlay : d.showUnderlay,
@@ -153,6 +158,7 @@ export function defaultRasterParams(
     levels: 4,
     amplitude: 1.2,
     frequency: 5,
+    pressureContrast: 1,
     detail: 0.5,
     flowSteps: 80,
     showUnderlay: true,

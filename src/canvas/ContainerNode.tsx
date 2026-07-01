@@ -4,12 +4,14 @@
 // resizing the container just moves the Group (no recompute per frame); it's recomputed only when the
 // member tree actually changes (tracked by a fingerprint).
 import { memo, useMemo } from 'react'
-import { Group, Line } from 'react-konva'
+import { Group } from 'react-konva'
 import type { DocElement } from '../core/types'
+import { pressureEnabled } from '../core/types'
 import { generateLocal, isContainer } from '../elements/registry'
 import { elementLocalGeometry } from '../core/pipeline/clipGeometry'
 import { useDoc } from '../store/document'
 import { useNodeInteraction } from './useNodeInteraction'
+import { InkStrokes } from './InkStrokes'
 
 interface Props {
   element: DocElement
@@ -18,8 +20,6 @@ interface Props {
   pxPerMm: number
   interactive?: boolean
 }
-
-const PEN_WIDTH_MM = 0.4
 
 // Stable per-object ids so the fingerprint changes when a member's generated geometry is replaced
 // (param edit, or an async child's worker result) even though its params object stays the same.
@@ -45,9 +45,10 @@ function containerFingerprint(containerId: string, membersOf: Map<string, DocEle
       const g = isContainer(m.type) ? 0 : refId(generateLocal(m))
       // refId(m.filters) so a member's filter edit (a new filters array ref) re-fingerprints — its
       // generated base ref is unchanged by filters, so it wouldn't otherwise be noticed here. `dash`
-      // is baked into the composed geometry, so it must re-fingerprint too.
+      // and `pressure` are baked into the composed geometry (pressure as a place-gain), so they must
+      // re-fingerprint too.
       const dash = m.dash ? `${m.dash.dash}/${m.dash.gap}` : ''
-      parts.push(`${m.id},${t.x},${t.y},${t.rotation},${t.scaleX},${t.scaleY},${g},${m.clipRole ?? ''},${m.pen},${refId(m.filters)},${dash}`)
+      parts.push(`${m.id},${t.x},${t.y},${t.rotation},${t.scaleX},${t.scaleY},${g},${m.clipRole ?? ''},${m.pen},${refId(m.filters)},${dash},${m.pressure ?? ''}`)
       if (isContainer(m.type)) walk(m.id)
     }
   }
@@ -57,9 +58,11 @@ function containerFingerprint(containerId: string, membersOf: Map<string, DocEle
 
 function ContainerNodeImpl({ element, membersOf, pxPerMm, interactive = true }: Props) {
   const pens = useDoc((s) => s.profile.pens)
+  const pressureOn = useDoc((s) => pressureEnabled(s.profile))
   const select = useDoc((s) => s.select)
   const handlers = useNodeInteraction(element)
-  const colorFor = (pen: number) => pens.find((p) => p.id === pen)?.color ?? '#1a1a1a'
+  // Stable across renders (only `pens` changes it) so InkStrokes' memoized draws hold.
+  const colorFor = useMemo(() => (pen: number) => pens.find((p) => p.id === pen)?.color ?? '#1a1a1a', [pens])
 
   // Double-click enters a *clip*: select its first content member so it renders raw for editing (the
   // clip's mask is the privileged member). A plain group has no privileged member — there's nothing to
@@ -75,28 +78,6 @@ function ContainerNodeImpl({ element, membersOf, pxPerMm, interactive = true }: 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const geom = useMemo(() => elementLocalGeometry(element, membersOf), [fingerprint])
 
-  const lines = useMemo(
-    () =>
-      geom.map((stroke, i) => {
-        const pts: number[] = []
-        for (const p of stroke.points) pts.push(p.x, p.y)
-        return (
-          <Line
-            key={i}
-            points={pts}
-            stroke={colorFor(stroke.pen)}
-            strokeWidth={PEN_WIDTH_MM * pxPerMm}
-            strokeScaleEnabled={false}
-            lineCap="round"
-            lineJoin="round"
-            hitStrokeWidth={12}
-          />
-        )
-      }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [geom, pxPerMm, pens],
-  )
-
   return (
     <Group
       id={element.id}
@@ -111,7 +92,9 @@ function ContainerNodeImpl({ element, membersOf, pxPerMm, interactive = true }: 
       {...handlers}
       {...(isClip ? { onDblClick: enter, onDblTap: enter } : {})}
     >
-      {lines}
+      {/* Container geometry already has each member's pressure baked in (place gain in
+          group/clipLocalGeometry) and carries per-stroke pens → gain 1, per-stroke colours. */}
+      <InkStrokes geom={geom} pxPerMm={pxPerMm} colorFor={colorFor} pressureOn={pressureOn} />
     </Group>
   )
 }

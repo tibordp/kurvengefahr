@@ -2,7 +2,7 @@
 // local-mm strokes as Lines. The Group transform is the *view* of the element transform;
 // on drag/transform end we read the affine back into the store (the authority).
 import { memo, useMemo } from 'react'
-import { Group, Image as KonvaImage, Line, Rect } from 'react-konva'
+import { Group, Image as KonvaImage, Rect } from 'react-konva'
 import type { DocElement, Transform } from '../core/types'
 import { pressureEnabled } from '../core/types'
 import { isMultiPen } from '../elements/registry'
@@ -12,7 +12,7 @@ import { useGeneration, needsManualRegen, provisionalScale } from '../core/gener
 import { useRasterImage } from './useRasterImage'
 import type { RasterParams } from '../elements/raster'
 import { useNodeInteraction } from './useNodeInteraction'
-import { displayPenWidthMm, PEN_WIDTH_MM } from './penWidth'
+import { InkStrokes } from './InkStrokes'
 
 interface Props {
   element: DocElement
@@ -35,16 +35,19 @@ function ElementNodeImpl({ element, pxPerMm, interactive = true, effective }: Pr
   // Filtered local geometry — the post-filter strokes that actually plot (the source stays editable;
   // NodeEditLayer/GhostLayer show the pre-filter shape). Memoized in filteredLocal, so this is cheap.
   const geom = filteredLocal(element)
-  const colorFor = (pen: number) => pens.find((p) => p.id === pen)?.color ?? '#1a1a1a'
+  // Stable across renders (only `pens` changes it) so InkStrokes' memoized draws hold.
+  const colorFor = useMemo(() => (pen: number) => pens.find((p) => p.id === pen)?.color ?? '#1a1a1a', [pens])
   // Local geometry carries the generator's pens; the element's chosen pen is stamped on later in
   // the pipeline (page space). So colour single-pen elements by `element.pen`, and only honour a
   // stroke's own pen for natively multi-colour types.
   const multiPen = isMultiPen(element.type)
   const elementColor = colorFor(element.pen)
-  // Pressure shows as line weight (display only). The element's single pressure is stamped in the
-  // pipeline, but locally the strokes still carry the generator's flat pressure — so weight the
-  // whole element by its own value. Multi-pen types (clip) vary per member, so leave them at full.
-  const widthMm = multiPen ? PEN_WIDTH_MM : displayPenWidthMm(element.pressure ?? 1, pressureOn)
+  // Pressure shows as line weight (display only): the element's single pressure is a display gain on
+  // the generator's per-point pressure (mirroring `place`, which multiplies it in at plot time). A
+  // natively variable-pressure generator (raster `pressurehatch`) then reads as tonal weight; the
+  // usual flat-pressure generator just weights uniformly. Multi-pen types (clip) carry per-member
+  // pressure already, so they pass gain 1 and per-stroke pen colours.
+  const gain = multiPen ? 1 : element.pressure ?? 1
 
   // After a resize bakes a new box into params, the cached ink is still fit to the OLD box until the
   // re-trace lands. Rescale just the strokes (not the underlay, which is already at the new size) so
@@ -56,39 +59,6 @@ function ElementNodeImpl({ element, pxPerMm, interactive = true, effective }: Pr
   // lines streaming in read clearly.
   const generating = useGeneration((s) => !!s.status[element.id])
   const dirty = !generating && needsManualRegen(element.id, element.type, element.params)
-
-  // The Konva Lines are the expensive part for many-point elements: building each `points` array and
-  // reconciling the nodes. Memoize them on the geometry + style so re-renders that don't change the
-  // geometry (a transform/drag edit, a sibling's change) reuse the same Line elements untouched.
-  const dash = element.dash
-  const lines = useMemo(
-    () =>
-      geom.map((stroke, i) => {
-        const pts: number[] = []
-        for (const p of stroke.points) pts.push(p.x, p.y)
-        return (
-          <Line
-            key={i}
-            points={pts}
-            stroke={multiPen ? colorFor(stroke.pen) : elementColor}
-            // Width is constant in physical mm at the current zoom, unaffected by element scale
-            // (strokeScaleEnabled false → mm × pxPerMm). Per-element pressure scales it for a weight
-            // cue; the pen tip itself doesn't change — this is display only.
-            strokeWidth={widthMm * pxPerMm}
-            strokeScaleEnabled={false}
-            // Reflect the element's dashed-stroke style here too (screen px, like strokeWidth).
-            dash={dash ? [dash.dash * pxPerMm, dash.gap * pxPerMm] : undefined}
-            lineCap="round"
-            lineJoin="round"
-            // Generous screen-space hit area so thin ink is easy to click (clicks bubble to the
-            // Group). Selection is per-element, not per-stroke.
-            hitStrokeWidth={12}
-          />
-        )
-      }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [geom, pxPerMm, elementColor, multiPen, pens, dash, widthMm],
-  )
 
   return (
     <Group
@@ -108,7 +78,15 @@ function ElementNodeImpl({ element, pxPerMm, interactive = true, effective }: Pr
       {/* Inner group carries the provisional resize scale for stale ink (1×1 normally). With
           strokeScaleEnabled false on the Lines, this scales positions but never pen width. */}
       <Group scaleX={prov.sx} scaleY={prov.sy}>
-        {lines}
+        <InkStrokes
+          geom={geom}
+          pxPerMm={pxPerMm}
+          colorFor={colorFor}
+          fixedColor={multiPen ? undefined : elementColor}
+          pressureOn={pressureOn}
+          gain={gain}
+          dash={element.dash}
+        />
       </Group>
     </Group>
   )

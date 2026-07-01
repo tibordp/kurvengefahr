@@ -4,16 +4,39 @@ import { useDoc } from '../store/document'
 import { useDocuments } from '../store/documents'
 import { buildPlottableGeometry } from '../core/pipeline'
 import { downloadBlob, safeFilename } from './download'
-import type { Geometry } from '../core/types'
+import { pressureEnabled, type Geometry, type Stroke } from '../core/types'
+import { displayPenWidthMm } from '../canvas/penWidth'
 
 /** Nominal pen-tip width (mm) used for the rendered stroke width — matches the canvas. */
 const PEN_WIDTH_MM = 0.4
 
-function plottable(): { geom: Geometry; bed: { width: number; height: number }; penColor: (p: number) => string; name: string } {
+interface Plottable {
+  geom: Geometry
+  bed: { width: number; height: number }
+  penColor: (p: number) => string
+  /** Profile maps pressure to line weight — render pressure as varying width, matching canvas/preview. */
+  pressureOn: boolean
+  name: string
+}
+
+function plottable(): Plottable {
   const { elements, profile } = useDoc.getState()
   const geom = buildPlottableGeometry(elements, profile)
   const penColor = (pen: number) => profile.pens.find((p) => p.id === pen)?.color ?? '#1a1a1a'
-  return { geom, bed: profile.bed, penColor, name: useDocuments.getState().activeName }
+  return { geom, bed: profile.bed, penColor, pressureOn: pressureEnabled(profile), name: useDocuments.getState().activeName }
+}
+
+const PRESSURE_EPS = 1e-3
+/** Whether a stroke's pressure varies along its length (needs per-segment width to render honestly). */
+function pressureVaries(s: Stroke): boolean {
+  let min = Infinity
+  let max = -Infinity
+  for (const p of s.points) {
+    const v = p.pressure ?? 1
+    if (v < min) min = v
+    if (v > max) max = v
+  }
+  return max - min > PRESSURE_EPS
 }
 
 /** Strokes grouped by pen, in the profile's palette order then any strays. */
@@ -30,16 +53,31 @@ function byPen(geom: Geometry, order: number[]): Map<number, Geometry> {
 }
 
 export function exportSvg(): void {
-  const { geom, bed, penColor, name } = plottable()
+  const { geom, bed, penColor, pressureOn, name } = plottable()
   const { pens } = useDoc.getState().profile
   const groups = byPen(geom, pens.map((p) => p.id))
+  const f3 = (n: number) => n.toFixed(3)
   let body = ''
   for (const [pen, strokes] of groups) {
     const penName = pens.find((p) => p.id === pen)?.name ?? `Pen ${pen}`
     body += `  <g stroke="${penColor(pen)}" data-pen="${esc(penName)}">\n`
     for (const s of strokes) {
-      const d = s.points.map((p, i) => `${i ? 'L' : 'M'}${p.x.toFixed(3)} ${p.y.toFixed(3)}`).join(' ')
-      body += `    <path d="${d}"/>\n`
+      if (s.points.length < 2) continue
+      if (pressureOn && pressureVaries(s)) {
+        // Pressure rides on line weight (matching canvas/preview): one <line> per segment, its width
+        // from the segment's mean pressure. Only varying strokes pay this cost; the rest stay one path.
+        for (let i = 1; i < s.points.length; i++) {
+          const a = s.points[i - 1]
+          const b = s.points[i]
+          const w = displayPenWidthMm(((a.pressure ?? 1) + (b.pressure ?? 1)) / 2, true)
+          body += `    <line x1="${f3(a.x)}" y1="${f3(a.y)}" x2="${f3(b.x)}" y2="${f3(b.y)}" stroke-width="${f3(w)}"/>\n`
+        }
+      } else {
+        // Uniform stroke: one path. Weight it by the stroke's single pressure when pressure is on.
+        const wAttr = pressureOn ? ` stroke-width="${f3(displayPenWidthMm(s.points[0].pressure ?? 1, true))}"` : ''
+        const d = s.points.map((p, i) => `${i ? 'L' : 'M'}${f3(p.x)} ${f3(p.y)}`).join(' ')
+        body += `    <path d="${d}"${wAttr}/>\n`
+      }
     }
     body += `  </g>\n`
   }
@@ -52,7 +90,7 @@ export function exportSvg(): void {
 
 /** PNG export at `pxPerMm` pixels per millimetre (default ≈ a crisp, bounded image). */
 export async function exportPng(pxPerMm?: number): Promise<void> {
-  const { geom, bed, penColor, name } = plottable()
+  const { geom, bed, penColor, pressureOn, name } = plottable()
   const scale = pxPerMm ?? Math.min(10, Math.max(2, 2400 / Math.max(bed.width, bed.height)))
   const canvas = document.createElement('canvas')
   canvas.width = Math.max(1, Math.round(bed.width * scale))
@@ -62,14 +100,20 @@ export async function exportPng(pxPerMm?: number): Promise<void> {
   // Leave the background transparent (a fresh canvas is already clear; PNG keeps the alpha).
   ctx.lineCap = 'round'
   ctx.lineJoin = 'round'
-  ctx.lineWidth = PEN_WIDTH_MM * scale
   for (const s of geom) {
     if (s.points.length < 2) continue
     ctx.strokeStyle = penColor(s.pen)
-    ctx.beginPath()
-    ctx.moveTo(s.points[0].x * scale, s.points[0].y * scale)
-    for (let i = 1; i < s.points.length; i++) ctx.lineTo(s.points[i].x * scale, s.points[i].y * scale)
-    ctx.stroke()
+    // Stroke per segment so pressure reads as line weight (matching canvas/preview). When pressure is
+    // off, displayPenWidthMm returns the nominal width for every point → uniform, as before.
+    for (let i = 1; i < s.points.length; i++) {
+      const a = s.points[i - 1]
+      const b = s.points[i]
+      ctx.lineWidth = displayPenWidthMm(((a.pressure ?? 1) + (b.pressure ?? 1)) / 2, pressureOn) * scale
+      ctx.beginPath()
+      ctx.moveTo(a.x * scale, a.y * scale)
+      ctx.lineTo(b.x * scale, b.y * scale)
+      ctx.stroke()
+    }
   }
   const blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, 'image/png'))
   if (blob) downloadBlob(`${safeFilename(name, 'kurvengefahr')}.png`, blob)

@@ -95,7 +95,11 @@ function placeStroke(s: Stroke, m: Matrix, pressure?: number): Stroke {
     ...s,
     points: s.points.map((p) => {
       const q = applyMatrix(m, p)
-      return pressure === undefined ? q : { ...q, pressure }
+      // Element pressure is a *gain* on the generator's per-point pressure, not an overwrite. Every
+      // ordinary generator emits pressure 1, so this is exactly the element value (unchanged
+      // behaviour); a natively variable-pressure generator (raster `pressurehatch`) keeps its
+      // darkness modulation, scaled by the element's master pressure.
+      return pressure === undefined ? q : { ...q, pressure: (q.pressure ?? 1) * pressure }
     }),
   }
 }
@@ -116,9 +120,9 @@ export function pageToLocal(t: Transform, x: number, y: number): { x: number; y:
   return { x: (m[3] * dx - m[2] * dy) / det, y: (-m[1] * dx + m[0] * dy) / det }
 }
 
-/** Lift an element's local geometry into page space. When `pressure` is given, it's stamped onto
- *  every point (the element's single pressure value — the seam where per-element pressure enters the
- *  per-point IR); omit to keep the generator's per-point pressure. */
+/** Lift an element's local geometry into page space. When `pressure` is given, it's multiplied into
+ *  every point's pressure as a gain (the element's single pressure — the seam where per-element
+ *  pressure enters the per-point IR); omit to leave the generator's per-point pressure untouched. */
 export function place(geom: Geometry, t: Transform, pressure?: number): Geometry {
   const m = transformToMatrix(t)
   return geom.map((s) => placeStroke(s, m, pressure))

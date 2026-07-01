@@ -45,8 +45,8 @@ with a spring-loaded pen holder; the machine profile is editable.
   entity or layer, merging connected segments into polylines so a drawing exported as thousands of
   loose lines becomes a handful of paths.
 - **Raster tracing** -- Restyle an image as strokes: contour outlines, centerlines for line art (one
-  stroke per line), topographic levels, hatching, scanlines, a single TSP tour, flow fields, or
-  spirals, with live preview.
+  stroke per line), topographic levels, hatching, a pressure hatch (an even rake whose pen pressure
+  tracks darkness), scanlines, a single TSP tour, flow fields, or spirals, with live preview.
 - **Hatch fills** -- A pen can't lay solid ink, so closed shapes fill with lines, cross-hatch, grid,
   concentric rings, a Hilbert curve, a gradient, scribble, stipple dots, Voronoi cells, or Truchet
   tiles at an adjustable density.

@@ -28,9 +28,10 @@ export function emit(geom: Geometry, profile: MachineProfile, fiducial?: Fiducia
   // G-code commands the nozzle; the pen is offset from it, so subtract the offset from the
   // pen target. Geometry is already clipped to the reachable region, so coords stay in-bounds.
   const zUp = f3(penZ.up - off.z)
-  // Pen-down Z for a stroke's pressure (0..1). With pressure on (downLight set), interpolate
-  // downLight (light) → down (full); off, every stroke uses the single `down`. Element pressure is
-  // constant per stroke (stamped on all its points), so one Z at pen-down suffices.
+  // Pen-down Z for a point's pressure (0..1). With pressure on (downLight set), interpolate
+  // downLight (light) → down (full); off, every point uses the single `down`. Pressure is usually
+  // constant along a stroke (one stamped element value) → one Z at pen-down; a variable-pressure
+  // stroke (raster `pressurehatch`) ramps Z per point below.
   const penDownZ = (p: number) => {
     const light = penZ.downLight
     const z = light === undefined ? penZ.down : light + (penZ.down - light) * Math.min(1, Math.max(0, p))
@@ -91,15 +92,22 @@ export function emit(geom: Geometry, profile: MachineProfile, fiducial?: Fiducia
     for (const s of strokes) {
       const drawFeed = s.feed ?? feeds.draw
       const first = nozzle(s.points[0])
-      const zDown = penDownZ(s.points[0].pressure ?? 1)
+      let prevZ = penDownZ(s.points[0].pressure ?? 1)
 
       // Travel to the start (pen already up), then pen down.
       lines.push(`G0 X${first.x} Y${first.y} F${f3(feeds.travel)}`)
-      lines.push(`G1 Z${zDown} F${f3(feeds.travel)}`)
+      lines.push(`G1 Z${prevZ} F${f3(feeds.travel)}`)
 
       for (let i = 1; i < s.points.length; i++) {
         const p = nozzle(s.points[i])
-        lines.push(`G1 X${p.x} Y${p.y} F${f3(drawFeed)}`)
+        // Ramp the pen-down Z only when the point's pressure actually changes: constant-pressure
+        // strokes (every element but a variable-pressure one — and any stroke when pressure is off)
+        // emit no per-point Z, so output is unchanged. When it does change, the plotter interpolates
+        // Z linearly across the move → a smooth pressure ramp along the segment.
+        const z = penDownZ(s.points[i].pressure ?? 1)
+        const zPart = z !== prevZ ? ` Z${z}` : ''
+        lines.push(`G1 X${p.x} Y${p.y}${zPart} F${f3(drawFeed)}`)
+        prevZ = z
       }
 
       // Pen up.
