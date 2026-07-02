@@ -69,6 +69,13 @@ export const SHORTCUT_GROUPS: { title: string; items: ShortcutItem[] }[] = [
     ],
   },
   {
+    title: 'Arrange',
+    items: [
+      { keys: ['Shift', 'H'], label: 'Flip horizontal' },
+      { keys: ['Shift', 'V'], label: 'Flip vertical' },
+    ],
+  },
+  {
     title: 'Pen tool',
     items: [
       { keys: ['Click'], label: 'Add a corner node' },

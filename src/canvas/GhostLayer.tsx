@@ -1,5 +1,5 @@
-// Ghost wireframe: for each selected element that has active filters, draw its *pre-filter* shape
-// (the un-warped base geometry) faintly under the real, post-filter strokes. So a path keeps its
+// Ghost wireframe: for each selected element that has active effects, draw its *pre-effect* shape
+// (the un-warped base geometry) faintly under the real, post-effect strokes. So a path keeps its
 // editable nodes (NodeEditLayer) over a ghost of the smooth source curve, while the warped stroke is
 // what actually plots — you never lose sight of what you're editing. A read-only overlay sibling to
 // NodeEditLayer; it never participates in hit-testing.
@@ -11,7 +11,7 @@ import { isContainer } from '../elements/registry'
 import { baseLocal } from '../core/pipeline/clipGeometry'
 import { effectiveTransform } from '../core/pipeline/place'
 
-const hasActiveFilters = (el: DocElement) => !!el.filters?.some((f) => f.enabled)
+const hasActiveEffects = (el: DocElement) => !!el.effects?.some((f) => f.enabled)
 
 export function GhostLayer() {
   const elements = useDoc((s) => s.elements)
@@ -19,7 +19,7 @@ export function GhostLayer() {
 
   const ghosts = useMemo(() => {
     const sel = new Set(selectedIds)
-    const targets = elements.filter((e) => sel.has(e.id) && hasActiveFilters(e))
+    const targets = elements.filter((e) => sel.has(e.id) && hasActiveEffects(e))
     if (!targets.length) return []
     const byId = new Map(elements.map((e) => [e.id, e]))
     const membersOf = new Map<string, DocElement[]>()

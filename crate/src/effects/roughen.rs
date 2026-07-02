@@ -4,10 +4,10 @@
 //! position, two strokes that meet at a point get the *same* offset there and stay joined — so a
 //! Truchet tiling or a Voronoi mesh (3-way nodes included) roughens without tearing apart at the
 //! seams. Seeded for determinism; re-roll = a new field.
-use super::{fbm2, noise2, resample, FilterSpec};
+use super::{fbm2, noise2, resample, EffectSpec};
 use crate::geom::{Point, Stroke};
 
-pub fn apply(strokes: &[Stroke], s: &FilterSpec) -> Vec<Stroke> {
+pub fn apply(strokes: &[Stroke], s: &EffectSpec) -> Vec<Stroke> {
     let amp = s.amplitude_mm.max(0.0);
     let tremor = s.tremor_mm.max(0.0);
     if amp <= 1e-4 && tremor <= 1e-4 {

@@ -6,7 +6,7 @@ import { Group, Image as KonvaImage, Rect } from 'react-konva'
 import type { DocElement, Transform } from '../core/types'
 import { pressureEnabled } from '../core/types'
 import { isMultiPen } from '../elements/registry'
-import { filteredLocal } from '../core/pipeline/clipGeometry'
+import { effectedLocal } from '../core/pipeline/clipGeometry'
 import { useDoc } from '../store/document'
 import { useGeneration, needsManualRegen, provisionalScale } from '../core/generation'
 import { useRasterImage } from './useRasterImage'
@@ -32,9 +32,9 @@ function ElementNodeImpl({ element, pxPerMm, interactive = true, effective }: Pr
   const handlers = useNodeInteraction(element)
   const t = effective ?? element.transform
 
-  // Filtered local geometry — the post-filter strokes that actually plot (the source stays editable;
-  // NodeEditLayer/GhostLayer show the pre-filter shape). Memoized in filteredLocal, so this is cheap.
-  const geom = filteredLocal(element)
+  // Effected local geometry — the post-effect strokes that actually plot (the source stays editable;
+  // NodeEditLayer/GhostLayer show the pre-effect shape). Memoized in effectedLocal, so this is cheap.
+  const geom = effectedLocal(element)
   // Stable across renders (only `pens` changes it) so InkStrokes' memoized draws hold.
   const colorFor = useMemo(() => (pen: number) => pens.find((p) => p.id === pen)?.color ?? '#1a1a1a', [pens])
   // Local geometry carries the generator's pens; the element's chosen pen is stamped on later in

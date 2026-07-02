@@ -2,7 +2,18 @@
 // the empty background (selection + fiducial). Pure view over the document store — it only calls
 // existing actions. There is deliberately **no z-ordering**: strokes have no fill, so paint order
 // is invisible, and the optimizer reorders strokes for plotting anyway.
-import { Copy, Trash2, Crosshair, MousePointer2, Check, X } from 'lucide-react'
+import {
+  Copy,
+  Trash2,
+  Crosshair,
+  MousePointer2,
+  Check,
+  X,
+  FlipHorizontal,
+  FlipVertical,
+  Group,
+  Ungroup,
+} from 'lucide-react'
 import { useDoc } from '../store/document'
 import { isMultiPen } from '../elements/registry'
 import { MOD_KEY } from '../ui/shortcuts'
@@ -38,6 +49,8 @@ export function CanvasContextMenu({ menu, onClose }: { menu: CanvasMenuState; on
   if (menu.targetId != null) {
     // Element menu. Selection was resolved on the right-click (mousedown), so act on the selection.
     const selected = elements.filter((e) => selectedIds.includes(e.id))
+    const canGroup = selected.length >= 2
+    const singleGroup = selected.length === 1 && selected[0].type === 'group' ? selected[0].id : null
     const singlePen = selected.filter((e) => !isMultiPen(e.type))
     const commonPen =
       singlePen.length && singlePen.every((e) => e.pen === singlePen[0].pen) ? singlePen[0].pen : null
@@ -52,6 +65,30 @@ export function CanvasContextMenu({ menu, onClose }: { menu: CanvasMenuState; on
           <Trash2 size={15} /> Delete
           <span className="ml-auto pl-4 text-2xs text-faint">Del</span>
         </MenuItem>
+        <MenuSeparator />
+        <MenuItem onClick={() => d().flipSelected('x')}>
+          <FlipHorizontal size={15} /> Flip horizontal
+          <span className="ml-auto pl-4 text-2xs text-faint">⇧H</span>
+        </MenuItem>
+        <MenuItem onClick={() => d().flipSelected('y')}>
+          <FlipVertical size={15} /> Flip vertical
+          <span className="ml-auto pl-4 text-2xs text-faint">⇧V</span>
+        </MenuItem>
+        {(canGroup || singleGroup) && (
+          <>
+            <MenuSeparator />
+            {canGroup && (
+              <MenuItem onClick={() => d().createGroup(selectedIds)}>
+                <Group size={15} /> Group
+              </MenuItem>
+            )}
+            {singleGroup && (
+              <MenuItem onClick={() => d().ungroup(singleGroup)}>
+                <Ungroup size={15} /> Ungroup
+              </MenuItem>
+            )}
+          </>
+        )}
         {singlePen.length > 0 && (
           <>
             <MenuSeparator />

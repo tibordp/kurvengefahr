@@ -4,7 +4,7 @@
 //! interior point eases toward the midpoint of its neighbours by `strength` (0..1), `iterations`
 //! times. Open polylines pin their endpoints (so two strokes sharing a node stay joined —
 //! Truchet/Voronoi seams hold); closed contours relax periodically and stay closed.
-use super::{is_closed, FilterSpec};
+use super::{is_closed, EffectSpec};
 use crate::geom::{Point, Stroke};
 
 #[inline]
@@ -53,7 +53,7 @@ fn smooth_once(pts: &[Point], lambda: f32, closed: bool) -> Vec<Point> {
     out
 }
 
-pub fn apply(strokes: &[Stroke], s: &FilterSpec) -> Vec<Stroke> {
+pub fn apply(strokes: &[Stroke], s: &EffectSpec) -> Vec<Stroke> {
     let lambda = s.strength.clamp(0.0, 1.0);
     let iters = s.iterations.min(100);
     let res = s.detail_mm.max(0.1);

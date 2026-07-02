@@ -46,10 +46,10 @@ pub const COLLINEAR_TOL: f32 = 0.002;
 /// Concentric ellipse-ring flattening tolerance.
 pub const ELLIPSE_FILL_TOL: f32 = 0.1;
 
-// ── Non-destructive filters (roughen / warp / distort), mm ──────────────────────────────────────
-/// Strokes are resampled to roughly this spacing before a filter displaces their points, so the
+// ── Non-destructive effects (roughen / warp / distort), mm ──────────────────────────────────────
+/// Strokes are resampled to roughly this spacing before an effect displaces their points, so the
 /// distortion reads smoothly even on long straight segments (which start with only two points).
-pub const FILTER_RESAMPLE_STEP: f32 = 1.0;
+pub const EFFECT_RESAMPLE_STEP: f32 = 1.0;
 
 // ── Raster tracing: step length along a traced stroke, mm (sampling stride) ─────────────────────
 pub const RASTER_SPIRAL_STEP: f32 = 0.5;

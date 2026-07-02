@@ -588,9 +588,112 @@ fn truchet_fill(rings: &[Vec<P>], spacing: f32, out: &mut Vec<Stroke>) {
     }
 }
 
+/// Archimedean spiral fill: one continuous spiral from the bbox centre, arms `spacing` mm apart,
+/// clipped to the region (a single-stroke tonal fill that plots with almost no pen-up travel).
+fn spiral_fill(rings: &[Vec<P>], spacing: f32, out: &mut Vec<Stroke>) {
+    if spacing <= 1e-3 {
+        return
+    }
+    let (x0, y0, x1, y1) = bbox(rings);
+    let (cx, cy) = ((x0 + x1) * 0.5, (y0 + y1) * 0.5);
+    // Reach the far corner so the spiral covers the whole shape.
+    let rmax = (x1 - cx).hypot(y1 - cy).max((cx - x0).hypot(cy - y0)).max(1e-3);
+    let b = spacing / std::f32::consts::TAU; // radial growth per radian → `spacing` per turn
+    // Step the angle so the arc length between samples stays ~a quarter of the spacing (smooth arms).
+    let pts: Vec<P> = {
+        let mut v = Vec::new();
+        let mut th = 0.0f32;
+        loop {
+            let r = b * th;
+            if r > rmax {
+                break
+            }
+            v.push((cx + r * th.cos(), cy + r * th.sin()));
+            // dθ so r·dθ ≈ spacing/4, clamped so the tight centre doesn't spin forever.
+            let dth = (spacing * 0.25 / r.max(spacing * 0.1)).clamp(0.03, 0.5);
+            th += dth;
+        }
+        v
+    };
+    clip_to_rings(rings, &pts, out);
+}
+
+/// Maze fill: a perfect maze (recursive-backtracker spanning tree) over a `spacing`-mm cell grid,
+/// its walls clipped to the region. Deterministic (position-hashed choices), like the other
+/// grid fills. Draws the walls, not the passages, so it reads as a maze.
+fn maze_fill(rings: &[Vec<P>], spacing: f32, out: &mut Vec<Stroke>) {
+    let s = spacing.max(1.0);
+    let (x0, y0, x1, y1) = bbox(rings);
+    let cols = (((x1 - x0) / s).ceil() as i32).max(1);
+    let rows = (((y1 - y0) / s).ceil() as i32).max(1);
+    let (nc, nr) = (cols as usize, rows as usize);
+    let idx = |gx: usize, gy: usize| gy * nc + gx;
+    // `open_right[c]` = passage between cell c and its right neighbour; `open_down[c]` = below.
+    let mut open_right = vec![false; nc * nr];
+    let mut open_down = vec![false; nc * nr];
+    let mut visited = vec![false; nc * nr];
+
+    // Iterative randomized DFS. Choices are hashed on (cell, step) so the maze is fully determined.
+    let mut stack: Vec<(usize, usize)> = vec![(0, 0)];
+    visited[idx(0, 0)] = true;
+    let mut step = 0i32;
+    while let Some(&(cx, cy)) = stack.last() {
+        // Unvisited orthogonal neighbours: (nx, ny, dir) with dir 0=right 1=left 2=down 3=up.
+        let mut nb: Vec<(usize, usize, u8)> = Vec::with_capacity(4);
+        if cx + 1 < nc && !visited[idx(cx + 1, cy)] {
+            nb.push((cx + 1, cy, 0))
+        }
+        if cx > 0 && !visited[idx(cx - 1, cy)] {
+            nb.push((cx - 1, cy, 1))
+        }
+        if cy + 1 < nr && !visited[idx(cx, cy + 1)] {
+            nb.push((cx, cy + 1, 2))
+        }
+        if cy > 0 && !visited[idx(cx, cy - 1)] {
+            nb.push((cx, cy - 1, 3))
+        }
+        if nb.is_empty() {
+            stack.pop();
+            continue
+        }
+        step += 1;
+        let pick = (rand01(step, (cx as i32) * 73856 ^ (cy as i32) * 19349) * nb.len() as f32) as usize;
+        let (nx, ny, dir) = nb[pick.min(nb.len() - 1)];
+        match dir {
+            0 => open_right[idx(cx, cy)] = true,
+            1 => open_right[idx(nx, ny)] = true,
+            2 => open_down[idx(cx, cy)] = true,
+            _ => open_down[idx(nx, ny)] = true,
+        }
+        visited[idx(nx, ny)] = true;
+        stack.push((nx, ny));
+    }
+
+    let px = |gx: i32| x0 + gx as f32 * s;
+    let py = |gy: i32| y0 + gy as f32 * s;
+    // Vertical walls at every column boundary 0..=cols; present unless it's an internal passage.
+    for gx in 0..=cols {
+        for gy in 0..rows {
+            let present = gx == 0 || gx == cols || !open_right[idx((gx - 1) as usize, gy as usize)];
+            if present {
+                clip_to_rings(rings, &[(px(gx), py(gy)), (px(gx), py(gy + 1))], out);
+            }
+        }
+    }
+    // Horizontal walls at every row boundary 0..=rows.
+    for gy in 0..=rows {
+        for gx in 0..cols {
+            let present = gy == 0 || gy == rows || !open_down[idx(gx as usize, (gy - 1) as usize)];
+            if present {
+                clip_to_rings(rings, &[(px(gx), py(gy)), (px(gx + 1), py(gy))], out);
+            }
+        }
+    }
+}
+
 /// Pattern dispatch over one or more rings (filled together, even-odd → holes). 0 lines,
 /// 1 cross-hatch, 2 grid, 3 hilbert, 4 concentric, 5 stipple, 6 scribble, 7 gradient, 8 voronoi,
-/// 9 truchet.
+/// 9 truchet, 10 spiral, 11 maze.
 pub fn fill(xy: &[f32], ring_starts: &[u32], pattern: u32, spacing: f32, angle_deg: f32) -> Vec<Stroke> {
     let rings = parse_polys(xy, ring_starts);
     let mut out = Vec::new();
@@ -611,6 +714,8 @@ pub fn fill(xy: &[f32], ring_starts: &[u32], pattern: u32, spacing: f32, angle_d
         7 => gradient(&rings, spacing, angle_deg, &mut out),
         8 => voronoi_fill(&rings, spacing, &mut out),
         9 => truchet_fill(&rings, spacing, &mut out),
+        10 => spiral_fill(&rings, spacing, &mut out),
+        11 => maze_fill(&rings, spacing, &mut out),
         _ => {}
     }
     out
@@ -701,7 +806,7 @@ mod concentric_tests {
         // A 30×30 square; each new pattern code should fill it with strokes, clipped to the shape.
         let sq: Vec<f32> = vec![0.0, 0.0, 30.0, 0.0, 30.0, 30.0, 0.0, 30.0];
         let starts = vec![0u32, 4];
-        for code in [5u32, 6, 7, 8, 9] {
+        for code in [5u32, 6, 7, 8, 9, 10, 11] {
             let out = fill(&sq, &starts, code, 2.0, 45.0);
             assert!(!out.is_empty(), "fill pattern {code} produced nothing");
         }

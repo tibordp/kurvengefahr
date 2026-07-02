@@ -6,7 +6,7 @@
 export interface Point {
   x: number
   y: number
-  /** Optional per-point pressure, 0..1. Constant in MVP; reserved for filters
+  /** Optional per-point pressure, 0..1. Constant in MVP; reserved for effects
    *  (e.g. pen-lift taper over the last few mm of a stroke). */
   pressure?: number
 }
@@ -34,17 +34,17 @@ export interface Stroke {
 /** The entire interface between "things that make marks" and "things that make motion." */
 export type Geometry = Stroke[]
 
-/** A non-destructive geometry filter applied to an element's (or container's) generated strokes —
- *  see `src/filters`. Filters stack in order, run in Rust (local space, before `place`), and are
+/** A non-destructive geometry effect applied to an element's (or container's) generated strokes —
+ *  see `src/effects`. Effects stack in order, run in Rust (local space, before `place`), and are
  *  NOT geometry-affecting params: like `pen`, changing them is a cheap re-place, never a regenerate.
- *  Field names mirror the Rust `filters::FilterSpec` (camelCase); the discriminant is `type`. */
-export type FilterType = 'roughen' | 'smooth' | 'wave' | 'sketch' | 'twist' | 'bulge'
+ *  Field names mirror the Rust `effects::EffectSpec` (camelCase); the discriminant is `type`. */
+export type EffectType = 'roughen' | 'smooth' | 'wave' | 'sketch' | 'twist' | 'bulge' | 'taper'
 
-interface FilterCommon {
+interface EffectCommon {
   enabled: boolean
 }
 /** Hand-drawn wobble: a positional turbulence field + optional fine tremor. Seeded. */
-export interface RoughenFilter extends FilterCommon {
+export interface RoughenEffect extends EffectCommon {
   type: 'roughen'
   amplitudeMm: number
   detailMm: number
@@ -53,14 +53,14 @@ export interface RoughenFilter extends FilterCommon {
 }
 /** The opposite of roughen: subdivide to `detailMm`, then Laplacian-relax (rounds corners / irons
  *  out jitter, on jagged and already-curved geometry alike). */
-export interface SmoothFilter extends FilterCommon {
+export interface SmoothEffect extends EffectCommon {
   type: 'smooth'
   detailMm: number
   strength: number
   iterations: number
 }
 /** Sinusoidal warp; >1 harmonic makes it anharmonic. */
-export interface WaveFilter extends FilterCommon {
+export interface WaveEffect extends EffectCommon {
   type: 'wave'
   amplitudeMm: number
   wavelengthMm: number
@@ -69,25 +69,40 @@ export interface WaveFilter extends FilterCommon {
   harmonics: number
 }
 /** Multi-pass overdraw: N wandering copies of each stroke. Seeded. */
-export interface SketchFilter extends FilterCommon {
+export interface SketchEffect extends EffectCommon {
   type: 'sketch'
   passes: number
   offsetMm: number
   seed: number
 }
 /** Swirl about the geometry centre, fading out by `radiusMm`. */
-export interface TwistFilter extends FilterCommon {
+export interface TwistEffect extends EffectCommon {
   type: 'twist'
   angleDeg: number
   radiusMm: number
 }
 /** Radial bulge (+) / pinch (−) about the geometry centre, fading out by `radiusMm`. */
-export interface BulgeFilter extends FilterCommon {
+export interface BulgeEffect extends EffectCommon {
   type: 'bulge'
   strength: number
   radiusMm: number
 }
-export type FilterSpec = RoughenFilter | SmoothFilter | WaveFilter | SketchFilter | TwistFilter | BulgeFilter
+/** Calligraphic pen-lift: fade per-point pressure toward each open stroke's ends (a light tip
+ *  ramping up to full over the first/last few mm). Pressure-only; closed contours are left alone. */
+export interface TaperEffect extends EffectCommon {
+  type: 'taper'
+  startMm: number
+  endMm: number
+  minPressure: number
+}
+export type EffectSpec =
+  | RoughenEffect
+  | SmoothEffect
+  | WaveEffect
+  | SketchEffect
+  | TwistEffect
+  | BulgeEffect
+  | TaperEffect
 
 /** Affine local→page transform, decomposed to match Konva's node model and the inspector.
  *  Translation is millimetres in page space; rotation is degrees. */
@@ -134,11 +149,11 @@ export interface DocElement<TParams = unknown> {
   /** When set on a `clip` member, this element is the clip's **mask**: it makes no marks (its closed
    *  contours bound the clip) but stays a real, editable element so unclip can restore it. */
   clipRole?: 'mask'
-  /** Optional non-destructive filter stack (roughen / warp / …). Applied in order to the element's
+  /** Optional non-destructive effect stack (roughen / warp / …). Applied in order to the element's
    *  generated geometry in local space (before `place`), in Rust. Like `pen`/`pressure`, NOT a
-   *  geometry param: changing it is a cheap re-filter/re-place, never a regenerate. The source stays
-   *  editable (a `path`'s nodes still edit its pre-filter shape). Absent/empty = no filters. */
-  filters?: FilterSpec[]
+   *  geometry param: changing it is a cheap re-effect/re-place, never a regenerate. The source stays
+   *  editable (a `path`'s nodes still edit its pre-effect shape). Absent/empty = no effects. */
+  effects?: EffectSpec[]
   /** Pen pressure, normalised 0..1 (1 = full). Absent = full. Like `pen`, it's *not* a
    *  geometry-affecting param: it's stamped onto the element's stroke points at concatenation
    *  (`buildPageGeometry`), so changing it is a cheap re-place/re-emit, never a regenerate. The

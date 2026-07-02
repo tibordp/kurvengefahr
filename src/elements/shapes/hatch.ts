@@ -15,6 +15,8 @@ export type HatchPattern =
   | 'gradient'
   | 'voronoi'
   | 'truchet'
+  | 'spiral'
+  | 'maze'
 
 export interface Hatch {
   pattern: HatchPattern
@@ -42,6 +44,8 @@ const CODE: Record<Exclude<HatchPattern, 'none'>, number> = {
   gradient: 7,
   voronoi: 8,
   truchet: 9,
+  spiral: 10,
+  maze: 11,
 }
 
 const PATTERNS: HatchPattern[] = [
@@ -56,6 +60,8 @@ const PATTERNS: HatchPattern[] = [
   'gradient',
   'voronoi',
   'truchet',
+  'spiral',
+  'maze',
 ]
 const num = (v: unknown, d: number) => (typeof v === 'number' && Number.isFinite(v) ? v : d)
 

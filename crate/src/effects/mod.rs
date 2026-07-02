@@ -1,17 +1,18 @@
-//! Non-destructive geometry filters: post-`generate()` passes that displace a stroke's points
+//! Non-destructive geometry effects: post-`generate()` passes that displace a stroke's points
 //! (hand-drawn roughen, sine/anharmonic warp, sketch overdraw, twist/bulge) without touching the
 //! source element. They run in **element-local space** before `place`, stack in order, and preserve
 //! every stroke's pen/reversible/group metadata. Like raster, the param *union* crosses the WASM
 //! boundary as one JSON blob (an array of specs) — a positional signature wouldn't scale across
-//! filter kinds — and Rust owns the schema ([`FilterSpec`]); `apply` dispatches on `spec.kind`.
+//! effect kinds — and Rust owns the schema ([`EffectSpec`]); `apply` dispatches on `spec.kind`.
 //!
-//! Adding a filter = a new submodule with `apply(strokes, spec) -> Vec<Stroke>`, one match arm in
-//! [`apply`], the relevant fields on [`FilterSpec`], and the TS registry entry + inspector control.
+//! Adding an effect = a new submodule with `apply(strokes, spec) -> Vec<Stroke>`, one match arm in
+//! [`apply`], the relevant fields on [`EffectSpec`], and the TS registry entry + inspector control.
 
 mod bulge;
 mod roughen;
 mod sketch;
 mod smooth;
+mod taper;
 mod twist;
 mod wave;
 
@@ -19,12 +20,12 @@ use serde::Deserialize;
 
 use crate::geom::{Point, Stroke};
 
-/// One filter in an element's stack. A single union struct (rather than a tagged enum) so the JSON
+/// One effect in an element's stack. A single union struct (rather than a tagged enum) so the JSON
 /// the TS registry produces — `{type, enabled, …knobs}` — deserializes directly, unknown/missing
 /// knobs defaulting to 0. `kind` selects the pass; each pass reads only the fields it needs.
 #[derive(Deserialize, Default, Clone)]
 #[serde(rename_all = "camelCase", default)]
-pub struct FilterSpec {
+pub struct EffectSpec {
     #[serde(rename = "type")]
     pub kind: String,
     pub enabled: bool,
@@ -53,12 +54,18 @@ pub struct FilterSpec {
     pub strength: f32,
     /// Smooth: number of relaxation passes.
     pub iterations: u32,
+    /// Taper: length of the head pressure ramp, mm.
+    pub start_mm: f32,
+    /// Taper: length of the tail pressure ramp, mm.
+    pub end_mm: f32,
+    /// Taper: pressure at the very tip (0..1), ramping up to full over the taper length.
+    pub min_pressure: f32,
 }
 
-/// Apply a stack of filters (JSON array of [`FilterSpec`]) to local-space geometry, in order. A
+/// Apply a stack of effects (JSON array of [`EffectSpec`]) to local-space geometry, in order. A
 /// disabled or unknown-kind spec is a no-op. Malformed JSON → the input unchanged.
 pub fn apply(strokes: &[Stroke], params_json: &str) -> Vec<Stroke> {
-    let specs: Vec<FilterSpec> = match serde_json::from_str(params_json) {
+    let specs: Vec<EffectSpec> = match serde_json::from_str(params_json) {
         Ok(s) => s,
         Err(_) => return strokes.to_vec(),
     };
@@ -74,6 +81,7 @@ pub fn apply(strokes: &[Stroke], params_json: &str) -> Vec<Stroke> {
             "sketch" => sketch::apply(&cur, spec),
             "twist" => twist::apply(&cur, spec),
             "bulge" => bulge::apply(&cur, spec),
+            "taper" => taper::apply(&cur, spec),
             _ => cur,
         };
     }
@@ -91,7 +99,7 @@ fn lerp_point(a: Point, b: Point, t: f32) -> Point {
     }
 }
 
-/// A polyline is closed when its ends coincide (a shape contour) — filters must keep it closed.
+/// A polyline is closed when its ends coincide (a shape contour) — effects must keep it closed.
 pub fn is_closed(pts: &[Point]) -> bool {
     pts.len() >= 4 && (pts[0].x - pts[pts.len() - 1].x).hypot(pts[0].y - pts[pts.len() - 1].y) < 1e-3
 }
@@ -223,7 +231,7 @@ mod tests {
         assert_eq!(apply(&s, "[]").len(), 1);
         let off = r#"[{"type":"roughen","enabled":false,"amplitudeMm":5,"detailMm":4,"tremorMm":0,"seed":1}]"#;
         let out = apply(&s, off);
-        assert_eq!(out[0].points.len(), 2, "disabled filter must not touch geometry");
+        assert_eq!(out[0].points.len(), 2, "disabled effect must not touch geometry");
         // Malformed JSON → unchanged.
         assert_eq!(apply(&s, "not json")[0].points.len(), 2);
     }
@@ -310,6 +318,30 @@ mod tests {
         let out = apply(&line(), json);
         let max_y = out[0].points.iter().fold(0.0f32, |m, p| m.max(p.y.abs()));
         assert!(max_y > 3.0, "wave should push points off the baseline (got {max_y})");
+    }
+
+    #[test]
+    fn taper_fades_ends_and_keeps_middle() {
+        // A 100mm line at full pressure; taper 20mm each end with a zero tip. Ends → ~0, middle → 1.
+        let json = r#"[{"type":"taper","enabled":true,"startMm":20,"endMm":20,"minPressure":0}]"#;
+        let out = apply(&line(), json);
+        assert_eq!(out.len(), 1);
+        let pts = &out[0].points;
+        assert!(pts.len() > 2, "taper zones densified for a smooth ramp");
+        assert!(pts[0].pressure < 0.05, "head tip near zero (got {})", pts[0].pressure);
+        assert!(pts.last().unwrap().pressure < 0.05, "tail tip near zero");
+        let mid = pts.iter().min_by(|a, b| (a.x - 50.0).abs().partial_cmp(&(b.x - 50.0).abs()).unwrap()).unwrap();
+        assert!(mid.pressure > 0.95, "untapered middle stays full (got {})", mid.pressure);
+        assert_eq!(out[0].pen, 3);
+        assert_eq!(out[0].group, 7);
+    }
+
+    #[test]
+    fn taper_leaves_closed_contours_alone() {
+        let json = r#"[{"type":"taper","enabled":true,"startMm":5,"endMm":5,"minPressure":0}]"#;
+        let out = apply(&square(), json);
+        assert_eq!(out[0].points.len(), 5, "closed contour untouched");
+        assert!(out[0].points.iter().all(|p| (p.pressure - 1.0).abs() < 1e-6), "pressure unchanged");
     }
 
     #[test]

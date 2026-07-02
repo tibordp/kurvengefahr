@@ -2,7 +2,7 @@
 // inspector are pure views over this; the canvas library (Konva) never becomes authoritative.
 // On a Konva transform-end we read the affine back into here.
 import { create } from 'zustand'
-import type { DocElement, Fiducial, FilterSpec, MachineProfile, PenId, Transform } from '../core/types'
+import type { DocElement, Fiducial, EffectSpec, MachineProfile, PenId, Transform } from '../core/types'
 import { IDENTITY_TRANSFORM } from '../core/types'
 import { dropFromCache, generateLocal, isContainer } from '../elements/registry'
 import { defaultHandwritingParams } from '../elements/handwriting'
@@ -15,7 +15,14 @@ import '../elements/group' // side-effect: registers the group container element
 import { PRUSA_MK4, findBuiltinProfile } from './profiles'
 import { writeDefaultProfile } from './persistence/storage'
 import { useLibrary } from './library'
-import { place, transformToMatrix, composeTransforms, type Matrix } from '../core/pipeline/place'
+import {
+  place,
+  transformToMatrix,
+  matrixToTransform,
+  multiplyMatrix,
+  composeTransforms,
+  type Matrix,
+} from '../core/pipeline/place'
 import { elementLocalGeometry } from '../core/pipeline/clipGeometry'
 import type { DocSnapshot } from './persistence/schema'
 import type { Geometry, Point } from '../core/types'
@@ -290,6 +297,11 @@ interface DocStore {
   nudge: (dx: number, dy: number) => void
   /** Align selected elements' page bounding boxes to the group's bbox edge/centre. */
   align: (edge: AlignEdge) => void
+  /** Mirror the selected elements about their combined page bounding-box centre (x = flip
+   *  horizontal, y = flip vertical). Bakes a reflection into each element's transform (a negative
+   *  scale, like rotation) — a cheap re-place/re-emit, never a regenerate. Works on any type,
+   *  containers included. */
+  flipSelected: (axis: 'x' | 'y') => void
   /** Combine selected closed shapes (rect/ellipse/closed path) with a boolean op (0 union,
    *  1 intersect, 2 difference, 3 xor), replacing them with one multi-contour path. One undo step. */
   booleanSelected: (op: number) => void
@@ -324,9 +336,9 @@ interface DocStore {
   setDash: (id: string, dash: { dash: number; gap: number } | null) => void
   /** Set an element's pen pressure (0..1). Not a param — invalidates only Place/Emit. */
   setPressure: (id: string, pressure: number) => void
-  /** Set (or clear, with []) an element's non-destructive filter stack. Not a param — invalidates
-   *  only re-filter/re-place (the source stays editable), never a regenerate. */
-  setFilters: (id: string, filters: FilterSpec[]) => void
+  /** Set (or clear, with []) an element's non-destructive effect stack. Not a param — invalidates
+   *  only re-effect/re-place (the source stays editable), never a regenerate. */
+  setEffects: (id: string, effects: EffectSpec[]) => void
   /** Assign every selected element to a pen. */
   setPenSelected: (pen: PenId) => void
   /** Set the pen pressure (0..1) on every selected element. */
@@ -538,6 +550,42 @@ export const useDoc = create<DocStore>((set) => ({
         else if (edge === 'centerY') dy = gcy - (bb.y0 + bb.y1) / 2
         return { ...e, transform: { ...e.transform, x: e.transform.x + dx, y: e.transform.y + dy } }
       })
+      return { elements }
+    }),
+
+  flipSelected: (axis) =>
+    set((state) => {
+      const sel = new Set(state.selectedIds)
+      if (!sel.size) return {}
+      const membersOf = new Map<string, DocElement[]>()
+      for (const e of state.elements)
+        if (e.parent) membersOf.set(e.parent, [...(membersOf.get(e.parent) ?? []), e])
+      // Combined page bbox of the selection's placed (post-effect) geometry — what the user sees.
+      // Uses elementLocalGeometry so containers (no own generator) mirror about their real extent.
+      let x0 = Infinity
+      let y0 = Infinity
+      let x1 = -Infinity
+      let y1 = -Infinity
+      for (const el of state.elements) {
+        if (!sel.has(el.id)) continue
+        for (const s of place(elementLocalGeometry(el, membersOf), el.transform))
+          for (const p of s.points) {
+            if (p.x < x0) x0 = p.x
+            if (p.y < y0) y0 = p.y
+            if (p.x > x1) x1 = p.x
+            if (p.y > y1) y1 = p.y
+          }
+      }
+      if (!Number.isFinite(x0)) return {}
+      const c = axis === 'x' ? (x0 + x1) / 2 : (y0 + y1) / 2
+      // Reflection about the page line x=c (horizontal) / y=c (vertical), pre-multiplied onto each
+      // element's page transform, then re-decomposed (the flip lands as a negative scale axis).
+      const F: Matrix = axis === 'x' ? [-1, 0, 0, 1, 2 * c, 0] : [1, 0, 0, -1, 0, 2 * c]
+      const elements = state.elements.map((e) =>
+        sel.has(e.id)
+          ? { ...e, transform: matrixToTransform(multiplyMatrix(F, transformToMatrix(e.transform))) }
+          : e,
+      )
       return { elements }
     }),
 
@@ -831,10 +879,10 @@ export const useDoc = create<DocStore>((set) => ({
       return { elements: state.elements.map((e) => (e.id === id ? { ...e, pressure: p } : e)) }
     }),
 
-  setFilters: (id, filters) =>
+  setEffects: (id, effects) =>
     set((state) => ({
       elements: state.elements.map((e) =>
-        e.id === id ? (filters.length ? { ...e, filters } : (({ filters: _drop, ...rest }) => rest)(e)) : e,
+        e.id === id ? (effects.length ? { ...e, effects } : (({ effects: _drop, ...rest }) => rest)(e)) : e,
       ),
     })),
 

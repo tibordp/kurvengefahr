@@ -6,10 +6,10 @@
 //! contours closed automatically.
 use std::f32::consts::PI;
 
-use super::{resample, FilterSpec};
+use super::{resample, EffectSpec};
 use crate::geom::{Point, Stroke};
 
-pub fn apply(strokes: &[Stroke], s: &FilterSpec) -> Vec<Stroke> {
+pub fn apply(strokes: &[Stroke], s: &EffectSpec) -> Vec<Stroke> {
     let amp = s.amplitude_mm;
     let wavelength = s.wavelength_mm.max(0.1);
     if amp.abs() <= 1e-4 {

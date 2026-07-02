@@ -43,12 +43,12 @@ function containerFingerprint(containerId: string, membersOf: Map<string, DocEle
     for (const m of membersOf.get(id) ?? []) {
       const t = m.transform
       const g = isContainer(m.type) ? 0 : refId(generateLocal(m))
-      // refId(m.filters) so a member's filter edit (a new filters array ref) re-fingerprints — its
-      // generated base ref is unchanged by filters, so it wouldn't otherwise be noticed here. `dash`
+      // refId(m.effects) so a member's effect edit (a new effects array ref) re-fingerprints — its
+      // generated base ref is unchanged by effects, so it wouldn't otherwise be noticed here. `dash`
       // and `pressure` are baked into the composed geometry (pressure as a place-gain), so they must
       // re-fingerprint too.
       const dash = m.dash ? `${m.dash.dash}/${m.dash.gap}` : ''
-      parts.push(`${m.id},${t.x},${t.y},${t.rotation},${t.scaleX},${t.scaleY},${g},${m.clipRole ?? ''},${m.pen},${refId(m.filters)},${dash},${m.pressure ?? ''}`)
+      parts.push(`${m.id},${t.x},${t.y},${t.rotation},${t.scaleX},${t.scaleY},${g},${m.clipRole ?? ''},${m.pen},${refId(m.effects)},${dash},${m.pressure ?? ''}`)
       if (isContainer(m.type)) walk(m.id)
     }
   }
@@ -73,8 +73,8 @@ function ContainerNodeImpl({ element, membersOf, pxPerMm, interactive = true }: 
     if (first) select(first.id, false)
   }
 
-  // Include the container's own filters ref so re-fingerprinting also catches a filter edit on it.
-  const fingerprint = `${containerFingerprint(element.id, membersOf)}|${refId(element.filters)}`
+  // Include the container's own effects ref so re-fingerprinting also catches an effect edit on it.
+  const fingerprint = `${containerFingerprint(element.id, membersOf)}|${refId(element.effects)}`
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const geom = useMemo(() => elementLocalGeometry(element, membersOf), [fingerprint])
 

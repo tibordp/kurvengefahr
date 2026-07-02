@@ -18,7 +18,7 @@ mod cleanup;
 mod clip;
 mod compose;
 mod dxf;
-mod filters;
+mod effects;
 mod generative;
 mod geom;
 mod hatch;
@@ -271,12 +271,12 @@ pub fn vectorize_image(rgba: &[u8], width: u32, height: u32, params: &str) -> Ge
     GeometryBuffers::from_strokes(&raster::vectorize(rgba, width, height, params))
 }
 
-/// Apply a stack of non-destructive geometry filters (roughen / wave / sketch / twist / bulge) to
-/// local-space strokes. `params_json` is a JSON array of filter specs (the union schema lives in
-/// `filters::FilterSpec`, mirrored by `src/filters`); enabled specs apply in order. Pen/reversible/
+/// Apply a stack of non-destructive geometry effects (roughen / wave / sketch / twist / bulge) to
+/// local-space strokes. `params_json` is a JSON array of effect specs (the union schema lives in
+/// `effects::EffectSpec`, mirrored by `src/effects`); enabled specs apply in order. Pen/reversible/
 /// group metadata is preserved. Deterministic per each spec's `seed`.
 #[wasm_bindgen]
-pub fn apply_filters(
+pub fn apply_effects(
     xy: &[f32],
     pressure: &[f32],
     offsets: &[u32],
@@ -286,7 +286,7 @@ pub fn apply_filters(
     params_json: &str,
 ) -> GeometryBuffers {
     let strokes = decode(xy, pressure, offsets, pen, reversible, group);
-    GeometryBuffers::from_strokes(&filters::apply(&strokes, params_json))
+    GeometryBuffers::from_strokes(&effects::apply(&strokes, params_json))
 }
 
 /// Clip geometry to the reachable rectangle (computed JS-side). Strokes that leave and re-enter

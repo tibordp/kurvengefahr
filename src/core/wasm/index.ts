@@ -8,7 +8,7 @@
 import init, {
   optimize,
   substitution_note,
-  apply_filters,
+  apply_effects,
   clip,
   clip_polygon,
   tessellate_rect,
@@ -40,7 +40,7 @@ export function initWasm(): Promise<void> {
 export {
   optimize,
   substitution_note,
-  apply_filters,
+  apply_effects,
   clip,
   clip_polygon,
   tessellate_rect,

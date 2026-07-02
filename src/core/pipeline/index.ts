@@ -1,13 +1,13 @@
 // Pipeline orchestration. Walks the document through the stages:
 //
 //   generate (per element, memoized, local mm)
-//     → filter (per element, Rust, local mm — the non-destructive filter stack, memoized)
+//     → effect (per element, Rust, local mm — the non-destructive effect stack, memoized)
 //     → place  (local → page mm, via element.transform)
 //     → optimize (WASM; stroke ordering, page mm)
 //     → emit   (page → machine + G-code string)
 //
-// The invalidation taxonomy maps onto these: text/params → re-generate; filters/transform → re-place
-// (re-filter); feeds/preamble/Z → re-emit only.
+// The invalidation taxonomy maps onto these: text/params → re-generate; effects/transform → re-place
+// (re-effect); feeds/preamble/Z → re-emit only.
 import type { DocElement, Fiducial, Geometry, MachineProfile } from '../types'
 import { isContainer, isElementLocked, isMultiPen } from '../../elements/registry'
 import { place } from './place'
@@ -15,10 +15,10 @@ import { optimizeGeometry } from './optimize'
 import { emit } from './emit'
 import { penParkInPage } from './toMachine'
 import { clipToRegion, drawableRegion } from './clip'
-import { elementLocalGeometry, filteredLocal } from './clipGeometry'
+import { elementLocalGeometry, effectedLocal } from './clipGeometry'
 import { applyDash } from './dash'
 
-/** Build page-space geometry for the whole document (generate + filter + place).
+/** Build page-space geometry for the whole document (generate + effect + place).
  *
  *  Grouping is assigned here, where elements are concatenated: a locked element (e.g. a
  *  handwriting element with global optimization off) gets a unique chain id and fixed
@@ -49,14 +49,14 @@ export function buildPageGeometry(elements: DocElement[]): Geometry {
   for (const el of elements) {
     if (memberIds.has(el.id)) continue // emitted via its container
     if (isContainer(el.type)) {
-      // Composed (group) / clipped (clip) member geometry — already filtered + multi-pen; just place.
+      // Composed (group) / clipped (clip) member geometry — already effected + multi-pen; just place.
       for (const s of place(elementLocalGeometry(el, membersOf), el.transform)) out.push({ ...s })
       continue
     }
-    // Stamp the element's pressure onto its points here (page space), alongside pen below. Filters run
-    // in local space (inside filteredLocal), before place — so the canvas shows exactly what plots.
+    // Stamp the element's pressure onto its points here (page space), alongside pen below. Effects run
+    // in local space (inside effectedLocal), before place — so the canvas shows exactly what plots.
     const elPressure = isMultiPen(el.type) ? undefined : el.pressure
-    const styled = applyDash(place(filteredLocal(el), el.transform, elPressure), el)
+    const styled = applyDash(place(effectedLocal(el), el.transform, elPressure), el)
     const stamp = isMultiPen(el.type) ? (s: (typeof styled)[number]) => s.pen : () => el.pen
     if (isElementLocked(el.type, el.params)) {
       chainId++

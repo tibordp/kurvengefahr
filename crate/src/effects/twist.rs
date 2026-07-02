@@ -3,11 +3,11 @@
 //! resampled first so they bend into the swirl. A function of position → closed contours stay closed.
 use std::f32::consts::PI;
 
-use super::{centroid, resample, FilterSpec};
+use super::{centroid, resample, EffectSpec};
 use crate::geom::{Point, Stroke};
-use crate::tess::FILTER_RESAMPLE_STEP;
+use crate::tess::EFFECT_RESAMPLE_STEP;
 
-pub fn apply(strokes: &[Stroke], s: &FilterSpec) -> Vec<Stroke> {
+pub fn apply(strokes: &[Stroke], s: &EffectSpec) -> Vec<Stroke> {
     let max_angle = s.angle_deg * PI / 180.0;
     let radius = s.radius_mm.max(0.1);
     if max_angle.abs() <= 1e-4 {
@@ -21,7 +21,7 @@ pub fn apply(strokes: &[Stroke], s: &FilterSpec) -> Vec<Stroke> {
             if stroke.points.len() < 2 {
                 return stroke.clone();
             }
-            let pts = resample(&stroke.points, FILTER_RESAMPLE_STEP);
+            let pts = resample(&stroke.points, EFFECT_RESAMPLE_STEP);
             let out = pts
                 .iter()
                 .map(|p| {

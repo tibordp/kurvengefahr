@@ -13,7 +13,7 @@ import type { DocElement, Fiducial, MachineProfile, Transform } from '../../core
 import { IDENTITY_TRANSFORM } from '../../core/types'
 import { PRUSA_MK4 } from '../profiles'
 import { isContainer, isKnownType, sanitizeParams } from '../../elements/registry'
-import { sanitizeFilters } from '../../filters/registry'
+import { sanitizeEffects } from '../../effects/registry'
 
 // v2: `path` params went multi-contour ({nodes,closed} → {contours:[{nodes,closed}]}). No migration
 // step is needed — the path sanitizer coerces the old single-contour shape — but the bump makes an
@@ -27,7 +27,7 @@ import { sanitizeFilters } from '../../filters/registry'
 // (`clipParent`) collapse into a single container model: a `group`/`clip` element + each member's
 // `parent`. No migration step (buildout, no back-compat) — older docs just load without their old
 // grouping/clips, which the sanitizers tolerate.
-// v6: per-element non-destructive `filters` stack. Additive optional field, backfilled to [].
+// v6: per-element non-destructive `effects` stack. Additive optional field, backfilled to [].
 export const CURRENT_DOC_SCHEMA = 6
 export const CURRENT_LIBRARY_SCHEMA = 1
 
@@ -142,7 +142,7 @@ export function sanitizeElements(arr: unknown): DocElement[] {
         : {}),
       ...(typeof e.parent === 'string' ? { parent: e.parent } : {}),
       ...(e.clipRole === 'mask' ? { clipRole: 'mask' as const } : {}),
-      ...(Array.isArray(e.filters) && e.filters.length ? { filters: sanitizeFilters(e.filters) } : {}),
+      ...(Array.isArray(e.effects) && e.effects.length ? { effects: sanitizeEffects(e.effects) } : {}),
       // Pressure is optional (absent = full); keep it only when a valid 0..1 value is stored.
       ...(typeof e.pressure === 'number' && Number.isFinite(e.pressure)
         ? { pressure: Math.min(1, Math.max(0, e.pressure)) }

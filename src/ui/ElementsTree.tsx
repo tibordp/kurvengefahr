@@ -211,7 +211,7 @@ export function ElementsTree() {
   )
   const anchor = useRef<string | null>(null)
 
-  // Row list depends only on the document + filter — memoized so a selection change or a generation
+  // Row list depends only on the document + effect — memoized so a selection change or a generation
   // tick (which re-renders this component) doesn't recompute the whole O(n) grouping.
   const { rows, flatIds, membersByContainer } = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -453,14 +453,14 @@ export function ElementsTree() {
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Filter elements…"
+            placeholder="Effect elements…"
             className={cx(controlClass, 'pl-7')}
           />
         </div>
       )}
 
       {/* The row list scrolls on its own (capped) so a big import doesn't push the property editor
-          below the fold — the Elements header + filter above stay pinned. */}
+          below the fold — the Elements header + effect above stay pinned. */}
       <ul className="-mr-1 flex max-h-[45vh] flex-col gap-0.5 overflow-y-auto pr-1">
         {rows.map((r) => (r.kind === 'element' ? renderElement(r.el) : renderContainerRow(r.el)))}
       </ul>

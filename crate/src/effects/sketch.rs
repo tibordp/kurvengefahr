@@ -4,10 +4,10 @@
 //! given pass two strokes that share a point stay joined — a Truchet/Voronoi mesh overdraws without
 //! tearing at the seams. Each pass keeps the source stroke's pen/reversible/group; the optimizer plots
 //! them as separate singletons. Deterministic per `seed` (+ pass).
-use super::{fbm2, resample, FilterSpec};
+use super::{fbm2, resample, EffectSpec};
 use crate::geom::{Point, Stroke};
 
-pub fn apply(strokes: &[Stroke], s: &FilterSpec) -> Vec<Stroke> {
+pub fn apply(strokes: &[Stroke], s: &EffectSpec) -> Vec<Stroke> {
     let passes = s.passes.clamp(1, 6);
     let offset = s.offset_mm.max(0.0);
     if passes <= 1 || offset <= 1e-4 {

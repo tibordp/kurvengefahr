@@ -58,7 +58,7 @@ Geometry; everything that makes motion consumes it.** Adding a new input type is
 `generate()` — nothing downstream changes.
 
 **The editor targets an *abstract* pen plotter.** The IR and everything upstream of it (elements,
-filters, optimize, the canvas) speak only in machine-neutral terms — position in mm, a `pen` index,
+effects, optimize, the canvas) speak only in machine-neutral terms — position in mm, a `pen` index,
 an abstract `pressure` 0..1. Turning those into physical motion is the **machine profile + `emit`'s**
 job *alone*. `pressure` is the running example: the IR just carries "how hard, 0..1"; the current
 3D-printer-as-plotter profile realizes it as a pen-down Z (`penZ.downLight`→`down`), but another
@@ -81,7 +81,7 @@ The metadata is what makes the optimizer and emitter work, and each field encode
   Because every ordinary generator emits pressure 1, the gain *is* the element value there; a
   **natively variable-pressure** generator (raster `pressurehatch`, darkness→pressure) keeps its
   per-point modulation, scaled by the element knob — so it needs **no opt-out**, and it composes
-  through filters (which interpolate pressure) and clips (`clip.rs` interpolates at cuts) for free.
+  through effects (which interpolate pressure) and clips (`clip.rs` interpolates at cuts) for free.
   `emit` maps the final per-point pressure to the pen-down Z, interpolating `penZ.downLight` (light) →
   `penZ.down` (full), and **ramps Z per point** (one `Z` on each `G1`) only where it changes along a
   stroke — constant-pressure strokes emit one Z at pen-down, so their G-code is unchanged.
@@ -112,17 +112,18 @@ registry `generate()`. Non-obvious bits:
   invariant: members precede their container); `ungroup`/`unclip` bake the container transform back
   into members. Deleting a container cascades to members (`withDescendants`); empty containers are
   pruned (`pruneEmptyContainers`).
-- **Non-destructive filters** (`src/filters`, `crate/src/filters/`): a per-element `DocElement.filters`
-  stack (roughen / smooth / wave / sketch / twist / bulge) applied in Rust, in **local space before
-  `place`**,
-  via `filteredLocal`. The **source stays editable** — a `path`'s nodes still edit its *pre-filter*
-  shape; the canvas draws the post-filter strokes with the pre-filter outline shown as a faint ghost
-  (`GhostLayer`, a read-only overlay) when selected. Filters compose with containers: a member's
-  filters apply inside the group, then the container's own filters apply over the combined result —
+- **Non-destructive effects** (`src/effects`, `crate/src/effects/`): a per-element `DocElement.effects`
+  stack (roughen / smooth / wave / sketch / twist / bulge / taper) applied in Rust, in **local space
+  before `place`**,
+  via `effectedLocal`. Most warp geometry; `taper` is pressure-only (calligraphic pen-lift — the
+  canonical use of per-point `pressure`), which composes through the emit Z-ramp for free. The **source stays editable** — a `path`'s nodes still edit its *pre-effect*
+  shape; the canvas draws the post-effect strokes with the pre-effect outline shown as a faint ghost
+  (`GhostLayer`, a read-only overlay) when selected. Effects compose with containers: a member's
+  effects apply inside the group, then the container's own effects apply over the combined result —
   so a group/clip warp is **one coherent field**. Like raster, the param *union* crosses the WASM
-  boundary as one JSON string (`filters::FilterSpec` is the schema); adding a filter = a Rust submodule
-  + match arm + serde fields + a `src/filters/registry.ts` entry (which the inspector renders
-  generically). Seeded filters (roughen/sketch) are deterministic per `seed`. Filters are NOT a
+  boundary as one JSON string (`effects::EffectSpec` is the schema); adding an effect = a Rust submodule
+  + match arm + serde fields + a `src/effects/registry.ts` entry (which the inspector renders
+  generically). Seeded effects (roughen/sketch) are deterministic per `seed`. Effects are NOT a
   geometry param (they live beside `pen`/`pressure`), so editing them never regenerates.
 
 - **Tool ≠ type:** the line/pen/freehand tools all create a `path` (`{nodes, closed}`, handles
@@ -155,20 +156,20 @@ registry `generate()`. Non-obvious bits:
 
 ## Pipeline (`src/core/pipeline`)
 
-generate (Rust, per element, **memoized**) → **filter** (Rust filter stack, local mm, **memoized**) →
+generate (Rust, per element, **memoized**) → **effect** (Rust effect stack, local mm, **memoized**) →
 place (affine local→page) → clip (Rust, to drawable rect) → optimize (Rust, per-pen + chain-aware
 greedy NN) → emit (G-code).
 
-- `filteredLocal(el)` (`clipGeometry.ts`) is the single local-geometry accessor — it applies the
-  element's filter stack to its pre-filter `baseLocal` (a generator's output, or a *container's*
-  composition of already-filtered members), memoized on (base ref + `filters` ref). **Everything that
+- `effectedLocal(el)` (`clipGeometry.ts`) is the single local-geometry accessor — it applies the
+  element's effect stack to its pre-effect `baseLocal` (a generator's output, or a *container's*
+  composition of already-effected members), memoized on (base ref + `effects` ref). **Everything that
   renders/composes/plots goes through it** (ElementNode, ContainerNode, buildPageGeometry,
   convertToPath, marquee/hover bounds), so the canvas shows exactly what plots.
-- `buildPageGeometry` = generate+filter+place (+pen/pressure/group stamping, dashing);
+- `buildPageGeometry` = generate+effect+place (+pen/pressure/group stamping, dashing);
   `buildPlottableGeometry` = +clip. Both **Generate and Preview** build on the latter, so they agree
   on what plots.
 - **Invalidation taxonomy** (keeps it snappy): text/params → regenerate that element;
-  **filters**/transform/**pen**/pressure → re-filter/re-place only (never a regenerate);
+  **effects**/transform/**pen**/pressure → re-effect/re-place only (never a regenerate);
   feeds/Z/preamble/offset → re-emit only.
 - `place` is the only pure-geometry TS bit left; fold it into Rust if/when consolidating the pipeline
   into one pass (which also drops the clip↔optimize marshal).

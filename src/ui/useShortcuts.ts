@@ -108,6 +108,16 @@ export function useShortcuts(): void {
         return
       }
 
+      // Flip the selection: Shift+H (horizontal) / Shift+V (vertical). Before tool switching, so
+      // Shift+V doesn't fall through to the Select tool.
+      if (e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey && (e.key === 'H' || e.key === 'V')) {
+        const { selectedIds, flipSelected } = useDoc.getState()
+        if (!selectedIds.length) return
+        e.preventDefault()
+        flipSelected(e.key === 'H' ? 'x' : 'y')
+        return
+      }
+
       // Tool switching — plain letters, no modifiers (so Ctrl/Cmd shortcuts pass through).
       if (!e.metaKey && !e.ctrlKey && !e.altKey) {
         const t = TOOL_KEYS[e.key.toLowerCase()]

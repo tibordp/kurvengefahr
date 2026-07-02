@@ -17,7 +17,7 @@ with a spring-loaded pen holder; the machine profile is editable.
   can fill with any hatch. One element type covers both.
 - **Shapes and paths** -- Rectangles, ellipses, lines, Bézier paths, and freehand. Edit points and
   curve handles on the canvas: add/delete nodes, rubber-band and multi-select, drag several at once,
-  toggle corner/smooth, break handle symmetry.
+  toggle corner/smooth, break handle symmetry. Flip any selection horizontally or vertically.
 - **Booleans, join & weld** -- Union, subtract, intersect, and exclude on closed shapes (holes
   included); combine several elements into one editable compound path (Bézier curves preserved); weld
   touching open contours into a single fillable outline; or break a compound path back into its
@@ -29,12 +29,12 @@ with a spring-loaded pen holder; the machine profile is editable.
   shape, non-destructively: the topmost selection becomes the mask, the rest is clipped to it. Clips
   nest and transform as one object, the mask stays editable and comes back when you release the clip,
   and you can flatten a clip into plain paths with convert-to-path.
-- **Filters** -- Non-destructive, stackable distortions on any element or group: roughen for a
+- **Effects** -- Non-destructive, stackable distortions on any element or group: roughen for a
   hand-drawn wobble, smooth to round corners and iron out jitter, wave for sinusoidal (and anharmonic)
-  warps, sketch for multi-pass overdraw, and twist or bulge to swirl and balloon. The source stays
-  editable -- a path keeps its nodes, shown over
-  a ghost of the original shape -- while the filtered strokes are what plot. A filter on a group warps
-  its combined geometry as one coherent field.
+  warps, sketch for multi-pass overdraw, twist or bulge to swirl and balloon, and taper for a
+  calligraphic pen-lift that fades pressure toward each stroke's ends. The source stays editable -- a
+  path keeps its nodes, shown over a ghost of the original shape -- while the effected strokes are what
+  plot. An effect on a group warps its combined geometry as one coherent field.
 - **Generative** -- Parametric pattern generators: spirographs, L-system fractals, Truchet tiles,
   Voronoi diagrams, and noise flow fields, each fit to a box and reproducible per seed.
 - **Vector import** -- SVG and DXF become native, editable paths, sized to fit or imported at 1:1
@@ -48,8 +48,8 @@ with a spring-loaded pen holder; the machine profile is editable.
   stroke per line), topographic levels, hatching, a pressure hatch (an even rake whose pen pressure
   tracks darkness), scanlines, a single TSP tour, flow fields, or spirals, with live preview.
 - **Hatch fills** -- A pen can't lay solid ink, so closed shapes fill with lines, cross-hatch, grid,
-  concentric rings, a Hilbert curve, a gradient, scribble, stipple dots, Voronoi cells, or Truchet
-  tiles at an adjustable density.
+  concentric rings, a Hilbert curve, a gradient, scribble, stipple dots, Voronoi cells, Truchet tiles,
+  an Archimedean spiral, or a maze at an adjustable density.
 - **Stroke styles** -- Dashed strokes per element, broken into real on/off marks by arc length, shown
   in the preview and the G-code.
 - **Multi-pen output** -- Assign a pen per element; the job is grouped by color with a pause to swap

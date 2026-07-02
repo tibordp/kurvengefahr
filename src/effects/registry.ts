@@ -1,11 +1,11 @@
-// Filter registry: the per-type metadata the UI + persistence need (label, defaults, the inspector
-// control list, whether it's seeded). The actual compute is a single Rust dispatch (crate/filters,
-// via core/wasm/filters.ts) — adding a filter = a Rust submodule + match arm + serde fields + one
-// entry here + (it renders generically in the inspector). Field names match the Rust FilterSpec.
-import type { FilterSpec, FilterType } from '../core/types'
+// Effect registry: the per-type metadata the UI + persistence need (label, defaults, the inspector
+// control list, whether it's seeded). The actual compute is a single Rust dispatch (crate/effects,
+// via core/wasm/effects.ts) — adding an effect = a Rust submodule + match arm + serde fields + one
+// entry here + (it renders generically in the inspector). Field names match the Rust EffectSpec.
+import type { EffectSpec, EffectType } from '../core/types'
 
-/** A numeric control rendered generically by the inspector for one filter param. */
-export interface FilterControl {
+/** A numeric control rendered generically by the inspector for one effect param. */
+export interface EffectControl {
   key: string
   label: string
   min: number
@@ -14,16 +14,16 @@ export interface FilterControl {
   int?: boolean
 }
 
-export interface FilterDef {
-  type: FilterType
+export interface EffectDef {
+  type: EffectType
   label: string
   /** Has a `seed` (re-rollable with the dice button). */
   seeded: boolean
-  defaults: () => FilterSpec
-  controls: FilterControl[]
+  defaults: () => EffectSpec
+  controls: EffectControl[]
 }
 
-const DEFS: Record<FilterType, FilterDef> = {
+const DEFS: Record<EffectType, EffectDef> = {
   roughen: {
     type: 'roughen',
     label: 'Roughen (hand-drawn)',
@@ -89,38 +89,49 @@ const DEFS: Record<FilterType, FilterDef> = {
       { key: 'radiusMm', label: 'Radius (mm)', min: 1, max: 300, step: 1 },
     ],
   },
+  taper: {
+    type: 'taper',
+    label: 'Taper (calligraphy)',
+    seeded: false,
+    defaults: () => ({ type: 'taper', enabled: true, startMm: 6, endMm: 6, minPressure: 0 }),
+    controls: [
+      { key: 'startMm', label: 'Taper in (mm)', min: 0, max: 50, step: 0.5 },
+      { key: 'endMm', label: 'Taper out (mm)', min: 0, max: 50, step: 0.5 },
+      { key: 'minPressure', label: 'Tip pressure', min: 0, max: 1, step: 0.05 },
+    ],
+  },
 }
 
-export const FILTER_DEFS: FilterDef[] = Object.values(DEFS)
+export const EFFECT_DEFS: EffectDef[] = Object.values(DEFS)
 
-export function filterDef(type: string): FilterDef | undefined {
-  return DEFS[type as FilterType]
+export function effectDef(type: string): EffectDef | undefined {
+  return DEFS[type as EffectType]
 }
 
-export const filterLabel = (type: string): string => filterDef(type)?.label ?? type
+export const effectLabel = (type: string): string => effectDef(type)?.label ?? type
 
-/** Make a fresh default spec for `type` (used by the "Add filter" menu). */
-export function defaultFilter(type: FilterType): FilterSpec {
+/** Make a fresh default spec for `type` (used by the "Add effect" menu). */
+export function defaultEffect(type: EffectType): EffectSpec {
   return DEFS[type].defaults()
 }
 
 const num = (v: unknown, d: number) => (typeof v === 'number' && Number.isFinite(v) ? v : d)
 
-/** Coerce persisted/imported filters into valid specs: drop unknown types, backfill each known
+/** Coerce persisted/imported effects into valid specs: drop unknown types, backfill each known
  *  numeric field from its default, keep `enabled`/`seed`. Total — never throws. */
-export function sanitizeFilters(raw: unknown): FilterSpec[] {
+export function sanitizeEffects(raw: unknown): EffectSpec[] {
   if (!Array.isArray(raw)) return []
-  const out: FilterSpec[] = []
+  const out: EffectSpec[] = []
   for (const f of raw) {
     if (!f || typeof f !== 'object') continue
-    const def = filterDef((f as { type?: unknown }).type as string)
+    const def = effectDef((f as { type?: unknown }).type as string)
     if (!def) continue
     const base = def.defaults() as unknown as Record<string, unknown>
     const src = f as Record<string, unknown>
     const spec: Record<string, unknown> = { type: def.type, enabled: src.enabled !== false }
     for (const c of def.controls) spec[c.key] = num(src[c.key], base[c.key] as number)
     if (def.seeded) spec.seed = num(src.seed, base.seed as number)
-    out.push(spec as unknown as FilterSpec)
+    out.push(spec as unknown as EffectSpec)
   }
   return out
 }

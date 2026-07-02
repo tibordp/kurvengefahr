@@ -1,19 +1,19 @@
-// Container geometry + the non-destructive filter stage. A container (`group`/`clip`) has no
+// Container geometry + the non-destructive effect stage. A container (`group`/`clip`) has no
 // registered generator; its local geometry is its members composed together — a group unions them,
 // a clip additionally clips them to a mask member — each member placed by its own container-local
 // transform (recursing, pen stamped). `place(…, container.transform)` in buildPageGeometry then
 // lifts it to the page, so the container transforms as one nested object.
 //
-// `filteredLocal` is the single accessor everything that composes/plots/renders uses: it takes the
-// pre-filter base geometry (a generator's output, or a container composition of already-filtered
-// members) and applies the element's own filter stack (Rust). So a member's filters apply inside its
-// container, then the container's filters apply over the combined result — a group/clip warp is one
+// `effectedLocal` is the single accessor everything that composes/plots/renders uses: it takes the
+// pre-effect base geometry (a generator's output, or a container composition of already-effected
+// members) and applies the element's own effect stack (Rust). So a member's effects apply inside its
+// container, then the container's effects apply over the combined result — a group/clip warp is one
 // coherent field. `elementLocalGeometry` is an alias for it.
 import type { DocElement, Geometry, Point } from '../types'
-import { generateLocal, getFilterCache, isMultiPen, setFilterCache } from '../../elements/registry'
+import { generateLocal, getEffectCache, isMultiPen, setEffectCache } from '../../elements/registry'
 import { place } from './place'
 import { clipToPolygon } from './clip'
-import { applyFiltersWasm } from '../wasm/filters'
+import { applyEffectsWasm } from '../wasm/effects'
 import { applyDash } from './dash'
 import { rectGeometry, ellipseGeometry } from '../wasm/shapes'
 import { pathOutlineStrokes, type RectParams, type EllipseParams, type PathParams } from '../../elements/shapes'
@@ -43,33 +43,33 @@ function maskOutlineLocal(el: DocElement): Geometry {
   return generateLocal(el).filter(isClosed)
 }
 
-/** Pre-filter local geometry: a `clip` computes its clipped composition, a `group` its plain
+/** Pre-effect local geometry: a `clip` computes its clipped composition, a `group` its plain
  *  composition (members placed by their container-local transforms, recursing — each already
- *  filtered), everything else uses its registered generator. Exported for the ghost wireframe, which
- *  shows this un-warped shape under a filtered element. */
+ *  effected), everything else uses its registered generator. Exported for the ghost wireframe, which
+ *  shows this un-warped shape under an effected element. */
 export function baseLocal(el: DocElement, membersOf: Map<string, DocElement[]> = NO_MEMBERS): Geometry {
   if (el.type === 'clip') return clipLocalGeometry(el, membersOf)
   if (el.type === 'group') return groupLocalGeometry(el, membersOf)
   return generateLocal(el)
 }
 
-/** Filtered local geometry — what the canvas shows and the pipeline plots. Applies the element's
- *  filter stack (Rust) to its base geometry, memoized while the base ref and the `filters` array ref
- *  are both unchanged (so unrelated re-renders skip the filter pass). Returns the base untouched when
- *  there are no enabled filters. `membersOf` is only needed for containers. */
-export function filteredLocal(el: DocElement, membersOf: Map<string, DocElement[]> = NO_MEMBERS): Geometry {
+/** Effected local geometry — what the canvas shows and the pipeline plots. Applies the element's
+ *  effect stack (Rust) to its base geometry, memoized while the base ref and the `effects` array ref
+ *  are both unchanged (so unrelated re-renders skip the effect pass). Returns the base untouched when
+ *  there are no enabled effects. `membersOf` is only needed for containers. */
+export function effectedLocal(el: DocElement, membersOf: Map<string, DocElement[]> = NO_MEMBERS): Geometry {
   const base = baseLocal(el, membersOf)
-  const filters = el.filters
-  if (!filters || !filters.some((f) => f.enabled)) return base
-  const hit = getFilterCache(el.id)
-  if (hit && hit.base === base && hit.filters === filters) return hit.geom
-  const geom = applyFiltersWasm(base, filters)
-  setFilterCache(el.id, { base, filters, geom })
+  const effects = el.effects
+  if (!effects || !effects.some((f) => f.enabled)) return base
+  const hit = getEffectCache(el.id)
+  if (hit && hit.base === base && hit.effects === effects) return hit.geom
+  const geom = applyEffectsWasm(base, effects)
+  setEffectCache(el.id, { base, effects, geom })
   return geom
 }
 
-/** The local geometry callers compose/plot/render with — filtered. */
-export const elementLocalGeometry = filteredLocal
+/** The local geometry callers compose/plot/render with — effected. */
+export const elementLocalGeometry = effectedLocal
 
 /** A group's local geometry: each member placed by its (group-local) transform, the member's pen
  *  stamped on (unless the member is itself multi-pen), recursing for nested containers. No mask —

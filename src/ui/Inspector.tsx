@@ -25,6 +25,8 @@ import {
   Printer,
   ArrowUp,
   ArrowDown,
+  FlipHorizontal,
+  FlipVertical,
 } from 'lucide-react'
 import { useDoc, type AlignEdge } from '../store/document'
 import { useUI } from '../store/ui'
@@ -45,9 +47,9 @@ import {
 } from '../output/plot'
 import { downloadJson, pickJsonFile } from '../output/download'
 import { substitution_note } from '../core/wasm'
-import type { Pen, FilterSpec, FilterType } from '../core/types'
+import type { Pen, EffectSpec, EffectType } from '../core/types'
 import { pressureEnabled } from '../core/types'
-import { FILTER_DEFS, filterDef, defaultFilter } from '../filters/registry'
+import { EFFECT_DEFS, effectDef, defaultEffect } from '../effects/registry'
 import { validateProfile } from '../core/profileValidation'
 import type { HandwritingParams } from '../elements/handwriting'
 import { SEEDED_METHODS, type RasterParams, type RasterMethod } from '../elements/raster'
@@ -149,7 +151,7 @@ function Num({
 
 /** Per-element generation feedback: model load on first use, per-line progress, or an error with
  *  retry. Generation runs in a worker; the element keeps showing its previous ink meanwhile. */
-function GenerationNote({ id }: { id: string }) {
+function GenerationNote({ id, reserveIdle = true }: { id: string; reserveIdle?: boolean }) {
   const status = useGeneration((s) => s.status[id])
   // A failure is a persistent, actionable state → a normal banner (it doesn't flash in and out).
   if (status?.phase === 'error') {
@@ -179,6 +181,10 @@ function GenerationNote({ id }: { id: string }) {
       : status?.phase === 'generating'
         ? `✎ Generating…${progress}`
         : ''
+  // When there's nothing to say, callers that re-trace constantly (raster) reserve the slot to
+  // avoid reflow; ones that generate only on a deliberate Regenerate (handwriting) collapse it so
+  // there's no dead gap under the header.
+  if (!text && !reserveIdle) return null
   return (
     <p className="mb-2 h-4 truncate text-xs text-muted" aria-live="polite">
       {text && <span className="animate-pulse">{text}</span>}
@@ -203,7 +209,7 @@ function HandwritingInspector({ id, params }: { id: string; params: HandwritingP
   return (
     <>
       <SectionTitle>Handwriting</SectionTitle>
-      <GenerationNote id={id} />
+      <GenerationNote id={id} reserveIdle={false} />
       {dirty && (
         <Banner
           action={
@@ -249,38 +255,48 @@ function HandwritingInspector({ id, params }: { id: string; params: HandwritingP
           <option value="right">right</option>
         </select>
       </Field>
-      <Num label="Seed" value={params.style.seed} step={1}
-        onChange={(v) => setStyle({ seed: v })} />
-      <Field
-        label="Neatness"
-        title="Neatness. Lower = looser/more natural, higher = neater and more legible."
-      >
-        <div className="flex items-center gap-2">
+      <div className="my-3 flex flex-col gap-2.5">
+        <Field
+          label="Neatness"
+          title="Neatness. Lower = looser/more natural, higher = neater and more legible."
+        >
+          <div className="flex items-center gap-2">
+            <input
+              type="range"
+              className="min-w-0 flex-1"
+              min={0}
+              max={2.5}
+              step={0.05}
+              value={params.style.bias}
+              onChange={(e) => setStyle({ bias: parseFloat(e.target.value) })}
+            />
+            <span className="min-w-[2.6em] text-right text-xs tabular-nums text-muted">
+              {params.style.bias.toFixed(2)}
+            </span>
+          </div>
+        </Field>
+        <Field
+          label="Global optimize"
+          title="Off: plot strokes in natural reading order (one locked unit). On: let the optimizer reorder this element's strokes with everything else."
+        >
           <input
-            type="range"
-            className="min-w-0 flex-1"
-            min={0}
-            max={2.5}
-            step={0.05}
-            value={params.style.bias}
-            onChange={(e) => setStyle({ bias: parseFloat(e.target.value) })}
+            type="checkbox"
+            className="h-4 w-4 justify-self-start"
+            checked={params.globalOptimize}
+            onChange={(e) => update({ globalOptimize: e.target.checked })}
           />
-          <span className="min-w-[2.6em] text-right text-xs tabular-nums text-muted">
-            {params.style.bias.toFixed(2)}
-          </span>
-        </div>
-      </Field>
-      <Field
-        label="Global optimize"
-        title="Off: plot strokes in natural reading order (one locked unit). On: let the optimizer reorder this element's strokes with everything else."
+        </Field>
+      </div>
+      <Button
+        className="w-full"
+        title="Re-roll the letterforms and regenerate"
+        onClick={() => {
+          setStyle({ seed: Math.floor(Math.random() * 1e9) })
+          regenerate(id)
+        }}
       >
-        <input
-          type="checkbox"
-          className="h-4 w-4 justify-self-start"
-          checked={params.globalOptimize}
-          onChange={(e) => update({ globalOptimize: e.target.checked })}
-        />
-      </Field>
+        <Dices size={15} /> Re-roll
+      </Button>
     </>
   )
 }
@@ -328,6 +344,8 @@ function HatchControls({ hatch, onChange }: { hatch: Hatch; onChange: (h: Hatch)
               <option value="stipple">Stipple (dots)</option>
               <option value="voronoi">Voronoi</option>
               <option value="truchet">Truchet tiles</option>
+              <option value="spiral">Spiral</option>
+              <option value="maze">Maze</option>
             </select>
           </Field>
           <Num label="Density (mm)" value={hatch.spacing} step={0.5}
@@ -1041,29 +1059,29 @@ function FiducialSection() {
   )
 }
 
-/** Non-destructive filter stack for the selected element (any type, incl. containers). Each filter
+/** Non-destructive effect stack for the selected element (any type, incl. containers). Each effect
  *  toggles, reorders, and removes; its numeric controls render generically from the registry. The
- *  source geometry is untouched — a path stays node-editable, and the canvas shows the pre-filter
- *  shape as a ghost wireframe. Edits are re-filter/re-place only (never a regenerate). */
-function FiltersSection({ id, filters }: { id: string; filters: FilterSpec[] }) {
-  const setFilters = useDoc((s) => s.setFilters)
+ *  source geometry is untouched — a path stays node-editable, and the canvas shows the pre-effect
+ *  shape as a ghost wireframe. Edits are re-effect/re-place only (never a regenerate). */
+function EffectsSection({ id, effects }: { id: string; effects: EffectSpec[] }) {
+  const setEffects = useDoc((s) => s.setEffects)
   const patch = (i: number, p: Partial<Record<string, unknown>>) =>
-    setFilters(id, filters.map((f, j) => (j === i ? ({ ...f, ...p } as FilterSpec) : f)))
-  const remove = (i: number) => setFilters(id, filters.filter((_, j) => j !== i))
+    setEffects(id, effects.map((f, j) => (j === i ? ({ ...f, ...p } as EffectSpec) : f)))
+  const remove = (i: number) => setEffects(id, effects.filter((_, j) => j !== i))
   const move = (i: number, dir: -1 | 1) => {
     const j = i + dir
-    if (j < 0 || j >= filters.length) return
-    const next = filters.slice()
+    if (j < 0 || j >= effects.length) return
+    const next = effects.slice()
     ;[next[i], next[j]] = [next[j], next[i]]
-    setFilters(id, next)
+    setEffects(id, next)
   }
-  const add = (type: FilterType) => setFilters(id, [...filters, defaultFilter(type)])
+  const add = (type: EffectType) => setEffects(id, [...effects, defaultEffect(type)])
 
   return (
     <>
-      <SectionTitle>Filters</SectionTitle>
-      {filters.map((f, i) => {
-        const def = filterDef(f.type)
+      <SectionTitle>Effects</SectionTitle>
+      {effects.map((f, i) => {
+        const def = effectDef(f.type)
         if (!def) return null
         const val = f as unknown as Record<string, number>
         return (
@@ -1073,8 +1091,8 @@ function FiltersSection({ id, filters }: { id: string; filters: FilterSpec[] }) 
                 type="checkbox"
                 className="h-3.5 w-3.5"
                 checked={f.enabled}
-                title={f.enabled ? 'Disable filter' : 'Enable filter'}
-                aria-label={f.enabled ? 'Disable filter' : 'Enable filter'}
+                title={f.enabled ? 'Disable effect' : 'Enable effect'}
+                aria-label={f.enabled ? 'Disable effect' : 'Enable effect'}
                 onChange={(e) => patch(i, { enabled: e.target.checked })}
               />
               <span className={cx('min-w-0 flex-1 truncate text-sm', !f.enabled && 'text-faint line-through')}>
@@ -1083,10 +1101,10 @@ function FiltersSection({ id, filters }: { id: string; filters: FilterSpec[] }) 
               <IconButton aria-label="Move up" title="Move up" disabled={i === 0} onClick={() => move(i, -1)}>
                 <ArrowUp size={14} />
               </IconButton>
-              <IconButton aria-label="Move down" title="Move down" disabled={i === filters.length - 1} onClick={() => move(i, 1)}>
+              <IconButton aria-label="Move down" title="Move down" disabled={i === effects.length - 1} onClick={() => move(i, 1)}>
                 <ArrowDown size={14} />
               </IconButton>
-              <IconButton aria-label="Remove filter" title="Remove filter" onClick={() => remove(i)}>
+              <IconButton aria-label="Remove effect" title="Remove effect" onClick={() => remove(i)}>
                 <Trash2 size={14} />
               </IconButton>
             </div>
@@ -1100,7 +1118,7 @@ function FiltersSection({ id, filters }: { id: string; filters: FilterSpec[] }) 
                     max={c.max}
                     step={c.step}
                     int={c.int}
-                    hardMax={!!c.int || c.key === 'strength'}
+                    hardMax={!!c.int || c.key === 'strength' || c.key === 'minPressure'}
                     value={val[c.key] ?? 0}
                     onChange={(v) => patch(i, { [c.key]: v })}
                   />
@@ -1125,12 +1143,12 @@ function FiltersSection({ id, filters }: { id: string; filters: FilterSpec[] }) 
           value=""
           onChange={(e) => {
             const v = e.target.value
-            if (v) add(v as FilterType)
+            if (v) add(v as EffectType)
             e.target.value = ''
           }}
         >
-          <option value="">Add filter…</option>
-          {FILTER_DEFS.map((d) => (
+          <option value="">Add effect…</option>
+          {EFFECT_DEFS.map((d) => (
             <option key={d.type} value={d.type}>
               {d.label}
             </option>
@@ -1153,6 +1171,7 @@ function ElementSection() {
   const pressureOn = useDoc((s) => pressureEnabled(s.profile))
   const removeElement = useDoc((s) => s.removeElement)
   const convertToPath = useDoc((s) => s.convertToPath)
+  const flipSelected = useDoc((s) => s.flipSelected)
 
   if (selectedIds.length === 0) {
     return (
@@ -1242,7 +1261,7 @@ function ElementSection() {
         </>
       )}
 
-      <FiltersSection id={element.id} filters={element.filters ?? []} />
+      <EffectsSection id={element.id} effects={element.effects ?? []} />
 
       <SectionTitle>Transform</SectionTitle>
       <Num label="X (mm)" value={t.x} step={1} onChange={(v) => setTransform(element.id, { x: v })} />
@@ -1253,6 +1272,24 @@ function ElementSection() {
         onChange={(v) => setTransform(element.id, { scaleX: v })} />
       <Num label="Scale Y" value={t.scaleY} step={0.1}
         onChange={(v) => setTransform(element.id, { scaleY: v })} />
+      <Field label="Flip">
+        <div className="flex gap-1">
+          <IconButton
+            aria-label="Flip horizontal"
+            title="Flip horizontal (Shift+H)"
+            onClick={() => flipSelected('x')}
+          >
+            <FlipHorizontal size={16} />
+          </IconButton>
+          <IconButton
+            aria-label="Flip vertical"
+            title="Flip vertical (Shift+V)"
+            onClick={() => flipSelected('y')}
+          >
+            <FlipVertical size={16} />
+          </IconButton>
+        </div>
+      </Field>
 
       <div className="mt-3 flex gap-2">
         <Button

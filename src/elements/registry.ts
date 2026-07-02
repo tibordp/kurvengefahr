@@ -185,24 +185,24 @@ export function markGenerated(id: string, hash: string, geom: Geometry): void {
 
 export function dropFromCache(id: string): void {
   cache.delete(id)
-  filterCache.delete(id)
+  effectCache.delete(id)
 }
 
-/** Memo for an element's *filtered* local geometry, keyed by id. Valid while both the pre-filter
- *  base geometry (`base` — a stable ref from `generateLocal`/container compose) and the `filters`
- *  array ref are unchanged, so re-renders that touch neither skip the (Rust) filter pass. Lives here
- *  alongside the geometry cache so `dropFromCache` evicts both; `filteredLocal` (clipGeometry.ts)
+/** Memo for an element's *effected* local geometry, keyed by id. Valid while both the pre-effect
+ *  base geometry (`base` — a stable ref from `generateLocal`/container compose) and the `effects`
+ *  array ref are unchanged, so re-renders that touch neither skip the (Rust) effect pass. Lives here
+ *  alongside the geometry cache so `dropFromCache` evicts both; `effectedLocal` (clipGeometry.ts)
  *  reads/writes it. */
-interface FilterEntry {
+interface EffectEntry {
   base: Geometry
-  filters: unknown
+  effects: unknown
   geom: Geometry
 }
-const filterCache = new Map<string, FilterEntry>()
+const effectCache = new Map<string, EffectEntry>()
 
-export function getFilterCache(id: string): FilterEntry | undefined {
-  return filterCache.get(id)
+export function getEffectCache(id: string): EffectEntry | undefined {
+  return effectCache.get(id)
 }
-export function setFilterCache(id: string, entry: FilterEntry): void {
-  filterCache.set(id, entry)
+export function setEffectCache(id: string, entry: EffectEntry): void {
+  effectCache.set(id, entry)
 }

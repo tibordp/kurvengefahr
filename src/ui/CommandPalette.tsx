@@ -61,6 +61,10 @@ function buildCommands(): Command[] {
     add('weld', 'Merge open contours', 'Combine', doc.weldSelected)
   if (sel.some((e) => e.type === 'path' && (e.params as PathParams).contours.length > 1))
     add('break', 'Break apart path', 'Combine', doc.breakApartSelected)
+  if (hasSel) {
+    add('flip-h', 'Flip horizontal', 'Arrange', () => doc.flipSelected('x'))
+    add('flip-v', 'Flip vertical', 'Arrange', () => doc.flipSelected('y'))
+  }
   if (sel.length >= 2) add('group', 'Group selection', 'Arrange', () => doc.createGroup(doc.selectedIds))
   if (groupIds.length) add('ungroup', 'Ungroup', 'Arrange', () => groupIds.forEach(doc.ungroup))
   if (sel.length >= 2) add('clip', 'Clip to topmost shape', 'Arrange', () => doc.clipSelected())
@@ -111,7 +115,7 @@ export function CommandPalette() {
 
   // Rebuild the command list whenever the palette opens (captures current selection state).
   const commands = useMemo(() => (open ? buildCommands() : []), [open])
-  const filtered = useMemo(() => {
+  const effected = useMemo(() => {
     if (!q.trim()) return commands
     return commands
       .map((c) => ({ c, s: score(q.trim(), c.label) }))
@@ -151,13 +155,13 @@ export function CommandPalette() {
           onKeyDown={(e) => {
             if (e.key === 'ArrowDown') {
               e.preventDefault()
-              setActive((a) => Math.min(a + 1, filtered.length - 1))
+              setActive((a) => Math.min(a + 1, effected.length - 1))
             } else if (e.key === 'ArrowUp') {
               e.preventDefault()
               setActive((a) => Math.max(a - 1, 0))
             } else if (e.key === 'Enter') {
               e.preventDefault()
-              run(filtered[active])
+              run(effected[active])
             } else if (e.key === 'Escape') {
               e.preventDefault()
               close()
@@ -165,8 +169,8 @@ export function CommandPalette() {
           }}
         />
         <div ref={listRef} className="max-h-[50vh] overflow-y-auto p-1">
-          {filtered.length === 0 && <p className="px-3 py-4 text-sm text-muted">No matching commands.</p>}
-          {filtered.map((c, i) => (
+          {effected.length === 0 && <p className="px-3 py-4 text-sm text-muted">No matching commands.</p>}
+          {effected.map((c, i) => (
             <button
               key={c.id}
               className={cx(
