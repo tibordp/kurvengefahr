@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { Toolbar } from './ui/Toolbar'
 import { ToolSidebar } from './ui/ToolSidebar'
-import { Inspector } from './ui/Inspector'
+import { Inspector } from './ui/inspector'
 import { HelpDialog } from './ui/HelpDialog'
 import { SvgImportDialog } from './ui/SvgImportDialog'
 import { DxfImportDialog } from './ui/DxfImportDialog'
