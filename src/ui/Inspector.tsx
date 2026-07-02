@@ -22,11 +22,15 @@ import {
   Spline,
   Link2,
   Ungroup,
-  Printer,
   ArrowUp,
   ArrowDown,
   FlipHorizontal,
   FlipVertical,
+  MoreHorizontal,
+  Save,
+  Pencil,
+  RotateCcw,
+  RefreshCw,
 } from 'lucide-react'
 import { useDoc, type AlignEdge } from '../store/document'
 import { useUI } from '../store/ui'
@@ -37,14 +41,8 @@ import { PROFILE_PRESETS, findBuiltinProfile } from '../store/profiles'
 import { hashParams, isMultiPen } from '../elements/registry'
 import { profilesFile, parseProfilesFile } from '../store/persistence/schema'
 import { drawableRegion } from '../core/pipeline/clip'
-import {
-  bridgeAvailable,
-  grantedPrinters,
-  requestPrinters,
-  printerStatus,
-  type PrinterInfo,
-  type PrinterStatus,
-} from '../output/plot'
+import { printerStatus, type PrinterStatus } from '../output/plot'
+import { useBridge, isPrinterConnected } from '../store/bridge'
 import { downloadJson, pickJsonFile } from '../output/download'
 import { substitution_note } from '../core/wasm'
 import type { Pen, EffectSpec, EffectType } from '../core/types'
@@ -68,7 +66,19 @@ import {
   type GenerativeParams,
   type GenKind,
 } from '../elements/generative'
-import { Button, IconButton, Field, SectionTitle, Banner, controlClass, textareaClass, cx } from './primitives'
+import {
+  Button,
+  IconButton,
+  Field,
+  SectionTitle,
+  Banner,
+  Menu,
+  MenuItem,
+  MenuSeparator,
+  controlClass,
+  textareaClass,
+  cx,
+} from './primitives'
 import { MOD_KEY } from './shortcuts'
 import { ElementsTree } from './ElementsTree'
 
@@ -1357,6 +1367,9 @@ function ProfileControls() {
     selectProfile(created.id)
   }
   const update = () => useLibrary.getState().updateProfile(profile.id, profile)
+  // Discard working edits by re-loading the source profile (undoable via ⌘Z). Only meaningful when
+  // a source still exists (not for a detached/unsaved profile).
+  const revert = () => selectProfile(profile.id)
   const rename = () => {
     const name = prompt('Rename profile:', profile.name)?.trim()
     if (!name) return
@@ -1381,72 +1394,95 @@ function ProfileControls() {
     }
   }
 
+  // Header-row action buttons (match the Elements tree's group/clip header buttons).
+  const headerBtn = 'rounded p-1 text-muted transition-colors hover:bg-bg hover:text-text'
   return (
     <>
-      <SectionTitle>Profile</SectionTitle>
-      <Field label="Profile">
-        <select className={controlClass} value={profile.id} onChange={(e) => selectProfile(e.target.value)}>
-          {detached && <option value={profile.id}>{profile.name || 'Unsaved'} (unsaved)</option>}
-          <optgroup label="Built-in">
-            {PROFILE_PRESETS.map((p) => (
+      {/* Actions live in the section header (like the Elements tree) — Save/Revert appear only while
+          dirty, so the row is always present and nothing below ever shifts. */}
+      <div className="mb-1.5 flex items-center justify-between gap-2">
+        <SectionTitle flush>Profile</SectionTitle>
+        <div className="flex items-center gap-1">
+          {modified && (
+            <>
+              <span
+                className="h-2 w-2 rounded-full bg-accent-solid"
+                title={detached ? 'Unsaved profile' : 'Unsaved changes'}
+                aria-hidden
+              />
+              {!detached && (
+                <button className={headerBtn} title="Revert to the saved profile" aria-label="Revert changes" onClick={revert}>
+                  <RotateCcw size={15} />
+                </button>
+              )}
+              <button
+                className={headerBtn}
+                title={isCustom ? 'Save changes to this profile' : 'Save as a new profile…'}
+                aria-label={isCustom ? 'Save profile' : 'Save as new profile'}
+                onClick={isCustom ? update : saveAs}
+              >
+                <Save size={15} />
+              </button>
+            </>
+          )}
+          <Menu
+            align="right"
+            trigger={({ open }) => (
+              <button
+                className={cx(headerBtn, open && 'bg-bg text-text')}
+                aria-label="Profile actions"
+                title="Profile actions"
+              >
+                <MoreHorizontal size={15} />
+              </button>
+            )}
+          >
+            <MenuItem onClick={saveAs}>
+              <Save size={14} /> Save as new…
+            </MenuItem>
+            {isCustom && (
+              <MenuItem onClick={rename}>
+                <Pencil size={14} /> Rename…
+              </MenuItem>
+            )}
+            {isCustom && (
+              <MenuItem danger onClick={remove}>
+                <Trash2 size={14} /> Delete
+              </MenuItem>
+            )}
+            <MenuSeparator />
+            <MenuItem onClick={importProfiles}>
+              <Upload size={14} /> Import profiles…
+            </MenuItem>
+            <MenuItem onClick={exportProfiles}>
+              <Download size={14} /> Export profiles
+            </MenuItem>
+          </Menu>
+        </div>
+      </div>
+      <select
+        className={cx(controlClass, 'w-full')}
+        value={profile.id}
+        onChange={(e) => selectProfile(e.target.value)}
+      >
+        {detached && <option value={profile.id}>{profile.name || 'Unsaved'} (unsaved)</option>}
+        <optgroup label="Built-in">
+          {PROFILE_PRESETS.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
+            </option>
+          ))}
+        </optgroup>
+        {custom.length > 0 && (
+          <optgroup label="Saved">
+            {custom.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.name}
               </option>
             ))}
           </optgroup>
-          {custom.length > 0 && (
-            <optgroup label="Saved">
-              {custom.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </optgroup>
-          )}
-        </select>
-      </Field>
-
-      {modified && (
-        <Banner
-          action={
-            isCustom ? (
-              <Button variant="primary" className="h-7 px-2.5 text-xs" onClick={update}>
-                Update
-              </Button>
-            ) : undefined
-          }
-        >
-          {detached ? '● Unsaved profile' : '● Modified — not saved'}
-        </Banner>
-      )}
-
-      <div className="mb-1 flex flex-wrap items-center gap-1.5">
-        <Button className="h-7 px-2.5 text-xs" onClick={saveAs}>
-          Save as…
-        </Button>
-        {isCustom && (
-          <Button className="h-7 px-2.5 text-xs" onClick={rename}>
-            Rename
-          </Button>
         )}
-        {isCustom && (
-          <Button variant="danger" className="h-7 px-2.5 text-xs" onClick={remove}>
-            <Trash2 size={13} /> Delete
-          </Button>
-        )}
-        <span className="flex-1" />
-        <IconButton aria-label="Import profiles" title="Import profiles" className="h-7 w-7" onClick={importProfiles}>
-          <Upload size={14} />
-        </IconButton>
-        <IconButton
-          aria-label="Export saved profiles"
-          title="Export saved profiles"
-          className="h-7 w-7"
-          onClick={exportProfiles}
-        >
-          <Download size={14} />
-        </IconButton>
-      </div>
+      </select>
     </>
   )
 }
@@ -1529,6 +1565,7 @@ function MachineSection() {
         </Banner>
       )}
       <ProfileControls />
+      <PhysicalPrinterSection />
       <PensSection />
 
       <SectionTitle>Bed &amp; motion</SectionTitle>
@@ -1638,8 +1675,6 @@ function MachineSection() {
           context message; the lift/travel moves are added automatically.
         </p>
       </Field>
-
-      <PhysicalPrinterSection />
     </>
   )
 }
@@ -1654,44 +1689,41 @@ const STATUS_COLOR: Record<string, string> = {
   offline: 'bg-zinc-400',
 }
 
-function StatusDot({ status }: { status: PrinterStatus | null }) {
-  const state = status?.state ?? 'offline'
+function StatusBadge({ text, color }: { text: string; color: string }) {
   return (
-    <div className="flex items-center gap-1.5 py-0.5 text-xs text-muted">
-      <span className={cx('h-2 w-2 rounded-full', STATUS_COLOR[state] ?? 'bg-zinc-400')} />
-      <span className="capitalize">{status ? state : 'connecting…'}</span>
-    </div>
+    <span className="flex items-center gap-1.5 text-xs text-muted">
+      <span className={cx('h-2 w-2 shrink-0 rounded-full', color)} />
+      <span className="capitalize">{text}</span>
+    </span>
   )
 }
 
-/** Optional direct-plotting binding (PrusaLink via the bridge extension). Inert by default: nothing
- *  requests access until the user clicks Connect. Lives on the profile, so it travels with it. */
+/** Optional direct-plotting binding (PrusaLink via the Bridge for PrusaLink extension). The dropdown
+ *  binds None / a granted printer; the refresh button beside it (re)requests access. A bound printer
+ *  that has since vanished from the extension shows disabled + reads "Disconnected" in the header, and
+ *  the toolbar's Plot button is blocked (see the shared bridge store). Inert by default — nothing
+ *  requests access until the user hits refresh. The binding lives on the profile. */
 function PhysicalPrinterSection() {
   const kind = useDoc((s) => s.profile.kind)
   const device = useDoc((s) => s.profile.device)
   const setProfile = useDoc((s) => s.setProfile)
-  const [available, setAvailable] = useState<boolean | null>(null)
-  const [printers, setPrinters] = useState<PrinterInfo[]>([])
-  const [connecting, setConnecting] = useState(false)
+  const available = useBridge((s) => s.available)
+  const printers = useBridge((s) => s.printers)
+  const connecting = useBridge((s) => s.connecting)
+  const refresh = useBridge((s) => s.refresh)
   const [status, setStatus] = useState<PrinterStatus | null>(null)
 
-  // Detect the extension (harmless ping — no access request) and load already-granted printers.
+  // Re-detect the extension + refresh the granted list whenever the section (re)opens.
   useEffect(() => {
-    let alive = true
-    void bridgeAvailable().then((ok) => {
-      if (!alive) return
-      setAvailable(ok)
-      if (ok) void grantedPrinters().then((ps) => alive && setPrinters(ps)).catch(() => {})
-    })
-    return () => {
-      alive = false
-    }
+    void useBridge.getState().probe()
   }, [])
 
-  // Live status of the bound printer while this section is open.
   const boundId = device?.transport === 'prusalink' ? device.printerId : null
+  const connected = isPrinterConnected(boundId, available, printers)
+
+  // Live status of the bound printer — only while it's actually reachable.
   useEffect(() => {
-    if (!available || !boundId) {
+    if (!connected || !boundId) {
       setStatus(null)
       return
     }
@@ -1706,47 +1738,51 @@ function PhysicalPrinterSection() {
       alive = false
       clearInterval(t)
     }
-  }, [available, boundId])
+  }, [connected, boundId])
 
   if (kind !== 'prusa') return null
 
-  const connect = async () => {
-    setConnecting(true)
-    try {
-      const ps = await requestPrinters(true)
-      setPrinters(ps)
-      // Delight: if nothing's bound yet and exactly one printer was granted, bind it.
-      if (!device && ps.length === 1) {
-        setProfile({ device: { transport: 'prusalink', printerId: ps[0].id, printerName: ps[0].name } })
-      }
-    } catch {
-      // user denied / closed the prompt — leave as-is
-    } finally {
-      setConnecting(false)
-    }
-  }
-
-  const pick = (id: string) => {
-    if (!id) {
+  const onSelect = (val: string) => {
+    if (!val) {
       setProfile({ device: undefined })
       return
     }
-    const name = printers.find((p) => p.id === id)?.name ?? device?.printerName ?? id
-    setProfile({ device: { transport: 'prusalink', printerId: id, printerName: name } })
+    const name = printers.find((p) => p.id === val)?.name ?? device?.printerName ?? val
+    setProfile({ device: { transport: 'prusalink', printerId: val, printerName: name } })
   }
 
-  // Keep a bound-but-no-longer-granted printer visible so the binding doesn't silently vanish.
-  const options = [...printers]
-  if (device && !options.some((p) => p.id === device.printerId)) {
-    options.unshift({ id: device.printerId, name: `${device.printerName} (disconnected)`, type: 'prusalink' })
+  const doRefresh = async () => {
+    await refresh()
+    // Delight: if nothing's bound and exactly one printer was granted, bind it.
+    const ps = useBridge.getState().printers
+    if (!device && ps.length === 1) {
+      setProfile({ device: { transport: 'prusalink', printerId: ps[0].id, printerName: ps[0].name } })
+    }
   }
+
+  // Header badge: while bound, show live state — but a confirmed-gone printer reads "Disconnected"
+  // (during the initial probe, `available` is null, so it reads "connecting…" rather than alarming).
+  const badge = boundId
+    ? connected
+      ? { text: status ? status.state : 'connecting…', color: STATUS_COLOR[status?.state ?? 'offline'] ?? 'bg-zinc-400' }
+      : available === null
+        ? { text: 'connecting…', color: 'bg-zinc-400' }
+        : { text: 'Disconnected', color: 'bg-accent-solid' }
+    : null
+
+  const boundMissing = !!boundId && !printers.some((p) => p.id === boundId)
 
   return (
     <>
-      <SectionTitle title="Plot directly to a PrusaLink printer via the browser extension.">
-        Physical printer
-      </SectionTitle>
-      {available === false && (
+      {/* Explicit top margin: the flush header carries no section margin of its own, so add it here
+          to separate this section from Profile above. */}
+      <div className="mt-5 mb-1.5 flex items-center justify-between gap-2">
+        <SectionTitle flush title="Plot directly to a PrusaLink printer via the browser extension.">
+          Physical printer
+        </SectionTitle>
+        {badge && <StatusBadge text={badge.text} color={badge.color} />}
+      </div>
+      {available === false ? (
         <Banner>
           Install the{' '}
           <a
@@ -1755,29 +1791,43 @@ function PhysicalPrinterSection() {
             target="_blank"
             rel="noreferrer"
           >
-            PrusaLink Bridge
+            Bridge for PrusaLink
           </a>{' '}
           extension to plot straight to your printer.
         </Banner>
-      )}
-      {available && (
-        <>
-          <Field label="Printer">
-            <select className={controlClass} value={device?.printerId ?? ''} onChange={(e) => pick(e.target.value)}>
-              <option value="">None (download only)</option>
-              {options.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
-          </Field>
-          {device && <StatusDot status={status} />}
-          <Button className="mt-1" onClick={connect} disabled={connecting}>
-            <Printer size={14} />
-            {connecting ? 'Connecting…' : printers.length ? 'Add / refresh printers…' : 'Connect a printer…'}
-          </Button>
-        </>
+      ) : (
+        <div className="flex items-center gap-1.5">
+          <select
+            className={cx(controlClass, 'min-w-0 flex-1')}
+            value={boundId ?? ''}
+            onChange={(e) => onSelect(e.target.value)}
+          >
+            <option value="">None (download only)</option>
+            {(printers.length > 0 || boundMissing) && (
+              <optgroup label="Printers">
+                {boundMissing && (
+                  <option value={boundId ?? ''} disabled={available === true}>
+                    {(device?.printerName ?? boundId) + (available === true ? ' (disconnected)' : '')}
+                  </option>
+                )}
+                {printers.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </optgroup>
+            )}
+          </select>
+          <IconButton
+            aria-label="Add or refresh printers"
+            title="Add or refresh printers"
+            className="h-8 w-8 shrink-0"
+            disabled={connecting}
+            onClick={() => void doRefresh()}
+          >
+            <RefreshCw size={15} className={cx(connecting && 'animate-spin')} />
+          </IconButton>
+        </div>
       )}
     </>
   )

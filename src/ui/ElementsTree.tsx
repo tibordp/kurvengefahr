@@ -417,7 +417,7 @@ export function ElementsTree() {
   return (
     <>
       <div className="mb-2 flex items-center justify-between gap-2">
-        <SectionTitle>Elements</SectionTitle>
+        <SectionTitle flush>Elements</SectionTitle>
         <div className="flex items-center gap-1">
           {ungroupIds.length > 0 && (
             <button

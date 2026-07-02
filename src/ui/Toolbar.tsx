@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { RotateCw, Play, Pencil, Download, Printer, PanelRight, CircleHelp, Undo2, Redo2 } from 'lucide-react'
 import { useDoc } from '../store/document'
 import { usePreview } from '../store/preview'
@@ -13,6 +13,7 @@ import { penParkInPage } from '../core/pipeline/toMachine'
 import { buildToolpath } from '../core/preview/toolpath'
 import { exportGcode, plotGcode } from '../output/export'
 import { BridgeError } from '../output/plot'
+import { useBridge, isPrinterConnected } from '../store/bridge'
 import { toast } from '../store/toast'
 import { Button, IconButton } from './primitives'
 import { MOD_KEY } from './shortcuts'
@@ -68,6 +69,16 @@ export function Toolbar() {
   const [plotting, setPlotting] = useState(false)
   const [preparing, setPreparing] = useState(false)
 
+  // The bound printer may have vanished from the extension since the profile was saved; gate the
+  // Plot button on the live granted list (probed once here — the toolbar is always mounted).
+  const bridgeAvail = useBridge((s) => s.available)
+  const bridgePrinters = useBridge((s) => s.printers)
+  useEffect(() => {
+    void useBridge.getState().probe()
+  }, [])
+  const boundId = device?.transport === 'prusalink' ? device.printerId : null
+  const printerConnected = isPrinterConnected(boundId, bridgeAvail, bridgePrinters)
+
   const dirtyCount = elements.filter((e) => needsManualRegen(e.id, e.type, e.params)).length
 
   const togglePreview = async () => {
@@ -104,7 +115,7 @@ export function Toolbar() {
   }
 
   const onPlot = async () => {
-    if (elements.length === 0 || !device) return
+    if (elements.length === 0 || !device || !printerConnected) return
     setPlotting(true)
     try {
       await plotGcode()
@@ -196,9 +207,15 @@ export function Toolbar() {
         <Button
           variant="primary"
           onClick={onPlot}
-          disabled={plotting || elements.length === 0 || profileInvalid}
+          disabled={plotting || elements.length === 0 || profileInvalid || !printerConnected}
           aria-label={`Plot to ${device.printerName}`}
-          title={profileInvalid ? 'Fix the machine profile to plot' : `Plot to ${device.printerName}`}
+          title={
+            profileInvalid
+              ? 'Fix the machine profile to plot'
+              : !printerConnected
+                ? `${device.printerName} is disconnected — reconnect it in Machine settings`
+                : `Plot to ${device.printerName}`
+          }
         >
           <Printer size={15} />
           <span className="hidden sm:inline">{plotting ? 'Sending…' : 'Plot'}</span>

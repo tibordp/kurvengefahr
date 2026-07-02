@@ -101,11 +101,24 @@ export function Field({
   )
 }
 
-export function SectionTitle({ children, title }: { children: ReactNode; title?: string }) {
+/** `flush` drops the default section margins — for when the title sits in a header row that owns its
+ *  own spacing (so its margins don't throw off vertical centering with sibling action buttons). */
+export function SectionTitle({
+  children,
+  title,
+  flush,
+}: {
+  children: ReactNode
+  title?: string
+  flush?: boolean
+}) {
   return (
     <h3
       title={title}
-      className="mb-2 mt-5 text-2xs font-semibold uppercase tracking-wider text-muted first:mt-0"
+      className={cx(
+        'text-2xs font-semibold uppercase tracking-wider text-muted',
+        !flush && 'mb-2 mt-5 first:mt-0',
+      )}
     >
       {children}
     </h3>

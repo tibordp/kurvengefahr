@@ -1,4 +1,4 @@
-// Direct-plot transport seam. Wraps the PrusaLink Bridge extension client (one singleton) and
+// Direct-plot transport seam. Wraps the Bridge for PrusaLink extension client (one singleton) and
 // dispatches a plot job by the profile's device binding. The only transport today is `prusalink`;
 // a future `webserial` (e.g. AxiDraw) adds another arm here. All extension access is consent-gated
 // inside the extension; credentials never reach this code.

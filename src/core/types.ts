@@ -187,7 +187,7 @@ export type MachineKind = 'prusa'
 
 /** Optional binding to a *physical* device this profile plots to, discriminated by transport so new
  *  transports (e.g. `webserial`) can be added later. `prusalink` targets a printer the user granted
- *  to this app in the PrusaLink Bridge extension; the id/name are the extension's, never creds. */
+ *  to this app in the Bridge for PrusaLink extension; the id/name are the extension's, never creds. */
 export type DeviceBinding = { transport: 'prusalink'; printerId: string; printerName: string }
 
 /** Global, document-level machine description. A feed/preamble tweak is a pure re-emit;
