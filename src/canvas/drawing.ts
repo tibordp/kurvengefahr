@@ -152,7 +152,10 @@ export function drawPointerDown(p: Pt, mods: Mods): void {
       setDraft({ kind: 'pen', nodes: [cornerNode(sp.x, sp.y)], cursor: sp, activeIndex: 0, dragging: true, closeHover: false })
     }
   } else if (tool === 'freehand') {
-    setDraft({ kind: 'freehand', pts: [sp] })
+    // Freehand captures the raw pointer path — grid-snapping every sample would quantize the curve
+    // into a staircase and destroy the organic character that's the whole point. (Moving/resizing/
+    // node-editing the resulting path still snaps, via the node/transform handlers.)
+    setDraft({ kind: 'freehand', pts: [p] })
   } else if (tool === 'handwriting') {
     useDoc.getState().addHandwriting(undefined, sp)
     useTools.getState().setTool('select')
@@ -189,8 +192,9 @@ export function drawPointerMove(p: Pt, mods: Mods): void {
       setDraft({ ...d, cursor: closeHover ? { x: d.nodes[0].x, y: d.nodes[0].y } : sp, closeHover })
     }
   } else if (d.kind === 'freehand') {
+    // Raw, unsnapped capture (see drawPointerDown).
     const last = d.pts[d.pts.length - 1]
-    if (dist(sp, last) >= 0.4) setDraft({ ...d, pts: [...d.pts, sp] })
+    if (dist(p, last) >= 0.4) setDraft({ ...d, pts: [...d.pts, p] })
   }
 }
 
