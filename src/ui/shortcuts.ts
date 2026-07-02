@@ -23,21 +23,39 @@ const isApple =
   /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent)
 export const MOD_KEY = isApple ? '⌘' : 'Ctrl'
 
-/** The tool palette: icon + label + single-key shortcut. Drives the sidebar and the key handler. */
-export const TOOLS: { tool: Tool; icon: ComponentType<{ size?: number | string }>; label: string; key: string }[] = [
-  { tool: 'select', icon: MousePointer2, label: 'Select', key: 'V' },
-  { tool: 'handwriting', icon: Signature, label: 'Handwriting', key: 'T' },
-  { tool: 'text', icon: Type, label: 'Text', key: 'Y' },
-  { tool: 'rect', icon: Square, label: 'Rectangle', key: 'R' },
-  { tool: 'ellipse', icon: Circle, label: 'Ellipse', key: 'O' },
-  // One tool for polygons and stars: it draws a polygon; the Star toggle in the inspector turns the
-  // selection into a star. (A line is just the pen tool with two corner clicks.)
-  { tool: 'polygon', icon: PolygonStarIcon, label: 'Polygon / star', key: 'N' },
-  { tool: 'pen', icon: PenTool, label: 'Pen (Bézier)', key: 'P' },
-  { tool: 'freehand', icon: Pencil, label: 'Freehand', key: 'F' },
-  { tool: 'generative', icon: Sparkles, label: 'Generative', key: 'G' },
-  { tool: 'fiducial', icon: Crosshair, label: 'Fiducial (align point)', key: 'X' },
+export interface ToolDef {
+  tool: Tool
+  icon: ComponentType<{ size?: number | string }>
+  label: string
+  key: string
+}
+
+/** The tool palette, grouped by purpose for the sidebar (a divider is drawn between groups):
+ *  pointer · geometric shapes · freeform paths · generated content · alignment utility. The
+ *  ungrouped consumers (key handler, Help dialog, command palette) use the flattened {@link TOOLS}.
+ *  One tool covers polygons and stars — it draws a polygon; the Star toggle in the inspector turns
+ *  the selection into a star. (A line is just the pen tool with two corner clicks.) */
+export const TOOL_GROUPS: ToolDef[][] = [
+  [{ tool: 'select', icon: MousePointer2, label: 'Select', key: 'V' }],
+  [
+    { tool: 'rect', icon: Square, label: 'Rectangle', key: 'R' },
+    { tool: 'ellipse', icon: Circle, label: 'Ellipse', key: 'O' },
+    { tool: 'polygon', icon: PolygonStarIcon, label: 'Polygon / star', key: 'N' },
+  ],
+  [
+    { tool: 'pen', icon: PenTool, label: 'Pen (Bézier)', key: 'P' },
+    { tool: 'freehand', icon: Pencil, label: 'Freehand', key: 'F' },
+  ],
+  [
+    { tool: 'handwriting', icon: Signature, label: 'Handwriting', key: 'T' },
+    { tool: 'text', icon: Type, label: 'Text', key: 'Y' },
+    { tool: 'generative', icon: Sparkles, label: 'Generative', key: 'G' },
+  ],
+  [{ tool: 'fiducial', icon: Crosshair, label: 'Fiducial (align point)', key: 'X' }],
 ]
+
+/** Flattened palette (drives the key handler, Help dialog, and command palette). */
+export const TOOLS: ToolDef[] = TOOL_GROUPS.flat()
 
 /** Lower-cased single key → tool, derived from TOOLS so the binding can't drift from the label. */
 export const TOOL_KEYS: Record<string, Tool> = Object.fromEntries(

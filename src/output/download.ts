@@ -70,11 +70,6 @@ export function pickFile(accept: string): Promise<File | null> {
   })
 }
 
-/** Prompt for an image file. */
-export function pickImageFile(): Promise<File | null> {
-  return pickFile('image/*')
-}
-
 /** Turn an arbitrary document name into a safe-ish filename stem. */
 export function safeFilename(name: string, fallback = 'untitled'): string {
   const stem = name.trim().replace(/[^\w.-]+/g, '-').replace(/^-+|-+$/g, '')

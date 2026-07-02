@@ -145,7 +145,7 @@ const ElementRow = memo(function ElementRow(p: RowProps) {
         <input
           autoFocus
           defaultValue={p.label}
-          className="min-w-0 flex-1 rounded bg-surface px-1 text-sm text-text outline-none ring-1 ring-accent/50"
+          className="min-w-0 flex-1 select-text rounded bg-surface px-1 text-sm text-text outline-none ring-1 ring-accent/50"
           onClick={(e) => e.stopPropagation()}
           onBlur={(e) => p.onCommitName(el.id, e.target.value)}
           onKeyDown={(e) => {
@@ -360,7 +360,7 @@ export function ElementsTree() {
             <input
               autoFocus
               defaultValue={labelOf(el)}
-              className="min-w-0 flex-1 rounded bg-surface px-1 text-sm text-text outline-none ring-1 ring-accent/50"
+              className="min-w-0 flex-1 select-text rounded bg-surface px-1 text-sm text-text outline-none ring-1 ring-accent/50"
               onClick={(e) => e.stopPropagation()}
               onBlur={(e) => onCommitName(el.id, e.target.value)}
               onKeyDown={(e) => {
@@ -469,7 +469,9 @@ export function ElementsTree() {
 
       {/* The row list scrolls on its own (capped) so a big import doesn't push the property editor
           below the fold — the Elements header + effect above stay pinned. */}
-      <ul className="-mr-1 flex max-h-[45vh] flex-col gap-0.5 overflow-y-auto pr-1">
+      {/* Rows aren't text-selectable — Shift-click range-select would otherwise drag a text
+          selection across the labels. The rename inputs opt back in (select-text) below. */}
+      <ul className="-mr-1 flex max-h-[45vh] flex-col gap-0.5 overflow-y-auto pr-1 select-none">
         {rows.map((r) => (r.kind === 'element' ? renderElement(r.el) : renderContainerRow(r.el)))}
       </ul>
     </>

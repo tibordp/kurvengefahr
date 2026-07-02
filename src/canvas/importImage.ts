@@ -1,12 +1,13 @@
-// "Add an image" actions: store the (downsampled) blob and add a raster element sized to the image's
-// aspect (~100 mm on its longest side). Two entry points — a file picker (toolbar button) and a
-// clipboard paste — both funnel through `addImageElement`. Unlike the drawing tools these aren't
-// canvas modes; they're one-shot actions, not `Tool`s. The new element auto-vectorizes via the
+// Content-import actions: pick a file and route it — SVG/DXF to their import dialogs, anything else
+// to a raster image element (stored downsampled, sized ~100 mm on its longest side). Entry points
+// are a file picker (the toolbar "Import" button + menu/palette "Import…") and a clipboard paste;
+// all funnel through `importFile` / `addImageElement`. Unlike the drawing tools these aren't canvas
+// modes; they're one-shot actions, not `Tool`s. A new raster element auto-vectorizes via the
 // generation controller.
 import { useDoc } from '../store/document'
 import { importImage } from '../store/images'
 import { defaultRasterParams } from '../elements/raster'
-import { pickImageFile, pickFile } from '../output/download'
+import { pickFile } from '../output/download'
 import { useSvgImport } from '../store/svgImport'
 import { useDxfImport } from '../store/dxfImport'
 
@@ -50,8 +51,3 @@ export async function addImageElement(source: File | Blob): Promise<string | nul
   }
 }
 
-/** Toolbar "image" button: pick an image — but an SVG silently diverts to the SVG importer. */
-export async function importImageElement(): Promise<void> {
-  const file = await pickImageFile()
-  if (file) await importFile(file)
-}
