@@ -10,6 +10,7 @@ import {
   Pencil,
   RotateCcw,
   RefreshCw,
+  Printer,
 } from 'lucide-react'
 import { useDoc } from '../../store/document'
 import { useLibrary } from '../../store/library'
@@ -485,6 +486,12 @@ function PhysicalPrinterSection() {
           </a>{' '}
           extension to plot straight to your printer.
         </Banner>
+      ) : available === true && printers.length === 0 && !device ? (
+        // Nothing granted yet and nothing bound: a plain "Connect" button (instead of a None-only
+        // dropdown) makes the consent flow the obvious next step.
+        <Button className="w-full" disabled={connecting} onClick={() => void doRefresh()}>
+          <Printer size={15} /> {connecting ? 'Connecting…' : 'Connect a printer…'}
+        </Button>
       ) : (
         <div className="flex items-center gap-1.5">
           <select
