@@ -1,5 +1,5 @@
 // Non-destructive effect stack editor for the selected element.
-import { Trash2, ArrowUp, ArrowDown, Dices } from 'lucide-react'
+import { Trash2, ArrowUp, ArrowDown, Dices, Stamp } from 'lucide-react'
 import { useDoc } from '../../store/document'
 import type { EffectSpec, EffectType } from '../../core/types'
 import { EFFECT_DEFS, effectDef, defaultEffect } from '../../effects/registry'
@@ -12,6 +12,7 @@ import { SliderNum } from './controls'
  *  shape as a ghost wireframe. Edits are re-effect/re-place only (never a regenerate). */
 export function EffectsSection({ id, effects }: { id: string; effects: EffectSpec[] }) {
   const setEffects = useDoc((s) => s.setEffects)
+  const flatten = useDoc((s) => s.flatten)
   const patch = (i: number, p: Partial<Record<string, unknown>>) =>
     setEffects(id, effects.map((f, j) => (j === i ? ({ ...f, ...p } as EffectSpec) : f)))
   const remove = (i: number) => setEffects(id, effects.filter((_, j) => j !== i))
@@ -102,6 +103,17 @@ export function EffectsSection({ id, effects }: { id: string; effects: EffectSpe
           ))}
         </select>
       </Field>
+      {/* Below the stack in the pipeline: bake generate + effects into a static path, consuming the
+          stack. Only meaningful once there's an enabled effect to reify. */}
+      {effects.some((f) => f.enabled) && (
+        <Button
+          className="mt-1 w-full"
+          title="Bake these effects into a static path — the effect stack is consumed and the geometry becomes the effected result (editable nodes)."
+          onClick={() => flatten(id)}
+        >
+          <Stamp size={15} /> Flatten
+        </Button>
+      )}
     </>
   )
 }

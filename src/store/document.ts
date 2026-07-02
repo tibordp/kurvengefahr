@@ -129,9 +129,11 @@ function pointsToContour(pts: Point[]): Contour {
   return { nodes, closed }
 }
 
-/** Build an editable `path` element from any other element's geometry, preserving transform / pen /
- *  group / name. Shapes become their outline (keeping the hatch); ink (handwriting, raster, …) is
- *  expanded stroke-by-stroke into contours. Returns null if there's nothing to convert yet. */
+/** Build an editable `path` element from any other element's **pre-effect** geometry, preserving
+ *  transform / pen / group / name — and the **effect stack** (Convert to path collapses only the
+ *  generator; the effects still apply live on top, so it looks identical). Shapes become their
+ *  outline (keeping the hatch); ink (handwriting, raster, …) is expanded stroke-by-stroke into
+ *  contours. Returns null if there's nothing to convert yet. */
 function elementToPath(el: DocElement): DocElement | null {
   if (el.type === 'path') return null
   let contours: Contour[]
@@ -154,6 +156,7 @@ function elementToPath(el: DocElement): DocElement | null {
     params: { contours, hatch } as PathParams,
     pen: el.pen,
     ...(el.pressure !== undefined ? { pressure: el.pressure } : {}),
+    ...(el.effects && el.effects.length ? { effects: el.effects } : {}),
     ...(el.parent ? { parent: el.parent } : {}),
     ...(el.clipRole ? { clipRole: el.clipRole } : {}),
     ...(el.name ? { name: el.name } : {}),
@@ -337,6 +340,10 @@ interface DocStore {
   addPasted: (elements: DocElement[]) => string[]
   /** Convert the given (or selected) non-path elements into editable `path` elements. */
   convertToPath: (ids?: string[]) => void
+  /** Flatten an element's effect stack: bake its fully-effected geometry into a static `path` (real
+   *  contours), consuming the effect stack. Below the effects in the inspector "pipeline", so it
+   *  reifies everything through effects. Multi-pen containers become one path per pen (grouped). */
+  flatten: (id: string) => void
   /** Ramer–Douglas–Peucker ("rubber-band") simplify of the selected paths' contours, tolerance mm. */
   simplifySelected: (tolMm: number) => void
   /** Replace an element's params wholesale (caller merges). Invalidates Geometry. */
@@ -842,6 +849,68 @@ export const useDoc = create<DocStore>((set) => ({
         elements,
         selectedIds: state.selectedIds.map((id) => idMap.get(id) ?? id).filter((id) => !removed.has(id)),
       }
+    }),
+
+  flatten: (id) =>
+    set((state) => {
+      const el = state.elements.find((e) => e.id === id)
+      if (!el) return {}
+      const membersOf = new Map<string, DocElement[]>()
+      for (const e of state.elements)
+        if (e.parent) membersOf.set(e.parent, [...(membersOf.get(e.parent) ?? []), e])
+
+      // Bake the fully-effected local geometry into contours, grouped by pen. A container carries its
+      // members' pens per stroke (keep them); a leaf's effected strokes are its single pen.
+      const container = isContainer(el.type)
+      const byPen = new Map<number, Contour[]>()
+      for (const s of elementLocalGeometry(el, membersOf)) {
+        const c = pointsToContour(s.points)
+        if (c.nodes.length >= 2) {
+          const pen = container ? s.pen : el.pen
+          byPen.set(pen, [...(byPen.get(pen) ?? []), c])
+        }
+      }
+      if (byPen.size === 0) return {} // nothing to bake (e.g. async geometry not generated yet)
+
+      const removed = new Set<string>()
+      if (container) for (const d of descendants(el.id, state.elements)) removed.add(d)
+
+      // One path per pen; wrap in a group only when several pens are present. The hatch/effects are
+      // gone — the geometry *is* the effected result.
+      const multi = byPen.size > 1
+      const gid = multi ? crypto.randomUUID() : undefined
+      const paths: DocElement[] = [...byPen.entries()].map(([pen, contours]) => ({
+        id: crypto.randomUUID(),
+        type: 'path',
+        transform: { ...el.transform },
+        params: { contours, hatch: defaultHatch() } as PathParams,
+        pen,
+        ...(el.pressure !== undefined ? { pressure: el.pressure } : {}),
+        ...(gid ? { parent: gid } : el.parent ? { parent: el.parent } : {}),
+        ...(el.clipRole && !gid ? { clipRole: el.clipRole } : {}),
+        ...(el.name ? { name: el.name } : {}),
+      }))
+      dropFromCache(el.id)
+      removed.forEach(dropFromCache)
+
+      // Replace `el` in place with its baked path(s) (keeping z-order); append the wrapping group, if
+      // any, after them (members precede their container).
+      const out: DocElement[] = []
+      for (const e of state.elements) {
+        if (e.id === el.id) out.push(...paths)
+        else if (!removed.has(e.id)) out.push(e)
+      }
+      if (gid)
+        out.push({
+          id: gid,
+          type: 'group',
+          transform: { ...IDENTITY_TRANSFORM },
+          params: {},
+          pen: 0,
+          name: el.name ?? 'Group',
+          ...(el.parent ? { parent: el.parent } : {}),
+        })
+      return { elements: pruneEmptyContainers(out), selectedIds: [gid ?? paths[0].id] }
     }),
 
   simplifySelected: (tolMm) =>
