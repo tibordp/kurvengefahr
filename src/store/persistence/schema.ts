@@ -142,6 +142,7 @@ export function sanitizeElements(arr: unknown): DocElement[] {
         : {}),
       ...(typeof e.parent === 'string' ? { parent: e.parent } : {}),
       ...(e.clipRole === 'mask' ? { clipRole: 'mask' as const } : {}),
+      ...(e.hidden === true ? { hidden: true as const } : {}),
       ...(Array.isArray(e.effects) && e.effects.length ? { effects: sanitizeEffects(e.effects) } : {}),
       // Pressure is optional (absent = full); keep it only when a valid 0..1 value is stored.
       ...(typeof e.pressure === 'number' && Number.isFinite(e.pressure)

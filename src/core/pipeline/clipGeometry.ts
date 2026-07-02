@@ -81,6 +81,7 @@ export const elementLocalGeometry = effectedLocal
 export function groupLocalGeometry(group: DocElement, membersOf: Map<string, DocElement[]>): Geometry {
   const out: Geometry = []
   for (const child of membersOf.get(group.id) ?? []) {
+    if (child.hidden) continue // hidden member makes no marks
     const childPressure = isMultiPen(child.type) ? undefined : child.pressure
     const local = applyDash(place(elementLocalGeometry(child, membersOf), child.transform, childPressure), child)
     const stamped = isMultiPen(child.type) ? local : local.map((s) => ({ ...s, pen: child.pen }))
@@ -102,7 +103,8 @@ export function clipLocalGeometry(clip: DocElement, membersOf: Map<string, DocEl
 
   const out: Geometry = []
   for (const child of members) {
-    if (child.clipRole === 'mask') continue
+    if (child.clipRole === 'mask') continue // the mask (found above) clips even when hidden
+    if (child.hidden) continue // hidden content member makes no marks
     const childPressure = isMultiPen(child.type) ? undefined : child.pressure
     const local = applyDash(place(elementLocalGeometry(child, membersOf), child.transform, childPressure), child)
     const stamped = isMultiPen(child.type) ? local : local.map((s) => ({ ...s, pen: child.pen }))

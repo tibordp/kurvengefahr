@@ -48,6 +48,8 @@ export function buildPageGeometry(elements: DocElement[]): Geometry {
   }
   for (const el of elements) {
     if (memberIds.has(el.id)) continue // emitted via its container
+    if (el.hidden) continue // hidden elements (incl. containers) make no marks; a hidden clip mask
+    // still clips its siblings because that happens inside the container composition, not here.
     if (isContainer(el.type)) {
       // Composed (group) / clipped (clip) member geometry — already effected + multi-pen; just place.
       for (const s of place(elementLocalGeometry(el, membersOf), el.transform)) out.push({ ...s })

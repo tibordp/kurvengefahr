@@ -149,6 +149,11 @@ export interface DocElement<TParams = unknown> {
   /** When set on a `clip` member, this element is the clip's **mask**: it makes no marks (its closed
    *  contours bound the clip) but stays a real, editable element so unclip can restore it. */
   clipRole?: 'mask'
+  /** Hidden from output: the element makes **no marks** on the canvas, preview, G-code, or export
+   *  (like a toggled-off layer). Absent/false = visible. It's not a geometry param — a cheap
+   *  re-place/re-emit. Its *structural* role still applies: a hidden `clip` mask keeps clipping its
+   *  siblings, since that's a non-local effect, not one of the element's own marks. */
+  hidden?: boolean
   /** Optional non-destructive effect stack (roughen / warp / …). Applied in order to the element's
    *  generated geometry in local space (before `place`), in Rust. Like `pen`/`pressure`, NOT a
    *  geometry param: changing it is a cheap re-effect/re-place, never a regenerate. The source stays

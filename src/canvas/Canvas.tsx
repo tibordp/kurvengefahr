@@ -470,6 +470,7 @@ export function Canvas() {
       } else {
         const ids: string[] = []
         for (const el of doc.elements) {
+          if (el.hidden) continue // hidden elements aren't marquee-selectable (use the tree)
           // Container members are selected via their container, not individually; a container is
           // bounded by its composed geometry (its own generateLocal is empty).
           if (el.parent && containerIds.has(el.parent)) continue
@@ -568,6 +569,7 @@ export function Canvas() {
             />
           ))}
           {elements.map((el) => {
+            if (el.hidden) return null // hidden = no marks (a hidden clip mask still clips, inside its container)
             const interactive = !previewActive && !spaceHeld && !drawing
             // Container members aren't drawn at the top level — only via their container's composed
             // geometry. A *selected* member renders raw at its effective page transform, so you can
@@ -593,6 +595,7 @@ export function Canvas() {
           {!previewActive && !drawing && <GhostLayer />}
           {!previewActive && !drawing && <NodeEditLayer pxPerMm={scale} />}
           {!previewActive && !drawing && <HoverHighlight pxPerMm={scale} />}
+          {!previewActive && !drawing && <KeyHighlight pxPerMm={scale} />}
           <FiducialLayer pxPerMm={scale} interactive={!previewActive && !spaceHeld && !drawing} />
           {marquee && (
             <Rect
@@ -704,16 +707,12 @@ export function Canvas() {
   )
 }
 
-/** A dashed accent outline around the element hovered in the Elements tree, so it's obvious which
- *  row maps to which mark on the canvas. Skipped when the element is already selected (the
- *  Transformer covers it). Coordinates are page-mm inside the scaled Layer. */
-function HoverHighlight({ pxPerMm }: { pxPerMm: number }) {
-  const id = useHover((s) => s.id)
-  const elements = useDoc((s) => s.elements)
-  const el = id ? (elements.find((e) => e.id === id) ?? null) : null
-  const selected = useDoc((s) => (id ? s.selectedIds.includes(id) : false))
-  if (!el || selected) return null
-  // Bounds in page space: a container uses its composed geometry; a member its effective transform.
+/** Page-space AABB of an element's placed geometry (container-aware), or null if it has no points.
+ *  A container is bounded by its composed geometry; a member by its effective (page) transform. */
+function elementPageBounds(
+  el: DocElement,
+  elements: DocElement[],
+): { x0: number; y0: number; x1: number; y1: number } | null {
   let geom = generateLocal(el)
   let t = el.transform
   if (isContainer(el.type)) {
@@ -734,17 +733,53 @@ function HoverHighlight({ pxPerMm }: { pxPerMm: number }) {
       if (p.x > x1) x1 = p.x
       if (p.y > y1) y1 = p.y
     }
-  if (!Number.isFinite(x0)) return null
+  return Number.isFinite(x0) ? { x0, y0, x1, y1 } : null
+}
+
+/** A dashed accent outline around the element hovered in the Elements tree, so it's obvious which
+ *  row maps to which mark on the canvas. Skipped when the element is already selected (the
+ *  Transformer covers it). Coordinates are page-mm inside the scaled Layer. */
+function HoverHighlight({ pxPerMm }: { pxPerMm: number }) {
+  const id = useHover((s) => s.id)
+  const elements = useDoc((s) => s.elements)
+  const el = id ? (elements.find((e) => e.id === id) ?? null) : null
+  const selected = useDoc((s) => (id ? s.selectedIds.includes(id) : false))
+  const b = !el || selected ? null : elementPageBounds(el, elements)
+  if (!b) return null
   const pad = 1.5 / pxPerMm
   return (
     <Rect
-      x={x0 - pad}
-      y={y0 - pad}
-      width={x1 - x0 + 2 * pad}
-      height={y1 - y0 + 2 * pad}
+      x={b.x0 - pad}
+      y={b.y0 - pad}
+      width={b.x1 - b.x0 + 2 * pad}
+      height={b.y1 - b.y0 + 2 * pad}
       stroke="#e5484d"
       strokeWidth={1.5 / pxPerMm}
       dash={[4 / pxPerMm, 3 / pxPerMm]}
+      cornerRadius={2 / pxPerMm}
+      listening={false}
+    />
+  )
+}
+
+/** With several elements selected, outline the **last-selected** one — the "key object" that clip
+ *  uses as its mask and boolean subtract removes. Solid red (vs the blue Transformer box) so it
+ *  reads as the distinguished operand. */
+function KeyHighlight({ pxPerMm }: { pxPerMm: number }) {
+  const keyId = useDoc((s) => (s.selectedIds.length >= 2 ? s.selectedIds[s.selectedIds.length - 1] : null))
+  const elements = useDoc((s) => s.elements)
+  const el = keyId ? (elements.find((e) => e.id === keyId) ?? null) : null
+  const b = el ? elementPageBounds(el, elements) : null
+  if (!b) return null
+  const pad = 2 / pxPerMm
+  return (
+    <Rect
+      x={b.x0 - pad}
+      y={b.y0 - pad}
+      width={b.x1 - b.x0 + 2 * pad}
+      height={b.y1 - b.y0 + 2 * pad}
+      stroke="#e5484d"
+      strokeWidth={2 / pxPerMm}
       cornerRadius={2 / pxPerMm}
       listening={false}
     />

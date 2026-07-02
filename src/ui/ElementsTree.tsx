@@ -22,6 +22,8 @@ import {
   Circle,
   Hexagon,
   Star,
+  Eye,
+  EyeOff,
   Spline,
   Sparkles,
   Image as ImageIcon,
@@ -97,6 +99,7 @@ interface RowHandlers {
   onClick: (id: string, e: { shiftKey: boolean; metaKey: boolean; ctrlKey: boolean }) => void
   onHover: (id: string | null) => void
   onDelete: (id: string) => void
+  onToggleHidden: (id: string) => void
   onStartRename: (id: string) => void
   onCommitName: (id: string, val: string) => void
   onCancelRename: () => void
@@ -135,9 +138,9 @@ const ElementRow = memo(function ElementRow(p: RowProps) {
       onMouseLeave={() => p.onHover(null)}
       onClick={(e) => p.onClick(el.id, e)}
     >
-      <Icon size={14} className="shrink-0 text-faint" />
+      <Icon size={14} className={cx('shrink-0 text-faint', el.hidden && 'opacity-40')} />
       <span
-        className="h-3 w-3 shrink-0 rounded-full border border-border"
+        className={cx('h-3 w-3 shrink-0 rounded-full border border-border', el.hidden && 'opacity-40')}
         style={{ backgroundColor: p.color }}
         title={p.penTitle}
       />
@@ -155,7 +158,7 @@ const ElementRow = memo(function ElementRow(p: RowProps) {
         />
       ) : (
         <span
-          className="min-w-0 flex-1 truncate"
+          className={cx('min-w-0 flex-1 truncate', el.hidden && 'opacity-50')}
           onDoubleClick={(e) => {
             e.stopPropagation()
             p.onStartRename(el.id)
@@ -172,6 +175,21 @@ const ElementRow = memo(function ElementRow(p: RowProps) {
           {p.badgeText}
         </span>
       )}
+      <button
+        className={cx(
+          'rounded p-1 text-faint transition-colors hover:bg-surface hover:text-text',
+          // Stay visible while hidden (so the state reads at a glance); otherwise reveal on hover.
+          el.hidden ? 'opacity-100' : 'opacity-60 sm:opacity-0 sm:group-hover:opacity-100',
+        )}
+        title={el.hidden ? 'Show' : 'Hide'}
+        aria-label={el.hidden ? 'Show element' : 'Hide element'}
+        onClick={(e) => {
+          e.stopPropagation()
+          p.onToggleHidden(el.id)
+        }}
+      >
+        {el.hidden ? <EyeOff size={14} /> : <Eye size={14} />}
+      </button>
       <button
         className="rounded p-1 text-faint opacity-60 transition-colors hover:bg-surface hover:text-accent-text sm:opacity-0 sm:group-hover:opacity-100"
         title="Delete"
@@ -196,6 +214,7 @@ export function ElementsTree() {
   const select = useDoc((s) => s.select)
   const selectMany = useDoc((s) => s.selectMany)
   const removeElement = useDoc((s) => s.removeElement)
+  const toggleHidden = useDoc((s) => s.toggleHidden)
   const createGroup = useDoc((s) => s.createGroup)
   const ungroup = useDoc((s) => s.ungroup)
   const clipSelected = useDoc((s) => s.clipSelected)
@@ -289,7 +308,7 @@ export function ElementsTree() {
     setEditing(null)
   }, [setElementName])
   const onCancelRename = useCallback(() => setEditing(null), [])
-  const handlers: RowHandlers = { onClick: onRowClick, onHover: setHover, onDelete: removeElement, onStartRename, onCommitName, onCancelRename }
+  const handlers: RowHandlers = { onClick: onRowClick, onHover: setHover, onDelete: removeElement, onToggleHidden: toggleHidden, onStartRename, onCommitName, onCancelRename }
 
   if (elements.length === 0) return null
 
@@ -355,7 +374,7 @@ export function ElementsTree() {
           >
             {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
           </button>
-          <ContainerIcon size={14} className="shrink-0 text-faint" />
+          <ContainerIcon size={14} className={cx('shrink-0 text-faint', el.hidden && 'opacity-40')} />
           {isEditing ? (
             <input
               autoFocus
@@ -370,7 +389,7 @@ export function ElementsTree() {
             />
           ) : (
             <span
-              className="min-w-0 flex-1 truncate"
+              className={cx('min-w-0 flex-1 truncate', el.hidden && 'opacity-50')}
               onDoubleClick={(e) => {
                 e.stopPropagation()
                 onStartRename(el.id)
@@ -380,6 +399,20 @@ export function ElementsTree() {
             </span>
           )}
           <span className="shrink-0 text-2xs text-faint">{members.length}</span>
+          <button
+            className={cx(
+              'rounded p-1 text-faint transition-colors hover:bg-surface hover:text-text',
+              el.hidden ? 'opacity-100' : 'opacity-60 sm:opacity-0 sm:group-hover:opacity-100',
+            )}
+            title={el.hidden ? 'Show' : 'Hide'}
+            aria-label={el.hidden ? 'Show' : 'Hide'}
+            onClick={(e) => {
+              e.stopPropagation()
+              toggleHidden(el.id)
+            }}
+          >
+            {el.hidden ? <EyeOff size={14} /> : <Eye size={14} />}
+          </button>
           <button
             className="rounded p-1 text-faint opacity-60 transition-colors hover:bg-surface hover:text-text sm:opacity-0 sm:group-hover:opacity-100"
             title={isClip ? 'Release clip' : 'Ungroup'}

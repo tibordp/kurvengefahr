@@ -347,6 +347,9 @@ interface DocStore {
   setPen: (id: string, pen: PenId) => void
   /** Set (or clear, with null) an element's dashed-stroke style. Re-place/re-emit only. */
   setDash: (id: string, dash: { dash: number; gap: number } | null) => void
+  /** Toggle an element's visibility (hidden = makes no marks). Re-place/re-emit only; a hidden
+   *  clip mask still clips. */
+  toggleHidden: (id: string) => void
   /** Set an element's pen pressure (0..1). Not a param — invalidates only Place/Emit. */
   setPressure: (id: string, pressure: number) => void
   /** Set (or clear, with []) an element's non-destructive effect stack. Not a param — invalidates
@@ -604,9 +607,13 @@ export const useDoc = create<DocStore>((set) => ({
 
   booleanSelected: (op) =>
     set((state) => {
-      // Selected closed shapes, in document order (later = drawn on top), each with page-space rings.
-      const shapes = state.elements
-        .filter((e) => state.selectedIds.includes(e.id))
+      // Selected closed shapes in **selection order** (click order), each with page-space rings. The
+      // order is load-bearing for the non-commutative op: difference keeps the first-selected shape
+      // and subtracts everything selected after it, so the *last*-selected shape is the cutter — the
+      // same "operator = last-selected" convention as clip's mask. Union/intersect/xor don't care.
+      const shapes = state.selectedIds
+        .map((id) => state.elements.find((e) => e.id === id))
+        .filter((e): e is DocElement => !!e)
         .map((el) => ({ el, rings: boundaryRings(el) }))
         .filter((s) => s.rings.length > 0)
       if (shapes.length < 2) return {} // nothing to combine
@@ -624,13 +631,15 @@ export const useDoc = create<DocStore>((set) => ({
         .filter((c) => c.nodes.length >= 3)
       if (!contours.length) return {} // empty result (e.g. intersect of disjoint) — leave originals
 
-      const top = shapes[shapes.length - 1].el
+      // Inherit the pen/hatch of the first-selected shape — for difference that's the base that
+      // survives; for the commutative ops it's a stable default.
+      const base = shapes[0].el
       const newEl: DocElement = {
         id: crypto.randomUUID(),
         type: 'path',
         transform: { ...IDENTITY_TRANSFORM },
-        params: { contours, hatch: hatchOf(top) } as PathParams,
-        pen: top.pen,
+        params: { contours, hatch: hatchOf(base) } as PathParams,
+        pen: base.pen,
       }
       const removed = new Set(shapes.map((s) => s.el.id))
       removed.forEach(dropFromCache)
@@ -677,7 +686,9 @@ export const useDoc = create<DocStore>((set) => ({
       const sel = state.elements.filter((e) => state.selectedIds.includes(e.id))
       if (sel.length < 2) return {}
       const clipId = crypto.randomUUID()
-      const maskId = sel[sel.length - 1].id // topmost selected (drawn last) → the mask
+      // The last-selected shape is the "key object" — the mask that clips the rest. (Selection is
+      // click-ordered, so you pick the content first and the mask last.)
+      const maskId = state.selectedIds[state.selectedIds.length - 1]
       const selIds = new Set(sel.map((e) => e.id))
       const clip: DocElement = { id: clipId, type: 'clip', transform: { ...IDENTITY_TRANSFORM }, params: {}, pen: 0 }
       const elements = state.elements.map((e) =>
@@ -883,6 +894,14 @@ export const useDoc = create<DocStore>((set) => ({
     set((state) => ({
       elements: state.elements.map((e) =>
         e.id === id ? (dash ? { ...e, dash } : (({ dash: _drop, ...rest }) => rest)(e)) : e,
+      ),
+    })),
+
+  toggleHidden: (id) =>
+    set((state) => ({
+      // Store the flag only while hidden (absent = visible), like the other optional fields.
+      elements: state.elements.map((e) =>
+        e.id === id ? (e.hidden ? (({ hidden: _drop, ...rest }) => rest)(e) : { ...e, hidden: true }) : e,
       ),
     })),
 
