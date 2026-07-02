@@ -2,10 +2,12 @@
 // the element registry (side-effect imports), and re-exports their param shapes + helpers.
 import './rect'
 import './ellipse'
+import './polygon'
 import './path'
 
 export { defaultRectParams, type RectParams } from './rect'
 export { defaultEllipseParams, type EllipseParams } from './ellipse'
+export { defaultPolygonParams, polygonVertices, type PolygonParams } from './polygon'
 export {
   defaultPathParams,
   cornerNode,

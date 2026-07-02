@@ -12,6 +12,7 @@ import {
   cornerNode,
   defaultRectParams,
   defaultEllipseParams,
+  defaultPolygonParams,
   defaultPathParams,
   type PathNode,
 } from '../elements/shapes'
@@ -32,8 +33,12 @@ export interface Mods {
   alt?: boolean
 }
 
+/** Tools committed via a bounding-box drag (corner→corner): rect/ellipse/polygon all inscribe in
+ *  the box. */
+export type BoxTool = 'rect' | 'ellipse' | 'polygon'
+
 export type Draft =
-  | { kind: 'box'; tool: 'rect' | 'ellipse' | 'line'; a: Pt; b: Pt }
+  | { kind: 'box'; tool: BoxTool; a: Pt; b: Pt }
   | {
       kind: 'pen'
       nodes: PathNode[]
@@ -60,15 +65,11 @@ export function cancelDraft(): void {
   if (getDraft()) setDraft(null)
 }
 
-// Shift-constrain a box drag: square for rect/ellipse, 45° snap for line.
-function constrain(tool: 'rect' | 'ellipse' | 'line', a: Pt, b: Pt): Pt {
+// Shift-constrain a box drag to a square, so rect/ellipse/polygon come out regular (square / circle /
+// equilateral).
+function constrain(a: Pt, b: Pt): Pt {
   const dx = b.x - a.x
   const dy = b.y - a.y
-  if (tool === 'line') {
-    const ang = Math.round(Math.atan2(dy, dx) / (Math.PI / 4)) * (Math.PI / 4)
-    const len = Math.hypot(dx, dy)
-    return { x: a.x + Math.cos(ang) * len, y: a.y + Math.sin(ang) * len }
-  }
   const s = Math.max(Math.abs(dx), Math.abs(dy))
   return { x: a.x + Math.sign(dx || 1) * s, y: a.y + Math.sign(dy || 1) * s }
 }
@@ -98,9 +99,13 @@ function finishBox(d: Extract<Draft, { kind: 'box' }>): void {
     if (rx < 0.5 && ry < 0.5) ((rx = 20), (ry = 20), (cx = a.x), (cy = a.y))
     add('ellipse', defaultEllipseParams(rx, ry), { x: cx, y: cy })
   } else {
-    if (dist(a, b) < 0.5) return cancelDraft() // a click is not a line
-    const nodes = [cornerNode(0, 0), cornerNode(b.x - a.x, b.y - a.y)]
-    add('path', { ...defaultPathParams(), contours: [{ nodes, closed: false }] }, { x: a.x, y: a.y })
+    // Polygon (the default; the Star toggle in the inspector turns it into a star).
+    let cx = (a.x + b.x) / 2
+    let cy = (a.y + b.y) / 2
+    let rx = Math.abs(b.x - a.x) / 2
+    let ry = Math.abs(b.y - a.y) / 2
+    if (rx < 0.5 && ry < 0.5) ((rx = 20), (ry = 20), (cx = a.x), (cy = a.y))
+    add('polygon', defaultPolygonParams(rx, ry), { x: cx, y: cy })
   }
   setDraft(null)
   useTools.getState().setTool('select')
@@ -140,7 +145,7 @@ export function drawPointerDown(p: Pt, mods: Mods): void {
   const d = getDraft()
   const sp = snap(p, !!mods.alt)
 
-  if (tool === 'rect' || tool === 'ellipse' || tool === 'line') {
+  if (tool === 'rect' || tool === 'ellipse' || tool === 'polygon') {
     setDraft({ kind: 'box', tool, a: sp, b: sp })
   } else if (tool === 'pen') {
     if (d && d.kind === 'pen') {
@@ -177,7 +182,7 @@ export function drawPointerMove(p: Pt, mods: Mods): void {
   if (!d) return
   const sp = snap(p, !!mods.alt)
   if (d.kind === 'box') {
-    setDraft({ ...d, b: mods.shift ? constrain(d.tool, d.a, sp) : sp })
+    setDraft({ ...d, b: mods.shift ? constrain(d.a, sp) : sp })
   } else if (d.kind === 'pen') {
     if (d.dragging && d.activeIndex != null) {
       const a = d.nodes[d.activeIndex]

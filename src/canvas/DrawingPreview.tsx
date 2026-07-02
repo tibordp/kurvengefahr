@@ -4,6 +4,7 @@
 import { Shape } from 'react-konva'
 import type Konva from 'konva'
 import { useDraft } from './drawing'
+import { polygonVertices } from '../elements/shapes'
 
 const ACCENT = '#e5484d'
 
@@ -32,8 +33,12 @@ export function DrawingPreview({ pxPerMm }: { pxPerMm: number }) {
       } else if (tool === 'ellipse') {
         ctx.ellipse((a.x + b.x) / 2, (a.y + b.y) / 2, Math.abs(b.x - a.x) / 2, Math.abs(b.y - a.y) / 2, 0, 0, Math.PI * 2)
       } else {
-        ctx.moveTo(a.x, a.y)
-        ctx.lineTo(b.x, b.y)
+        // Polygon (default 6-gon; the committed element's Star toggle changes it afterwards).
+        const cx = (a.x + b.x) / 2
+        const cy = (a.y + b.y) / 2
+        const verts = polygonVertices(Math.abs(b.x - a.x) / 2, Math.abs(b.y - a.y) / 2, 6, false, 0.5)
+        verts.forEach((v, i) => (i === 0 ? ctx.moveTo(cx + v.x, cy + v.y) : ctx.lineTo(cx + v.x, cy + v.y)))
+        ctx.closePath()
       }
       ctx.stroke()
     } else if (draft.kind === 'pen' && draft.nodes.length) {

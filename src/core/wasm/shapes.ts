@@ -4,6 +4,7 @@
 import {
   tessellate_rect,
   tessellate_ellipse,
+  tessellate_polygon,
   tessellate_path,
   simplify_polyline,
   split_cubic,
@@ -38,6 +39,18 @@ export function rectGeometry(w: number, h: number, cornerRadius = 0): Geometry {
 
 export function ellipseGeometry(rx: number, ry: number): Geometry {
   return decode(tessellate_ellipse(rx, ry))
+}
+
+/** Regular polygon / star inscribed in radii (rx, ry), centred at the origin. `sides` ≥ 3; a star
+ *  alternates the outer radius with `innerRatio`×radius. One closed stroke. */
+export function polygonGeometry(
+  rx: number,
+  ry: number,
+  sides: number,
+  star: boolean,
+  innerRatio: number,
+): Geometry {
+  return decode(tessellate_polygon(rx, ry, sides, star, innerRatio))
 }
 
 /** Multi-contour path. `nodes` is 6 floats per node ([x, y, hinX, hinY, houtX, houtY], handles

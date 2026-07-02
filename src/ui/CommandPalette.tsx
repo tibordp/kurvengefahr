@@ -33,6 +33,7 @@ function buildCommands(): Command[] {
     (e) =>
       e.type === 'rect' ||
       e.type === 'ellipse' ||
+      e.type === 'polygon' ||
       (e.type === 'path' && (e.params as PathParams).contours.some((c) => c.closed && c.nodes.length >= 3)),
   )
   const groupIds = sel.filter((e) => e.type === 'group').map((e) => e.id)

@@ -99,8 +99,10 @@ in the Stroke IR. `emit` prepends a start-of-print move over it at high clearanc
 
 ## Element types (`src/elements`)
 
-Handwriting plus vector shapes (`shapes/`: `rect`, `ellipse`, `path`), all on the `Stroke[]` IR via
-registry `generate()`. Non-obvious bits:
+Handwriting plus vector shapes (`shapes/`: `rect`, `ellipse`, `polygon`, `path`), all on the
+`Stroke[]` IR via registry `generate()`. (`polygon` covers regular polygons *and* stars via a `star`
+flag — inscribed in `rx`/`ry` like `ellipse`; the Polygon and Star tools both make one.) Non-obvious
+bits:
 
 - **Containers are real elements, not tags.** `group` and `clip` are registered element types with
   `container: true` (no generator). Membership is a single `DocElement.parent` (the container's id);
@@ -126,8 +128,10 @@ registry `generate()`. Non-obvious bits:
   generically). Seeded effects (roughen/sketch) are deterministic per `seed`. Effects are NOT a
   geometry param (they live beside `pen`/`pressure`), so editing them never regenerates.
 
-- **Tool ≠ type:** the line/pen/freehand tools all create a `path` (`{nodes, closed}`, handles
-  relative to anchor; zero-length handle ⇒ corner, so polyline + Bézier share one type).
+- **Tool ≠ type:** the pen/freehand tools both create a `path` (`{nodes, closed}`, handles relative
+  to anchor; zero-length handle ⇒ corner, so polyline + Bézier share one type — a plain line is just
+  the pen with two corner clicks, which is why there's no separate line tool). The Polygon tool makes
+  a `polygon` (the Star toggle in its inspector flips `star`).
 - **Tessellation + fill are Rust** (`crate/src/shapes.rs`, `hatch.rs`), called *synchronously* from
   each `generate()` (main-thread WASM, like clip). After any Rust change, `npm run build:wasm`. All
   the geometry **tolerances + tessellation resolution** (curve flattening, arc/circle/spline steps,

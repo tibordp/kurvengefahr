@@ -15,8 +15,8 @@ import { place } from './place'
 import { clipToPolygon } from './clip'
 import { applyEffectsWasm } from '../wasm/effects'
 import { applyDash } from './dash'
-import { rectGeometry, ellipseGeometry } from '../wasm/shapes'
-import { pathOutlineStrokes, type RectParams, type EllipseParams, type PathParams } from '../../elements/shapes'
+import { rectGeometry, ellipseGeometry, polygonGeometry } from '../wasm/shapes'
+import { pathOutlineStrokes, type RectParams, type EllipseParams, type PolygonParams, type PathParams } from '../../elements/shapes'
 
 const CLOSE_EPS = 1e-3
 const isClosed = (s: { points: Point[] }) =>
@@ -35,6 +35,10 @@ function maskOutlineLocal(el: DocElement): Geometry {
   if (el.type === 'ellipse') {
     const p = el.params as EllipseParams
     return ellipseGeometry(p.rx, p.ry)
+  }
+  if (el.type === 'polygon') {
+    const p = el.params as PolygonParams
+    return polygonGeometry(Math.max(0, p.rx), Math.max(0, p.ry), Math.max(3, Math.floor(p.sides)), p.star, p.innerRatio)
   }
   if (el.type === 'path') {
     const p = el.params as PathParams

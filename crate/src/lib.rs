@@ -155,6 +155,13 @@ pub fn tessellate_ellipse(rx: f32, ry: f32) -> GeometryBuffers {
     GeometryBuffers::from_strokes(&shapes::ellipse(rx, ry))
 }
 
+/// Regular polygon / star, inscribed in radii (rx, ry), centred at the origin. `sides` ≥ 3 vertices;
+/// a star alternates the outer radius with `inner_ratio`×radius. Returns one closed stroke.
+#[wasm_bindgen]
+pub fn tessellate_polygon(rx: f32, ry: f32, sides: u32, star: bool, inner_ratio: f32) -> GeometryBuffers {
+    GeometryBuffers::from_strokes(&shapes::polygon(rx, ry, sides, star, inner_ratio))
+}
+
 /// Multi-contour path. `nodes` = 6 f32 per node `[x, y, hinX, hinY, houtX, houtY]` (handles relative
 /// to the anchor), concatenated across all contours. `contour_starts` has `ncontours+1` entries in
 /// **node units** (contour `c` is `nodes[6*starts[c] .. 6*starts[c+1]]`); `closed[c]` flags whether

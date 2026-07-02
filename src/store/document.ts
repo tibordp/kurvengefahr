@@ -27,8 +27,25 @@ import { elementLocalGeometry } from '../core/pipeline/clipGeometry'
 import type { DocSnapshot } from './persistence/schema'
 import type { Geometry, Point } from '../core/types'
 import { cornerNode, defaultHatch, pathOutlineStrokes, weldContours } from '../elements/shapes'
-import type { Contour, PathNode, PathParams, RectParams, EllipseParams, Hatch } from '../elements/shapes'
-import { rectGeometry, ellipseGeometry, booleanGeometry, simplifyPolyline, type Rings } from '../core/wasm/shapes'
+import type { Contour, PathNode, PathParams, RectParams, EllipseParams, PolygonParams, Hatch } from '../elements/shapes'
+import { rectGeometry, ellipseGeometry, polygonGeometry, booleanGeometry, simplifyPolyline, type Rings } from '../core/wasm/shapes'
+
+/** Tessellated local-mm outline of a closed shape (rect/ellipse/polygon), or null for other types. */
+function shapeOutline(el: DocElement): Geometry | null {
+  if (el.type === 'rect') {
+    const p = el.params as RectParams
+    return rectGeometry(p.w, p.h, p.cornerRadius)
+  }
+  if (el.type === 'ellipse') {
+    const p = el.params as EllipseParams
+    return ellipseGeometry(p.rx, p.ry)
+  }
+  if (el.type === 'polygon') {
+    const p = el.params as PolygonParams
+    return polygonGeometry(Math.max(0, p.rx), Math.max(0, p.ry), Math.max(3, Math.floor(p.sides)), p.star, p.innerRatio)
+  }
+  return null
+}
 
 let seedCounter = 1
 
@@ -61,12 +78,9 @@ function pageBBox(el: DocElement): BBox | null {
  *  independent of its hatch/stroke style. Empty for elements with nothing closed to combine. */
 function boundaryRings(el: DocElement): Point[][] {
   let local: Geometry
-  if (el.type === 'rect') {
-    const p = el.params as RectParams
-    local = rectGeometry(p.w, p.h, p.cornerRadius)
-  } else if (el.type === 'ellipse') {
-    const p = el.params as EllipseParams
-    local = ellipseGeometry(p.rx, p.ry)
+  const outline = shapeOutline(el)
+  if (outline) {
+    local = outline
   } else if (el.type === 'path') {
     const p = el.params as PathParams
     const closed = p.contours.filter((c) => c.closed && c.nodes.length >= 3)
@@ -122,11 +136,9 @@ function elementToPath(el: DocElement): DocElement | null {
   if (el.type === 'path') return null
   let contours: Contour[]
   let hatch = defaultHatch()
-  if (el.type === 'rect' || el.type === 'ellipse') {
-    const r = el.params as RectParams & EllipseParams
-    const rings =
-      el.type === 'rect' ? rectGeometry(r.w, r.h, r.cornerRadius) : ellipseGeometry(r.rx, r.ry)
-    contours = rings.map((s) => pointsToContour(s.points))
+  const outline = shapeOutline(el)
+  if (outline) {
+    contours = outline.map((s) => pointsToContour(s.points))
     hatch = (el.params as { hatch?: Hatch }).hatch ?? defaultHatch()
   } else {
     const geom = generateLocal(el)
@@ -254,6 +266,7 @@ export function cloneSubtrees(
 function hatchOf(el: DocElement): Hatch {
   if (el.type === 'rect') return (el.params as RectParams).hatch
   if (el.type === 'ellipse') return (el.params as EllipseParams).hatch
+  if (el.type === 'polygon') return (el.params as PolygonParams).hatch
   if (el.type === 'path') return (el.params as PathParams).hatch
   return defaultHatch()
 }

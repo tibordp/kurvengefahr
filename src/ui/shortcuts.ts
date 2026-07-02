@@ -6,15 +6,15 @@ import {
   MousePointer2,
   Signature,
   Type,
-  Minus,
   Square,
   Circle,
   PenTool,
   Pencil,
   Sparkles,
   Crosshair,
-  type LucideIcon,
 } from 'lucide-react'
+import type { ComponentType } from 'react'
+import { PolygonStarIcon } from './icons'
 import type { Tool } from '../store/tools'
 
 /** The modifier key glyph, platform-aware (⌘ on Apple, Ctrl elsewhere). Display-only. */
@@ -24,13 +24,15 @@ const isApple =
 export const MOD_KEY = isApple ? '⌘' : 'Ctrl'
 
 /** The tool palette: icon + label + single-key shortcut. Drives the sidebar and the key handler. */
-export const TOOLS: { tool: Tool; icon: LucideIcon; label: string; key: string }[] = [
+export const TOOLS: { tool: Tool; icon: ComponentType<{ size?: number | string }>; label: string; key: string }[] = [
   { tool: 'select', icon: MousePointer2, label: 'Select', key: 'V' },
   { tool: 'handwriting', icon: Signature, label: 'Handwriting', key: 'T' },
   { tool: 'text', icon: Type, label: 'Text', key: 'Y' },
-  { tool: 'line', icon: Minus, label: 'Line', key: 'L' },
   { tool: 'rect', icon: Square, label: 'Rectangle', key: 'R' },
   { tool: 'ellipse', icon: Circle, label: 'Ellipse', key: 'O' },
+  // One tool for polygons and stars: it draws a polygon; the Star toggle in the inspector turns the
+  // selection into a star. (A line is just the pen tool with two corner clicks.)
+  { tool: 'polygon', icon: PolygonStarIcon, label: 'Polygon / star', key: 'N' },
   { tool: 'pen', icon: PenTool, label: 'Pen (Bézier)', key: 'P' },
   { tool: 'freehand', icon: Pencil, label: 'Freehand', key: 'F' },
   { tool: 'generative', icon: Sparkles, label: 'Generative', key: 'G' },

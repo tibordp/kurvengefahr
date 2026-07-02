@@ -53,7 +53,7 @@ import { EFFECT_DEFS, effectDef, defaultEffect } from '../effects/registry'
 import { validateProfile } from '../core/profileValidation'
 import type { HandwritingParams } from '../elements/handwriting'
 import { SEEDED_METHODS, type RasterParams, type RasterMethod } from '../elements/raster'
-import type { RectParams, EllipseParams, PathParams, Hatch, HatchPattern } from '../elements/shapes'
+import type { RectParams, EllipseParams, PolygonParams, PathParams, Hatch, HatchPattern } from '../elements/shapes'
 import {
   HERSHEY_FONTS,
   OUTLINE_FONTS,
@@ -382,6 +382,33 @@ function EllipseInspector({ id, params }: { id: string; params: EllipseParams })
       <SectionTitle>Ellipse</SectionTitle>
       <Num label="Radius X (mm)" value={params.rx} step={1} onChange={(v) => up({ rx: Math.max(0, v) })} />
       <Num label="Radius Y (mm)" value={params.ry} step={1} onChange={(v) => up({ ry: Math.max(0, v) })} />
+      <HatchControls hatch={params.hatch} onChange={(h) => up({ hatch: h })} />
+    </>
+  )
+}
+
+function PolygonInspector({ id, params }: { id: string; params: PolygonParams }) {
+  const setParams = useDoc((s) => s.setParams)
+  const up = (patch: Partial<PolygonParams>) => setParams(id, { ...params, ...patch })
+  return (
+    <>
+      <SectionTitle>{params.star ? 'Star' : 'Polygon'}</SectionTitle>
+      <Num label={params.star ? 'Points' : 'Sides'} value={params.sides} step={1}
+        onChange={(v) => up({ sides: Math.max(3, Math.round(v)) })} />
+      <Num label="Radius X (mm)" value={params.rx} step={1} onChange={(v) => up({ rx: Math.max(0, v) })} />
+      <Num label="Radius Y (mm)" value={params.ry} step={1} onChange={(v) => up({ ry: Math.max(0, v) })} />
+      <Field label="Star" title="Alternate the radius in and out to make a star.">
+        <input
+          type="checkbox"
+          className="h-4 w-4 justify-self-start"
+          checked={params.star}
+          onChange={(e) => up({ star: e.target.checked })}
+        />
+      </Field>
+      {params.star && (
+        <Num label="Inner ratio" value={params.innerRatio} step={0.05}
+          onChange={(v) => up({ innerRatio: Math.min(0.95, Math.max(0.05, v)) })} />
+      )}
       <HatchControls hatch={params.hatch} onChange={(h) => up({ hatch: h })} />
     </>
   )
@@ -1197,6 +1224,9 @@ function ElementSection() {
       {element.type === 'rect' && <RectInspector id={element.id} params={element.params as RectParams} />}
       {element.type === 'ellipse' && (
         <EllipseInspector id={element.id} params={element.params as EllipseParams} />
+      )}
+      {element.type === 'polygon' && (
+        <PolygonInspector id={element.id} params={element.params as PolygonParams} />
       )}
       {element.type === 'text' && <TextInspector id={element.id} params={element.params as TextParams} />}
       {element.type === 'generative' && (

@@ -56,6 +56,26 @@ pub fn ellipse(rx: f32, ry: f32) -> Vec<Stroke> {
     vec![stroke(points)]
 }
 
+/// Regular polygon (or star) centred at (0,0), inscribed in the ellipse of radii (rx, ry). `sides` is
+/// the vertex count (≥3); a star alternates the outer radius with `inner_ratio`×radius over 2·`sides`
+/// vertices, so `sides` is its point count. First vertex at the top (−90°). Closed polyline.
+pub fn polygon(rx: f32, ry: f32, sides: u32, star: bool, inner_ratio: f32) -> Vec<Stroke> {
+    use std::f32::consts::{FRAC_PI_2, TAU};
+    let sides = sides.max(3) as usize;
+    let ratio = inner_ratio.clamp(0.0, 1.0);
+    let n = if star { sides * 2 } else { sides };
+    let mut points = Vec::with_capacity(n + 1);
+    for i in 0..n {
+        let a = -FRAC_PI_2 + (i as f32) * TAU / (n as f32);
+        let r = if star && i % 2 == 1 { ratio } else { 1.0 };
+        points.push(pt(rx * r * a.cos(), ry * r * a.sin()));
+    }
+    if let Some(&first) = points.first() {
+        points.push(first); // close
+    }
+    vec![stroke(points)]
+}
+
 /// Flatten a sequence of cubic-Bézier nodes into one polyline stroke. `nodes` is 6 floats per node:
 /// `[x, y, hinX, hinY, houtX, houtY]`, handles **relative** to the anchor. Segment i→i+1 is the
 /// cubic (Pᵢ, Pᵢ+houtᵢ, Pⱼ+hinⱼ, Pⱼ); zero-length handles give a straight line, so polyline and
@@ -191,6 +211,22 @@ mod split_tests {
         let mt = 1.0 - t;
         let (a, b, c, d) = (mt * mt * mt, 3.0 * mt * mt * t, 3.0 * mt * t * t, t * t * t);
         (a * p0.0 + b * p1.0 + c * p2.0 + d * p3.0, a * p0.1 + b * p1.1 + c * p2.1 + d * p3.1)
+    }
+
+    #[test]
+    fn polygon_and_star_vertex_counts_and_closure() {
+        // Hexagon: 6 vertices + a repeated closing point; closed loop; radius honoured.
+        let hex = &polygon(20.0, 20.0, 6, false, 0.5)[0].points;
+        assert_eq!(hex.len(), 7, "6 sides + closing vertex");
+        assert!((hex[0].x - hex[hex.len() - 1].x).abs() < 1e-4 && (hex[0].y - hex[hex.len() - 1].y).abs() < 1e-4);
+        assert!(hex.iter().all(|p| p.x.hypot(p.y) <= 20.0 + 1e-3), "within the circumradius");
+        // 5-point star: 10 vertices + closing; the inner vertices sit at inner_ratio·radius.
+        let star = &polygon(20.0, 20.0, 5, true, 0.5)[0].points;
+        assert_eq!(star.len(), 11, "5 points → 10 vertices + closing");
+        let inner = star[1].x.hypot(star[1].y); // index 1 is an inner vertex
+        assert!((inner - 10.0).abs() < 1e-3, "inner radius = 0.5·20 (got {inner})");
+        // sides < 3 is clamped up.
+        assert_eq!(polygon(10.0, 10.0, 1, false, 0.5)[0].points.len(), 4, "clamped to a triangle");
     }
 
     #[test]

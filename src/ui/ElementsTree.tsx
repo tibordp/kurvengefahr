@@ -20,6 +20,8 @@ import {
   Type,
   Square,
   Circle,
+  Hexagon,
+  Star,
   Spline,
   Sparkles,
   Image as ImageIcon,
@@ -33,7 +35,7 @@ import { useGeneration, needsManualRegen } from '../core/generation'
 import { useHover } from '../store/hover'
 import type { DocElement } from '../core/types'
 import type { HandwritingParams } from '../elements/handwriting'
-import type { PathParams } from '../elements/shapes'
+import type { PathParams, PolygonParams } from '../elements/shapes'
 import type { TextParams } from '../elements/text'
 import { GEN_KINDS, type GenerativeParams } from '../elements/generative'
 import { SectionTitle, controlClass, cx } from './primitives'
@@ -55,6 +57,7 @@ function derivedName(el: DocElement): string {
   }
   if (el.type === 'rect') return 'Rectangle'
   if (el.type === 'ellipse') return 'Ellipse'
+  if (el.type === 'polygon') return (el.params as PolygonParams).star ? 'Star' : 'Polygon'
   if (el.type === 'path') {
     const p = el.params as PathParams
     const nodeCount = p.contours.reduce((a, c) => a + c.nodes.length, 0)
@@ -116,7 +119,12 @@ interface RowProps extends RowHandlers {
  *  per-word generation tick — only re-renders rows whose data actually changed. */
 const ElementRow = memo(function ElementRow(p: RowProps) {
   const { el } = p
-  const Icon = TYPE_ICON[el.type] ?? Spline
+  const Icon =
+    el.type === 'polygon'
+      ? (el.params as PolygonParams).star
+        ? Star
+        : Hexagon
+      : (TYPE_ICON[el.type] ?? Spline)
   return (
     <li
       className={cx(
