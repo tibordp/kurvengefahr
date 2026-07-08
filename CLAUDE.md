@@ -18,8 +18,8 @@ README *if it changes what the app can do* (it's the user-facing feature list, h
 **Regenerate the docs screenshots** whenever a change is visible in the UI (chrome, canvas,
 inspector): `node docs/screenshot.mjs docs/showcase.kgz` re-renders `docs/showcase.png` through the
 real app in headless Chrome via the public `window.kurvengefahr` API (uses the running dev server,
-else spawns one). Screenshots without a committed `.kgz` source (`overview.png`, `detail.png`) can't
-be regenerated this way — flag them instead of guessing.
+else spawns one). Every committed screenshot must keep its source `.kgz` committed beside it, so
+this always works.
 
 ## Cardinal rule
 

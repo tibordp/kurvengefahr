@@ -1,93 +1,52 @@
 # Kurvengefahr
 
+*Achtung, die Kurve!*
+
 A browser-based CAM tool for pen plotters. Compose on a virtual bed -- handwriting, text, vector
 shapes, imported SVG and DXF, traced photos, generative patterns -- preview the exact toolpath, and
 plot it: download G-code, or drive an AxiDraw live over USB. Everything runs client-side; nothing
 is uploaded.
 
-**[Live app](https://kurven.ojdip.net)** -- installable PWA, works offline. Machine profiles cover
-a Prusa MK4 with a spring-loaded pen holder (or any G-code machine) and AxiDraw-style plotters;
-everything is editable.
+**[Live app](https://kurven.ojdip.net)** -- installable PWA, works offline.
+[Machine profiles](docs/machines.md) cover a Prusa MK4 with a spring-loaded pen holder (or any
+G-code machine) and AxiDraw-style plotters.
 
-![Kurvengefahr with an imported SVG, one shape selected](docs/overview.png)
+![The showcase document: handwriting, generative patterns, effects, and hatch fills](docs/showcase.png)
 
 ## Features
 
-- **Handwriting** -- Type text and a recurrent neural network (Graves' handwriting model) renders it
-  as real handwriting, not a font. Consistent across words and reproducible per text/seed/bias.
-- **Text** -- Single-line (engraving) fonts that plot as one stroke per letter, plus outline fonts you
-  can fill with any hatch. One element type covers both.
-- **Shapes and paths** -- Rectangles, ellipses, regular polygons, stars, lines, Bézier paths, and
-  freehand. Edit points and curve handles on the canvas: add/delete nodes, rubber-band and
-  multi-select, drag several at once, toggle corner/smooth, break handle symmetry. Flip any selection
-  horizontally or vertically.
-- **Booleans, join & weld** -- Union, subtract, intersect, and exclude on closed shapes (holes
-  included); combine several elements into one editable compound path (Bézier curves preserved); weld
-  touching open contours into a single fillable outline; or break a compound path back into its
-  pieces.
-- **Groups** -- Group elements into a real container that moves, scales, and rotates as one nested
-  object. Groups nest, members stay individually editable inside, and ungrouping returns them exactly
-  where they were.
-- **Clip to shape** -- Clip anything (generative patterns, traced images, handwriting, imports) to a
-  shape, non-destructively: the topmost selection becomes the mask, the rest is clipped to it. Clips
-  nest and transform as one object, the mask stays editable and comes back when you release the clip,
-  and you can flatten a clip into plain paths with convert-to-path.
-- **Effects** -- Non-destructive, stackable distortions on any element or group: roughen for a
-  hand-drawn wobble, smooth to round corners and iron out jitter, wave for sinusoidal (and anharmonic)
-  warps, sketch for multi-pass overdraw, twist or bulge to swirl and balloon, and taper for a
-  calligraphic pen-lift that fades pressure toward each stroke's ends. The source stays editable -- a
-  path keeps its nodes, shown over a ghost of the original shape -- while the effected strokes are what
-  plot. An effect on a group warps its combined geometry as one coherent field.
-- **Generative** -- Parametric pattern generators: spirographs, L-system fractals, Truchet tiles,
-  Voronoi diagrams, and noise flow fields, each fit to a box and reproducible per seed.
-- **Vector import** -- SVG and DXF become native, editable paths, sized to fit or imported at 1:1
-  (real size for physical units, or a chosen DPI for pixel art). For SVG, overlapping fills are
-  clipped to their visible area so hidden regions don't plot, colors map to the nearest pen, and fill
-  darkness sets hatch density. DXF imports lines, polylines (with bulges), arcs, circles, ellipses,
-  and splines as line art at real-world size (units read from the header, overridable), colored by
-  entity or layer, merging connected segments into polylines so a drawing exported as thousands of
-  loose lines becomes a handful of paths.
-- **Raster tracing** -- Restyle an image as strokes: contour outlines, centerlines for line art (one
-  stroke per line), topographic levels, hatching, a pressure hatch (an even rake whose pen pressure
-  tracks darkness), scanlines, a single TSP tour, flow fields, or spirals, with live preview.
-- **Hatch fills** -- A pen can't lay solid ink, so closed shapes fill with lines, cross-hatch, grid,
-  concentric rings, a Hilbert curve, a gradient, scribble, stipple dots, Voronoi cells, Truchet tiles,
-  an Archimedean spiral, or a maze at an adjustable density.
-- **Stroke styles** -- Dashed strokes per element, broken into real on/off marks by arc length, shown
-  in the preview and the G-code.
-- **Multi-pen output** -- Assign a pen per element; the job is grouped by color with a pause to swap
-  pens between colors, and each color's strokes are ordered to cut pen travel.
-- **Pen pressure** -- Set a pressure per element, shown as line weight on the canvas and in the
-  preview. The machine profile maps it to a pen-down Z range (light to full) for a spring-loaded
-  holder; profiles that only do pen up/down can turn pressure off, which disables the control.
-- **Reachable area** -- Account for the pen's offset from the nozzle; anything the pen can't reach is
-  greyed out and clipped away.
-- **Registration** -- An optional fiducial point the plot travels to and pauses at, so you can
-  position the paper before the first stroke.
-- **Preview** -- Scrub and play back the whole toolpath -- travel moves, pen lifts, and draws --
-  before downloading the G-code.
-- **Export** -- Download G-code, or export the artwork as SVG or a transparent PNG.
-- **Plot directly** -- With the companion Bridge for PrusaLink browser extension, bind a profile to one of
-  your printers and send the job straight to it with one click -- no download-and-transfer. Credentials
-  live in the extension; the app only ever sees the printer's name and live status.
-- **AxiDraw support** -- Pick an AxiDraw profile and the app talks to the machine's EBB board
-  directly over USB (Web Serial) -- no G-code, no other software. Motion is planned in Rust with
-  proper acceleration and cornering profiles, then streamed live with a progress HUD, a moving
-  playhead on the canvas, and pause/resume (from the app or the board's physical button) that
-  always lands at a safe rest point. Stopping lifts the pen and returns the carriage home.
-  Fiducial alignment and pen swaps pause the machine and prompt in the app.
-- **Elements tree** -- A searchable, collapsible list of every element, with groups and clips as
-  nested, named containers; selection is synced both ways with the canvas.
-- **Documents** -- Multiple drawings in tabs, autosaved, with cross-tab sync, undo/redo that survives
-  a refresh, and `.kgz` export.
-- A command palette (`Ctrl/Cmd+K`), fit-to-view, system-clipboard copy/paste across documents and
-  tabs (and image paste), light/dark themes, grid snapping, and a responsive layout that collapses to
-  a drawer on small screens.
+- **Handwriting** -- a recurrent neural network (Graves' handwriting model) writes your text as real
+  handwriting, not a font; consistent across words, reproducible per seed and neatness.
+- **Text** -- single-stroke engraving fonts, plus outline fonts you can fill with any hatch.
+- **Shapes and paths** -- rectangles, ellipses, polygons, stars, Béziers, and freehand, with full
+  node editing on the canvas; booleans, join, and weld turn several shapes into one editable path.
+- **Groups, clips, and effects** -- nest elements into containers, clip anything to a shape, and
+  stack non-destructive distortions (roughen, smooth, wave, sketch, twist, bulge, taper) on any of
+  it. The source stays editable throughout.
+- **Generative patterns** -- spirographs, L-system fractals, Truchet tiles, Voronoi diagrams, and
+  flow fields, reproducible per seed.
+- **SVG and DXF import** -- files become native, editable paths at real-world size, colors mapped to
+  pens; occluded fill regions are clipped away so they don't plot.
+- **Raster tracing** -- restyle a photo as strokes: outlines, centerlines, topographic levels,
+  hatching, scanlines, a single TSP tour, flow fields, or spirals, with live preview.
+- **Hatch fills** -- a pen can't lay solid ink, so closed shapes fill with lines, rings, Hilbert
+  curves, mazes, and friends, at an adjustable density.
+- **Made for pens** -- a pen per element with color-grouped output and swap pauses, pressure as line
+  weight (mapped to Z on spring-loaded holders), dashed strokes, travel-optimized ordering, a
+  registration pause to line up the paper, and a scrubbable preview of the exact toolpath.
+- **Plot it** -- download G-code, send it to a PrusaLink printer with the companion Bridge
+  extension, or drive an AxiDraw live over Web Serial with pause/resume and a moving playhead.
+  Artwork also exports as SVG or PNG.
+- **A real editor** -- autosaved multi-document tabs with cross-tab sync, undo/redo that survives a
+  refresh, an elements tree, a command palette, clipboard across tabs, light/dark themes.
+
+More detail lives in [docs/](docs/index.md), including the [browser API](docs/browser-api.md) for
+userscripts and headless tooling.
 
 ## How it works
 
 Every mark -- handwriting, a shape, an imported path, a traced image -- reduces to the same thing: a
-list of pen-down polylines in millimetres. That representation flows through one pipeline (place on
+list of pen-down polylines in millimeters. That representation flows through one pipeline (place on
 the page, clip to the reachable area, optimize stroke order, then emit G-code or plan AxiDraw
 motion), so adding a new input type never touches the machinery downstream.
 
