@@ -40,9 +40,8 @@ export async function importDocumentContainer(file: Blob): Promise<ImportDocumen
   return { status: 'ok' }
 }
 
-/** Build the active document's `.kgz` container Blob (document JSON + every referenced image blob;
- *  a missing blob is simply omitted — the element re-imports as a placeholder). */
-export async function exportActiveDocument(): Promise<Blob> {
+/** The active document as its file envelope — the same JSON as `document.json` inside a `.kgz`. */
+export function activeDocumentFile(): ReturnType<typeof documentFile> {
   const { activeId, activeName, index } = useDocuments.getState()
   const { elements, profile, selectedIds, fiducial } = useDoc.getState()
   const doc: StoredDoc = {
@@ -55,10 +54,16 @@ export async function exportActiveDocument(): Promise<Blob> {
     selectedIds,
     fiducial,
   }
+  return documentFile(doc)
+}
+
+/** Build the active document's `.kgz` container Blob (document JSON + every referenced image blob;
+ *  a missing blob is simply omitted — the element re-imports as a placeholder). */
+export async function exportActiveDocument(): Promise<Blob> {
   const images: ContainerImage[] = []
-  for (const imageId of referencedImageIds(elements)) {
+  for (const imageId of referencedImageIds(useDoc.getState().elements)) {
     const blob = await getImageBlob(imageId)
     if (blob) images.push({ imageId, blob })
   }
-  return exportDocumentContainer(documentFile(doc), images)
+  return exportDocumentContainer(activeDocumentFile(), images)
 }

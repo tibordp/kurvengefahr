@@ -16,15 +16,16 @@ interface Plottable {
   penColor: (p: number) => string
   /** Profile maps pressure to line weight — render pressure as varying width, matching canvas/preview. */
   pressureOn: boolean
-  name: string
 }
 
 function plottable(): Plottable {
   const { elements, profile } = useDoc.getState()
   const geom = buildPlottableGeometry(elements, profile)
   const penColor = (pen: number) => profile.pens.find((p) => p.id === pen)?.color ?? '#1a1a1a'
-  return { geom, bed: profile.bed, penColor, pressureOn: pressureEnabled(profile), name: useDocuments.getState().activeName }
+  return { geom, bed: profile.bed, penColor, pressureOn: pressureEnabled(profile) }
 }
+
+const docName = () => safeFilename(useDocuments.getState().activeName, 'kurvengefahr')
 
 const PRESSURE_EPS = 1e-3
 /** Whether a stroke's pressure varies along its length (needs per-segment width to render honestly). */
@@ -52,8 +53,9 @@ function byPen(geom: Geometry, order: number[]): Map<number, Geometry> {
   return sorted
 }
 
-export function exportSvg(): void {
-  const { geom, bed, penColor, pressureOn, name } = plottable()
+/** The plottable geometry rendered as an SVG Blob (one layer per pen, page mm on the bed). */
+export function buildSvgBlob(): Blob {
+  const { geom, bed, penColor, pressureOn } = plottable()
   const { pens } = useDoc.getState().profile
   const groups = byPen(geom, pens.map((p) => p.id))
   const f3 = (n: number) => n.toFixed(3)
@@ -85,18 +87,23 @@ export function exportSvg(): void {
     `<svg xmlns="http://www.w3.org/2000/svg" width="${bed.width}mm" height="${bed.height}mm" ` +
     `viewBox="0 0 ${bed.width} ${bed.height}" fill="none" stroke-width="${PEN_WIDTH_MM}" ` +
     `stroke-linecap="round" stroke-linejoin="round">\n${body}</svg>\n`
-  downloadBlob(`${safeFilename(name, 'kurvengefahr')}.svg`, new Blob([svg], { type: 'image/svg+xml' }))
+  return new Blob([svg], { type: 'image/svg+xml' })
 }
 
-/** PNG export at `pxPerMm` pixels per millimetre (default ≈ a crisp, bounded image). */
-export async function exportPng(pxPerMm?: number): Promise<void> {
-  const { geom, bed, penColor, pressureOn, name } = plottable()
+export function exportSvg(): void {
+  downloadBlob(`${docName()}.svg`, buildSvgBlob())
+}
+
+/** The plottable geometry rendered as a transparent PNG Blob at `pxPerMm` pixels per millimetre
+ *  (default ≈ a crisp, bounded image). Null only if canvas encoding fails. */
+export async function buildPngBlob(pxPerMm?: number): Promise<Blob | null> {
+  const { geom, bed, penColor, pressureOn } = plottable()
   const scale = pxPerMm ?? Math.min(10, Math.max(2, 2400 / Math.max(bed.width, bed.height)))
   const canvas = document.createElement('canvas')
   canvas.width = Math.max(1, Math.round(bed.width * scale))
   canvas.height = Math.max(1, Math.round(bed.height * scale))
   const ctx = canvas.getContext('2d')
-  if (!ctx) return
+  if (!ctx) return null
   // Leave the background transparent (a fresh canvas is already clear; PNG keeps the alpha).
   ctx.lineCap = 'round'
   ctx.lineJoin = 'round'
@@ -115,8 +122,13 @@ export async function exportPng(pxPerMm?: number): Promise<void> {
       ctx.stroke()
     }
   }
-  const blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, 'image/png'))
-  if (blob) downloadBlob(`${safeFilename(name, 'kurvengefahr')}.png`, blob)
+  return new Promise<Blob | null>((res) => canvas.toBlob(res, 'image/png'))
+}
+
+/** PNG export at `pxPerMm` pixels per millimetre (default ≈ a crisp, bounded image). */
+export async function exportPng(pxPerMm?: number): Promise<void> {
+  const blob = await buildPngBlob(pxPerMm)
+  if (blob) downloadBlob(`${docName()}.png`, blob)
 }
 
 const esc = (s: string) => s.replace(/[<>&"]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' })[c]!)

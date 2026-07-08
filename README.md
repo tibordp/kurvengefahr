@@ -84,8 +84,6 @@ everything is editable.
   tabs (and image paste), light/dark themes, grid snapping, and a responsive layout that collapses to
   a drawer on small screens.
 
-![An imported pelican-on-a-bicycle SVG, occluded and hatched by fill darkness](docs/detail.png)
-
 ## How it works
 
 Every mark -- handwriting, a shape, an imported path, a traced image -- reduces to the same thing: a
