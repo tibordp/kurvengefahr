@@ -15,6 +15,12 @@ anything all contributors' agents should know lives here in CLAUDE.md.
 README *if it changes what the app can do* (it's the user-facing feature list, house style: no emoji,
 `--` not em-dash, American spelling). Skip it for internal-only changes.
 
+**Regenerate the docs screenshots** whenever a change is visible in the UI (chrome, canvas,
+inspector): `node docs/screenshot.mjs docs/showcase.kgz` re-renders `docs/showcase.png` through the
+real app in headless Chrome via the public `window.kurvengefahr` API (uses the running dev server,
+else spawns one). Screenshots without a committed `.kgz` source (`overview.png`, `detail.png`) can't
+be regenerated this way — flag them instead of guessing.
+
 ## Cardinal rule
 
 **All "fancy" geometry/toolpath compute lives in Rust** (`crate/`, compiled to WASM). TS owns the

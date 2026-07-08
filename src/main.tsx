@@ -4,6 +4,7 @@ import { createRoot } from 'react-dom/client'
 import { App } from './App'
 import { initWasm } from './core/wasm'
 import { initDocuments } from './store/documents'
+import { installApi } from './api'
 import '@fontsource-variable/inter/index.css'
 import './index.css'
 
@@ -15,6 +16,7 @@ initWasm().then(
   () => {
     // Restore this tab's document (or start a blank one) + start autosave before first paint.
     initDocuments()
+    installApi() // the public window.kurvengefahr surface (userscripts, docs/screenshot.mjs)
     root.render(
       <StrictMode>
         <App />

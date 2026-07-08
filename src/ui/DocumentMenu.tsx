@@ -6,28 +6,10 @@ import { ChevronDown, FilePlus, Copy, Trash2, Upload, Download, FileText, Folder
 import { importContentFile } from '../canvas/importImage'
 import { useExportDialog } from '../store/exportDialog'
 import { useDocuments } from '../store/documents'
-import { useDoc } from '../store/document'
 import { useSaveStatus } from '../store/saveStatus'
-import { documentFile, CURRENT_DOC_SCHEMA, type DocSnapshot, type StoredDoc } from '../store/persistence/schema'
 import { downloadBlob, pickFile, safeFilename } from '../output/download'
-import { exportDocumentContainer, parseDocumentContainer, type ContainerImage } from '../output/container'
-import { getImageBlob, putImageBlob, referencedImageIds } from '../store/images'
+import { exportActiveDocument, importDocumentContainer } from '../output/documentContainer'
 import { Menu, MenuItem, MenuSeparator, MenuLabel, IconButton, cx } from './primitives'
-
-/** Rewrite each element's `params.imageId` through `idMap` (import re-mints blob ids). */
-function remapImageIds(snapshot: DocSnapshot, idMap: Map<string, string>): DocSnapshot {
-  if (idMap.size === 0) return snapshot
-  return {
-    ...snapshot,
-    elements: snapshot.elements.map((el) => {
-      const p = el.params as { imageId?: unknown }
-      if (p && typeof p.imageId === 'string' && idMap.has(p.imageId)) {
-        return { ...el, params: { ...(el.params as object), imageId: idMap.get(p.imageId)! } }
-      }
-      return el
-    }),
-  }
-}
 
 /** The document title — looks like text, becomes an input on focus, commits on blur / Enter. */
 function DocName() {
@@ -81,34 +63,15 @@ export function DocumentMenu() {
   const activeId = useDocuments((s) => s.activeId)
 
   const onExport = async () => {
-    const { activeId, activeName, index } = useDocuments.getState()
-    const { elements, profile, selectedIds, fiducial } = useDoc.getState()
-    const doc: StoredDoc = {
-      schemaVersion: CURRENT_DOC_SCHEMA,
-      id: activeId,
-      name: activeName,
-      updatedAt: index.find((m) => m.id === activeId)?.updatedAt ?? Date.now(),
-      elements,
-      profile,
-      selectedIds,
-      fiducial,
-    }
-    // Bundle every referenced image blob alongside the JSON. A missing blob is simply omitted (the
-    // element re-imports as a placeholder).
-    const images: ContainerImage[] = []
-    for (const imageId of referencedImageIds(elements)) {
-      const blob = await getImageBlob(imageId)
-      if (blob) images.push({ imageId, blob })
-    }
-    const container = await exportDocumentContainer(documentFile(doc), images)
-    downloadBlob(`${safeFilename(activeName, 'kurvengefahr')}.kgz`, container)
+    const container = await exportActiveDocument()
+    downloadBlob(`${safeFilename(useDocuments.getState().activeName, 'kurvengefahr')}.kgz`, container)
   }
 
   const onImport = async () => {
     try {
       const file = await pickFile('.kgz,application/zip')
       if (!file) return
-      const res = await parseDocumentContainer(file)
+      const res = await importDocumentContainer(file)
       if (res.status === 'unsupported') {
         alert(`Can't import — ${res.message}. Try updating the app.`)
         return
@@ -117,16 +80,6 @@ export function DocumentMenu() {
         alert('That file is not a valid Kurvengefahr document.')
         return
       }
-      // Re-mint each image id (avoid clobbering existing blobs / collisions across files), write the
-      // blobs, and remap the snapshot's element params to the new ids before loading.
-      const idMap = new Map<string, string>()
-      for (const img of res.value.images) {
-        const newId = crypto.randomUUID()
-        idMap.set(img.imageId, newId)
-        await putImageBlob(newId, img.blob)
-      }
-      const snapshot = remapImageIds(res.value.snapshot, idMap)
-      useDocuments.getState().loadImported(res.value.name || 'Imported', snapshot)
     } catch {
       alert('Could not read that file.')
     }
