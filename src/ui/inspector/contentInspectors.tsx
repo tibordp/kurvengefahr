@@ -86,6 +86,12 @@ export function HandwritingInspector({ id, params }: { id: string; params: Handw
         onChange={(v) => setLayout({ maxWidthMm: v })} />
       <Num label="Slant (°)" value={params.layout.slantDeg} step={1}
         onChange={(v) => setLayout({ slantDeg: v })} />
+      <Num label="Word gap (em)" value={params.layout.wordSpacingEm} step={0.05}
+        title="Space between words, in ems of the font size."
+        onChange={(v) => setLayout({ wordSpacingEm: Math.max(0, v) })} />
+      <Num label="Paragraph gap (em)" value={params.layout.paragraphSpacingEm} step={0.1}
+        title="Extra vertical space after a hard line break, in ems."
+        onChange={(v) => setLayout({ paragraphSpacingEm: Math.max(0, v) })} />
       <Field label="Align">
         <select
           className={controlClass}
@@ -95,6 +101,7 @@ export function HandwritingInspector({ id, params }: { id: string; params: Handw
           <option value="left">left</option>
           <option value="center">center</option>
           <option value="right">right</option>
+          <option value="justify">justify</option>
         </select>
       </Field>
       <div className="my-3 flex flex-col gap-2.5">
@@ -254,11 +261,15 @@ export function TextInspector({ id, params }: { id: string; params: TextParams }
         onChange={(v) => up({ letterSpacing: v })} />
       <Num label="Line spacing" value={params.lineSpacing} step={0.1}
         onChange={(v) => up({ lineSpacing: Math.max(0.5, v) })} />
+      <Num label="Wrap (mm)" value={params.maxWidth} step={5}
+        title="Wrap long lines at this width. 0 = no wrapping (break lines manually)."
+        onChange={(v) => up({ maxWidth: Math.max(0, v) })} />
       <Field label="Align">
         <select className={controlClass} value={params.align} onChange={(e) => up({ align: e.target.value as TextAlign })}>
           <option value="left">Left</option>
           <option value="center">Center</option>
           <option value="right">Right</option>
+          <option value="justify" disabled={params.maxWidth <= 0}>Justify</option>
         </select>
       </Field>
       {params.mode === 'outline' && (

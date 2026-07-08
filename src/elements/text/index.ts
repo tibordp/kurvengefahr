@@ -8,7 +8,7 @@ import { type Hatch, defaultHatch, sanitizeHatch, pathFill } from '../shapes/hat
 import type { Geometry, Point } from '../../core/types'
 
 export type TextMode = 'single' | 'outline'
-export type TextAlign = 'left' | 'center' | 'right'
+export type TextAlign = 'left' | 'center' | 'right' | 'justify'
 
 export interface TextParams {
   text: string
@@ -20,6 +20,8 @@ export interface TextParams {
   letterSpacing: number
   lineSpacing: number
   align: TextAlign
+  /** Wrap width in mm; 0 = no wrap (lines break only on newlines). Justify needs a wrap width. */
+  maxWidth: number
   /** Fill for outline mode (ignored in single mode). Default 'none' ⇒ glyph outlines only. */
   hatch: Hatch
 }
@@ -48,6 +50,7 @@ export const defaultTextParams = (text = 'Text'): TextParams => ({
   letterSpacing: 0,
   lineSpacing: 1.3,
   align: 'left',
+  maxWidth: 0,
   hatch: defaultHatch(),
 })
 
@@ -66,6 +69,7 @@ registerElement('text', {
         letter_spacing: p.letterSpacing,
         line_spacing: p.lineSpacing,
         align: p.align,
+        max_width: p.maxWidth,
       }),
     )
     if (p.mode !== 'outline') return geom // single-stroke centrelines
@@ -78,7 +82,7 @@ registerElement('text', {
   sanitizeParams: (raw) => {
     const o = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
     const mode: TextMode = o.mode === 'outline' ? 'outline' : 'single'
-    const align = o.align === 'center' || o.align === 'right' ? o.align : 'left'
+    const align = o.align === 'center' || o.align === 'right' || o.align === 'justify' ? o.align : 'left'
     return {
       text: str(o.text, ''),
       mode,
@@ -87,6 +91,7 @@ registerElement('text', {
       letterSpacing: num(o.letterSpacing, 0),
       lineSpacing: Math.max(0.5, num(o.lineSpacing, 1.3)),
       align,
+      maxWidth: Math.max(0, num(o.maxWidth, 0)),
       hatch: sanitizeHatch(o.hatch),
     } as TextParams
   },

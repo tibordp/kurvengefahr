@@ -21,9 +21,13 @@ export interface Layout {
   lineHeightEm: number
   /** Wrap width in millimetres. */
   maxWidthMm: number
-  align: 'left' | 'center' | 'right'
+  align: 'left' | 'center' | 'right' | 'justify'
   /** Forward slant in degrees (italic shear) applied on top of the model's natural slant. */
   slantDeg: number
+  /** Gap between words, in ems. */
+  wordSpacingEm: number
+  /** Extra vertical gap after each paragraph (hard line break), in ems. */
+  paragraphSpacingEm: number
 }
 
 export interface HandwritingParams {
@@ -35,9 +39,6 @@ export interface HandwritingParams {
    *  else (free reordering + reversal). */
   globalOptimize: boolean
 }
-
-/** Align enum → the u8 the WASM API expects. Shared with the generation worker. */
-export const ALIGN_CODE: Record<Layout['align'], number> = { left: 0, center: 1, right: 2 }
 
 // Async (worker-backed). Locked into natural reading order unless the element opts into global
 // optimization. No synchronous `generate` — the controller produces geometry off-thread.
@@ -57,7 +58,9 @@ export function sanitizeHandwritingParams(raw: unknown): HandwritingParams {
   const s = (p.style && typeof p.style === 'object' ? p.style : {}) as Record<string, any>
   const l = (p.layout && typeof p.layout === 'object' ? p.layout : {}) as Record<string, any>
   const align: Layout['align'] =
-    l.align === 'left' || l.align === 'center' || l.align === 'right' ? l.align : d.layout.align
+    l.align === 'left' || l.align === 'center' || l.align === 'right' || l.align === 'justify'
+      ? l.align
+      : d.layout.align
   return {
     text: typeof p.text === 'string' ? p.text : d.text,
     style: { seed: numOr(s.seed, d.style.seed), bias: numOr(s.bias, d.style.bias) },
@@ -67,6 +70,8 @@ export function sanitizeHandwritingParams(raw: unknown): HandwritingParams {
       maxWidthMm: numOr(l.maxWidthMm, d.layout.maxWidthMm),
       align,
       slantDeg: numOr(l.slantDeg, d.layout.slantDeg),
+      wordSpacingEm: numOr(l.wordSpacingEm, d.layout.wordSpacingEm),
+      paragraphSpacingEm: numOr(l.paragraphSpacingEm, d.layout.paragraphSpacingEm),
     },
     globalOptimize: typeof p.globalOptimize === 'boolean' ? p.globalOptimize : d.globalOptimize,
   }
@@ -83,6 +88,8 @@ export function defaultHandwritingParams(text = 'Kurvengefahr'): HandwritingPara
       align: 'left',
       // The model already produces natural cursive slant; default extra shear to 0.
       slantDeg: 0,
+      wordSpacingEm: 0.5,
+      paragraphSpacingEm: 0,
     },
     globalOptimize: false,
   }

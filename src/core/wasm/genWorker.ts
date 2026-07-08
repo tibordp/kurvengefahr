@@ -14,17 +14,12 @@ import init, {
 } from '@wasm/kg_core.js'
 import wasmUrl from '@wasm/kg_core_bg.wasm?url'
 import { flatten, unflatten } from './serde'
+import { lineShift, justifyOffsets } from './layoutMath'
 import type { Geometry } from '../types'
 import type { HandwritingParams } from '../../elements/handwriting'
 
-/** Fraction of an em reserved above the first baseline (ascenders) and as the inter-word gap. */
+/** Fraction of an em reserved above the first baseline (ascenders). */
 const TOP_PAD_EM = 0.9
-const SPACE_EM = 0.5
-const ALIGN_FACTOR: Record<HandwritingParams['layout']['align'], number> = {
-  left: 0,
-  center: 0.5,
-  right: 1,
-}
 
 // Typed worker `postMessage` (TS otherwise resolves the DOM Window overload that wants a string).
 const post = (msg: unknown, transfer?: Transferable[]) =>
@@ -114,35 +109,43 @@ async function runJob(job: GenerateMsg) {
 
     const { layout, style } = params
     const fs = layout.fontSizeMm
-    const space = SPACE_EM * fs
+    const space = layout.wordSpacingEm * fs
     const advance = layout.lineHeightEm * fs
-    const alignF = ALIGN_FACTOR[layout.align]
+    const paragraphGap = layout.paragraphSpacingEm * fs
 
     // Split the substituted text into paragraphs (hard breaks) of words.
     const paragraphs = clean_text(params.text).split('\n').map((p) => p.split(/\s+/).filter(Boolean))
     const total = paragraphs.reduce((n, w) => n + w.length, 0)
 
-    const placed: Geometry = [] // finalized (aligned) lines
-    let line: Geometry = [] // current line, positioned at running penX (pre-alignment)
+    const placed: Geometry = [] // finalized (aligned/justified) lines
+    let line: { geom: Geometry; width: number }[] = [] // current line's words, at running penX
     let penX = 0
     let baselineY = TOP_PAD_EM * fs
     let lineWidth = 0
     let done = 0
     let wordSeq = 0
 
-    const lineShift = () => alignF * (layout.maxWidthMm - lineWidth)
-    const flushLine = () => {
-      const dx = lineShift()
-      if (dx !== 0) translate(line, dx, 0)
-      for (const s of line) placed.push(s)
+    /** Finalize the current line. Justify stretches gaps on soft (wrap-broken) lines only; hard
+     *  breaks (paragraph end) stay ragged, like the last line of any justified paragraph. */
+    const flushLine = (soft: boolean) => {
+      if (layout.align === 'justify') {
+        const shifts = justifyOffsets(line.length, layout.maxWidthMm, lineWidth, soft)
+        for (let i = 0; i < line.length; i++) if (shifts[i] !== 0) translate(line[i].geom, shifts[i], 0)
+      } else {
+        const dx = lineShift(layout.align, layout.maxWidthMm, lineWidth)
+        if (dx !== 0) for (const w of line) translate(w.geom, dx, 0)
+      }
+      for (const w of line) for (const s of w.geom) placed.push(s)
       line = []
       penX = 0
       lineWidth = 0
     }
     const postPartial = () => {
-      // Show the current line at its in-progress alignment without baking it in yet.
-      const dx = lineShift()
-      const display = dx !== 0 ? line.map((s) => ({ ...s, points: s.points.map((p) => ({ ...p, x: p.x + dx })) })) : line
+      // Show the current line at its in-progress alignment without baking it in yet (justify
+      // renders ragged-left until the line is complete — gaps only stretch at flush).
+      const dx = layout.align === 'justify' ? 0 : lineShift(layout.align, layout.maxWidthMm, lineWidth)
+      const current = line.flatMap((w) => w.geom)
+      const display = dx !== 0 ? current.map((s) => ({ ...s, points: s.points.map((p) => ({ ...p, x: p.x + dx })) })) : current
       const flat = flatten(placed.concat(display))
       post({ type: 'partial', jobId, elementId, hash, done, total, ...flat }, [
         flat.xy.buffer, flat.pressure.buffer, flat.offsets.buffer, flat.pen.buffer, flat.reversible.buffer, flat.group.buffer,
@@ -152,8 +155,8 @@ async function runJob(job: GenerateMsg) {
     for (const words of paragraphs) {
       if (words.length === 0) {
         // Blank line: end the current line and leave a vertical gap.
-        flushLine()
-        baselineY += advance
+        flushLine(false)
+        baselineY += advance + paragraphGap
         continue
       }
       for (const word of words) {
@@ -171,19 +174,19 @@ async function runJob(job: GenerateMsg) {
 
         // Wrap if this word would overflow the current (non-empty) line.
         if (penX > 0 && penX + width > layout.maxWidthMm) {
-          flushLine()
+          flushLine(true)
           baselineY += advance
         }
         translate(wordGeom, penX, baselineY)
-        for (const s of wordGeom) line.push(s)
+        line.push({ geom: wordGeom, width })
         penX += width + space
         lineWidth = penX - space
         done++
         postPartial()
       }
       // Paragraph boundary → hard line break.
-      flushLine()
-      baselineY += advance
+      flushLine(false)
+      baselineY += advance + paragraphGap
     }
 
     if (aborted()) return

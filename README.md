@@ -17,7 +17,8 @@ G-code machine) and AxiDraw-style plotters.
 
 - **Handwriting** -- a recurrent neural network (Graves' handwriting model) writes your text as real
   handwriting, not a font; consistent across words, reproducible per seed and neatness.
-- **Text** -- single-stroke engraving fonts, plus outline fonts you can fill with any hatch.
+- **Text** -- single-stroke engraving fonts, plus outline fonts you can fill with any hatch. Real
+  typesetting: honest font metrics, kerning, word wrap, and justification.
 - **Shapes and paths** -- rectangles, ellipses, polygons, stars, Béziers, and freehand, with full
   node editing on the canvas; booleans, join, and weld turn several shapes into one editable path.
 - **Groups, clips, and effects** -- nest elements into containers, clip anything to a shape, and

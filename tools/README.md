@@ -1,8 +1,25 @@
-# tools/ — handwriting model weight conversion (dev-time only)
+# tools/ — dev-time asset generators
+
+Scripts that produce committed assets: the handwriting model weight blob and the Hershey font data.
+**End users never run these** — the committed artifacts are all the app needs.
+
+## Hershey fonts (`crate/fonts/hershey.json`)
+
+`gen_hershey.py` regenerates the single-stroke font data from the public-domain Hershey JHF
+sources, with each glyph's **true horizontal advance** (JHF right − left) as `a`:
+
+```sh
+git clone --depth 1 https://github.com/kamalmostafa/hershey-fonts /tmp/hershey-fonts
+python3 tools/gen_hershey.py /tmp/hershey-fonts/hershey-fonts
+```
+
+Stdlib-only. The script self-checks against the existing json (stroke `d`-strings must match
+exactly) so a JHF parsing bug can't silently reshape the glyphs.
+
+# Handwriting model weight conversion
 
 These scripts convert the pretrained **Graves RNN-MDN** handwriting-synthesis weights into the flat
-`public/models/kg_model.f16.bin` blob that the WASM crate loads at runtime. **End users never run
-these** — the committed `.bin` is all the app needs.
+`public/models/kg_model.f16.bin` blob that the WASM crate loads at runtime.
 
 ## Source weights & license caveat
 
