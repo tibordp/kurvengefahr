@@ -1,7 +1,7 @@
 // Drawable region (computed here — it's view-adjacent) + a thin wrapper over the Rust clipper.
 // The pen reaches `bed ∩ (bed + offset)`; the rest of the paper is unreachable. The actual
 // polyline clipping/splitting lives in the crate (clip.rs); this just marshals across.
-import type { Geometry, MachineProfile, Point } from '../types'
+import { penOffsetOf, type Geometry, type MachineProfile, type Point } from '../types'
 import { clip as wasmClip, clip_polygon as wasmClipPolygon } from '../wasm'
 import { flatten, unflatten } from '../wasm/serde'
 
@@ -16,7 +16,8 @@ export interface Rect {
  *  relative to the nozzle, so part of the paper becomes unreachable; with origin flips the
  *  unreachable strip lands on the matching page edge. */
 export function drawableRegion(profile: MachineProfile): Rect {
-  const { bed, penOffset, origin } = profile
+  const { bed, origin } = profile
+  const penOffset = penOffsetOf(profile)
   // Machine-space reach: pen target must lie on paper AND map to an in-bounds nozzle.
   const mx0 = Math.max(0, penOffset.x)
   const mx1 = bed.width + Math.min(0, penOffset.x)

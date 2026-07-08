@@ -43,6 +43,7 @@ function usePlayback() {
 
 export function PreviewControls() {
   const active = usePreview((s) => s.active)
+  const driven = usePreview((s) => s.driven)
   const playing = usePreview((s) => s.playing)
   const dist = usePreview((s) => s.dist)
   const total = usePreview((s) => s.toolpath?.total ?? 0)
@@ -52,7 +53,8 @@ export function PreviewControls() {
   const setSpeed = usePreview((s) => s.setSpeed)
 
   usePlayback()
-  if (!active) return null
+  // A live plot session drives the playhead itself (the HUD is the transport UI).
+  if (!active || driven) return null
 
   const atEnd = dist >= total
   const onPlay = () => {

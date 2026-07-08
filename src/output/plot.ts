@@ -1,7 +1,8 @@
-// Direct-plot transport seam. Wraps the Bridge for PrusaLink extension client (one singleton) and
-// dispatches a plot job by the profile's device binding. The only transport today is `prusalink`;
-// a future `webserial` (e.g. AxiDraw) adds another arm here. All extension access is consent-gated
-// inside the extension; credentials never reach this code.
+// Direct-plot transport seam for *fire-and-forget* jobs. Wraps the Bridge for PrusaLink extension
+// client (one singleton) and dispatches a plot job by the profile's device binding. The
+// `webserial` transport (AxiDraw) does NOT go through here — a serial plot is a live streaming
+// session with pause/cancel (src/output/ebb + the plot-session store), not a one-shot send. All
+// extension access is consent-gated inside the extension; credentials never reach this code.
 import { createBridge, BridgeError, type PrinterInfo, type PrinterStatus } from '@tibordp/prusalink-bridge'
 import type { MachineProfile } from '../core/types'
 

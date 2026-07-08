@@ -51,8 +51,9 @@ export function useShortcuts(): void {
       if (isTyping(e.target)) return
 
       // Escape snaps out of the read-only preview back to editing (handled before tool/canvas Escape
-      // uses, which are no-ops during preview anyway).
-      if (e.key === 'Escape' && usePreview.getState().active) {
+      // uses, which are no-ops during preview anyway). Not in driven mode: a live plot session owns
+      // the overlay — it exits when the plot ends, not on a stray keypress.
+      if (e.key === 'Escape' && usePreview.getState().active && !usePreview.getState().driven) {
         e.preventDefault()
         usePreview.getState().exit()
         return
@@ -84,9 +85,10 @@ export function useShortcuts(): void {
       // only place with synchronous system-clipboard access — so they hit the real OS clipboard and
       // work across documents, tabs and windows. Nothing to do here.
 
-      // Space toggles preview playback (only while the preview transport is active). If a button
-      // has focus, let its native Space-activation handle it instead (avoids a double-toggle).
-      if (e.key === ' ' && usePreview.getState().active) {
+      // Space toggles preview playback (only while the preview transport is active — not while a
+      // live plot session drives the playhead). If a button has focus, let its native
+      // Space-activation handle it instead (avoids a double-toggle).
+      if (e.key === ' ' && usePreview.getState().active && !usePreview.getState().driven) {
         const el = e.target as HTMLElement | null
         if (el?.tagName === 'BUTTON' || el?.closest?.('button')) return
         e.preventDefault()

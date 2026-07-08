@@ -1,10 +1,11 @@
 // Machine-profile presets. These seed the editable document profile; nothing is locked to
-// the MK4 — bed, feeds, Z heights and pre/postamble are all editable in the UI.
-import type { MachineProfile } from '../core/types'
+// the MK4 — bed, feeds, Z heights and pre/postamble are all editable in the UI. A profile's
+// `kind` comes from the preset it was seeded from (there's no kind switcher).
+import type { AxidrawProfile, MachineProfile, PrusaProfile } from '../core/types'
 
 const DEFAULT_PENS = [{ id: 0, name: 'Pen 1', color: '#1a1a1a' }]
 
-export const PRUSA_MK4: MachineProfile = {
+export const PRUSA_MK4: PrusaProfile = {
   id: 'prusa-mk4',
   name: 'Prusa MK4 + pen holder',
   kind: 'prusa',
@@ -22,7 +23,7 @@ export const PRUSA_MK4: MachineProfile = {
   units: 'mm',
 }
 
-export const GENERIC_A4: MachineProfile = {
+export const GENERIC_A4: PrusaProfile = {
   id: 'generic-a4',
   name: 'Generic A4',
   kind: 'prusa',
@@ -38,7 +39,28 @@ export const GENERIC_A4: MachineProfile = {
   units: 'mm',
 }
 
-export const PROFILE_PRESETS: MachineProfile[] = [PRUSA_MK4, GENERIC_A4]
+// AxiDraw motion/servo defaults follow saxi's; speeds are conservative for a first pen.
+// `cornering` is junction deviation in mm (lower = truer corners, slower plots).
+export const AXIDRAW_V3: AxidrawProfile = {
+  id: 'axidraw-v3',
+  name: 'AxiDraw V3',
+  kind: 'axidraw',
+  bed: { width: 300, height: 218 },
+  origin: 'top-left',
+  motion: { drawSpeed: 25, travelSpeed: 100, acceleration: 300, cornering: 0.127 },
+  servo: { upPercent: 60, downPercent: 30, liftMs: 180, dropMs: 180 },
+  pens: DEFAULT_PENS,
+  units: 'mm',
+}
+
+export const AXIDRAW_V3_A3: AxidrawProfile = {
+  ...structuredClone(AXIDRAW_V3),
+  id: 'axidraw-v3-a3',
+  name: 'AxiDraw V3/A3',
+  bed: { width: 430, height: 297 },
+}
+
+export const PROFILE_PRESETS: MachineProfile[] = [PRUSA_MK4, GENERIC_A4, AXIDRAW_V3, AXIDRAW_V3_A3]
 
 /** Built-in presets differ from custom profiles only in that they can't be deleted or renamed. */
 export function isBuiltinProfile(id: string): boolean {

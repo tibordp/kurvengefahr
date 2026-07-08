@@ -185,30 +185,40 @@ export interface Fiducial {
   y: number
 }
 
-/** Machine family — drives the output dialect/affordances. Only Prusa (G-code) today; the
- *  discriminator is here so a future type (e.g. an AxiDraw over Web Serial) slots in without
- *  reshaping the profile. */
-export type MachineKind = 'prusa'
+/** Machine family — drives the output dialect/affordances. `prusa` = G-code plotters (download or
+ *  PrusaLink); `axidraw` = EBB boards driven live over Web Serial (no G-code at all). */
+export type MachineKind = 'prusa' | 'axidraw'
 
-/** Optional binding to a *physical* device this profile plots to, discriminated by transport so new
- *  transports (e.g. `webserial`) can be added later. `prusalink` targets a printer the user granted
- *  to this app in the Bridge for PrusaLink extension; the id/name are the extension's, never creds. */
-export type DeviceBinding = { transport: 'prusalink'; printerId: string; printerName: string }
+/** Binding to a printer the user granted to this app in the Bridge for PrusaLink extension;
+ *  the id/name are the extension's, never creds. */
+export type PrusaLinkBinding = { transport: 'prusalink'; printerId: string; printerName: string }
 
-/** Global, document-level machine description. A feed/preamble tweak is a pure re-emit;
- *  geometry is untouched. Editable in the UI; presets seed it. */
-export interface MachineProfile {
+/** Web Serial grants have no stable id — the binding's presence just means "this profile plots
+ *  over Web Serial to an EBB board". The live `SerialPort` lives in the serial store, never here. */
+export type WebSerialBinding = { transport: 'webserial' }
+
+/** Optional binding to a *physical* device this profile plots to, discriminated by transport. */
+export type DeviceBinding = PrusaLinkBinding | WebSerialBinding
+
+/** Fields every machine kind shares. `origin` lives here so the page→machine transform, drawable
+ *  region and status readout stay kind-agnostic (axidraw is natively top-left and pins it there). */
+interface MachineProfileBase {
   id: string
   name: string
-  /** Machine family. Currently always `'prusa'`; the connectivity UI keys off it, and emit/Z will
-   *  branch on it when a second kind lands. */
-  kind: MachineKind
-  /** Optional physical-printer binding. Absent = download-only (the default). */
-  device?: DeviceBinding
   /** Bed size in mm. */
   bed: { width: number; height: number }
   /** Where machine (0,0) sits relative to the bed; drives the Y-flip in `toMachine`. */
   origin: 'top-left' | 'bottom-left'
+  pens: Pen[]
+  units: 'mm'
+}
+
+/** A G-code machine (3D printer with a pen toolhead). A feed/preamble tweak is a pure re-emit;
+ *  geometry is untouched. */
+export interface PrusaProfile extends MachineProfileBase {
+  kind: 'prusa'
+  /** Optional physical-printer binding. Absent = download-only (the default). */
+  device?: PrusaLinkBinding
   /** Feed rates, mm/min. */
   feeds: { travel: number; draw: number }
   /** Pen Z heights (mm). `up` = clearance; `down` = the pen-down height at **full** pressure.
@@ -221,7 +231,6 @@ export interface MachineProfile {
    *  so emitted coords = pen target − offset. Nonzero x/y shrink the reachable (drawable) area;
    *  z shifts the commanded Z. */
   penOffset: { x: number; y: number; z: number }
-  pens: Pen[]
   preamble: string
   postamble: string
   /** Operator-pause macro, reused wherever the print stops for a human: between pen groups
@@ -231,11 +240,35 @@ export interface MachineProfile {
    *  context message. May be multi-line, e.g. `G4 P500` then `M0 {message}` (Prusa shows the M0
    *  text on the LCD). Empty = no pause. */
   pause: string
-  units: 'mm'
 }
 
-/** Pressure is supported by a profile when it defines a light-pressure pen-down Z (`penZ.downLight`).
- *  The single source of truth for "is the per-element pressure control live / does emit vary Z". */
+/** An AxiDraw-style EBB machine, plotted live over Web Serial. No G-code and no Z axis: the pen is
+ *  a servo (up/down only — no pressure axis, see {@link pressureEnabled}), motion is planned step
+ *  segments (crate `plan.rs`). Operator pauses (fiducial, pen swaps) are app-side prompts. */
+export interface AxidrawProfile extends MachineProfileBase {
+  kind: 'axidraw'
+  device?: WebSerialBinding
+  /** Motion-planning limits: speeds mm/s, acceleration mm/s², `cornering` = junction deviation in
+   *  mm (how far the path may cut a corner at speed — lower is truer and slower). */
+  motion: { drawSpeed: number; travelSpeed: number; acceleration: number; cornering: number }
+  /** Pen-lift servo: positions as percent 0..100 of the servo travel range, plus how long the
+   *  physical lift/drop takes (motion resumes after this delay). */
+  servo: { upPercent: number; downPercent: number; liftMs: number; dropMs: number }
+}
+
+/** Global, document-level machine description, discriminated by `kind`. Editable in the UI;
+ *  presets seed it — a profile's kind comes from the preset it was seeded from. */
+export type MachineProfile = PrusaProfile | AxidrawProfile
+
+/** Pressure is supported by a profile when it defines a light-pressure pen-down Z (`penZ.downLight`)
+ *  — which only a G-code machine has; an AxiDraw's servo pen is up/down only. The single source of
+ *  truth for "is the per-element pressure control live / does emit vary Z". */
 export function pressureEnabled(profile: MachineProfile): boolean {
-  return profile.penZ.downLight !== undefined
+  return profile.kind === 'prusa' && profile.penZ.downLight !== undefined
+}
+
+/** The pen↔nozzle offset for kinds that have one; an AxiDraw's pen *is* the tool (zero offset).
+ *  Keeps the drawable region, park point and status readout kind-agnostic. */
+export function penOffsetOf(profile: MachineProfile): { x: number; y: number; z: number } {
+  return profile.kind === 'prusa' ? profile.penOffset : { x: 0, y: 0, z: 0 }
 }

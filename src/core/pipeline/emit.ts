@@ -5,7 +5,7 @@
 // profile's `pause` macro is dropped between groups (a no-op when there is one pen) so the operator
 // can swap pens. The same pause macro is reused for the fiducial alignment stop. Feed resolution
 // happens at the one point here: `stroke.feed ?? profile.feeds.draw` (per-element override later).
-import type { Fiducial, Geometry, MachineProfile, Stroke } from '../types'
+import type { Fiducial, Geometry, PrusaProfile, Stroke } from '../types'
 import { toMachine } from './toMachine'
 
 const f3 = (n: number) => n.toFixed(3)
@@ -21,7 +21,7 @@ function pauseLines(template: string, message: string): string[] {
   return text ? text.split('\n') : []
 }
 
-export function emit(geom: Geometry, profile: MachineProfile, fiducial?: Fiducial | null): string {
+export function emit(geom: Geometry, profile: PrusaProfile, fiducial?: Fiducial | null): string {
   const lines: string[] = []
   const { penZ, feeds, penOffset: off } = profile
 

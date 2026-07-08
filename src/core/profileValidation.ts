@@ -7,17 +7,33 @@ import type { MachineProfile } from './types'
 export function validateProfile(p: MachineProfile): string[] {
   const errs: string[] = []
   if (!(p.bed.width > 0) || !(p.bed.height > 0)) errs.push('Bed size must be greater than zero.')
-  if (!(p.feeds.travel > 0)) errs.push('Travel feed must be greater than zero.')
-  if (!(p.feeds.draw > 0)) errs.push('Draw feed must be greater than zero.')
 
-  // Pen heights must descend: up (clearance) ≥ light ≥ full, and the pen must actually lift off the
-  // page (up strictly above the down height), or the toolpath never leaves the medium.
-  const { up, down, downLight } = p.penZ
-  if (downLight === undefined) {
-    if (!(up > down)) errs.push('Pen up Z must be above Pen down Z.')
-  } else {
-    if (!(up >= downLight && downLight >= down && up > down))
-      errs.push('Pen heights must step down: Pen up, then down (light), then down (full).')
+  if (p.kind === 'prusa') {
+    if (!(p.feeds.travel > 0)) errs.push('Travel feed must be greater than zero.')
+    if (!(p.feeds.draw > 0)) errs.push('Draw feed must be greater than zero.')
+
+    // Pen heights must descend: up (clearance) ≥ light ≥ full, and the pen must actually lift off the
+    // page (up strictly above the down height), or the toolpath never leaves the medium.
+    const { up, down, downLight } = p.penZ
+    if (downLight === undefined) {
+      if (!(up > down)) errs.push('Pen up Z must be above Pen down Z.')
+    } else {
+      if (!(up >= downLight && downLight >= down && up > down))
+        errs.push('Pen heights must step down: Pen up, then down (light), then down (full).')
+    }
+    return errs
   }
+
+  // axidraw: the motion planner needs positive limits, and the servo needs two distinct positions
+  // or the pen never actually lifts.
+  if (!(p.motion.drawSpeed > 0)) errs.push('Draw speed must be greater than zero.')
+  if (!(p.motion.travelSpeed > 0)) errs.push('Travel speed must be greater than zero.')
+  if (!(p.motion.acceleration > 0)) errs.push('Acceleration must be greater than zero.')
+  if (!(p.motion.cornering >= 0)) errs.push('Cornering must be zero or more.')
+  const { upPercent, downPercent, liftMs, dropMs } = p.servo
+  const pct = (v: number) => v >= 0 && v <= 100
+  if (!pct(upPercent) || !pct(downPercent)) errs.push('Servo positions must be between 0 and 100%.')
+  else if (upPercent === downPercent) errs.push('Servo up and down positions must differ.')
+  if (!(liftMs >= 0) || !(dropMs >= 0)) errs.push('Servo delays must be zero or more.')
   return errs
 }

@@ -6,6 +6,9 @@ import type { Toolpath } from '../core/preview/toolpath'
 
 interface PreviewStore {
   active: boolean
+  /** Driven mode: a live plot session owns the playhead — no scrubber/play controls, `dist` is
+   *  written from the machine's acknowledged progress instead of the animation loop. */
+  driven: boolean
   toolpath: Toolpath | null
   /** Playhead distance along the path, mm. */
   dist: number
@@ -14,6 +17,8 @@ interface PreviewStore {
   speed: number
 
   enter: (toolpath: Toolpath) => void
+  /** Enter as a live plot overlay (see `driven`). */
+  enterDriven: (toolpath: Toolpath) => void
   exit: () => void
   setDist: (d: number) => void
   setPlaying: (p: boolean) => void
@@ -22,13 +27,15 @@ interface PreviewStore {
 
 export const usePreview = create<PreviewStore>((set) => ({
   active: false,
+  driven: false,
   toolpath: null,
   dist: 0,
   playing: false,
   speed: 120,
 
-  enter: (toolpath) => set({ active: true, toolpath, dist: 0, playing: true }),
-  exit: () => set({ active: false, playing: false }),
+  enter: (toolpath) => set({ active: true, driven: false, toolpath, dist: 0, playing: true }),
+  enterDriven: (toolpath) => set({ active: true, driven: true, toolpath, dist: 0, playing: false }),
+  exit: () => set({ active: false, driven: false, playing: false }),
   setDist: (d) => set({ dist: d }),
   setPlaying: (p) => set({ playing: p }),
   setSpeed: (s) => set({ speed: s }),

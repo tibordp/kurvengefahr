@@ -2,10 +2,12 @@
 
 A browser-based CAM tool for pen plotters. Compose on a virtual bed -- handwriting, text, vector
 shapes, imported SVG and DXF, traced photos, generative patterns -- preview the exact toolpath, and
-download G-code. Everything runs client-side; nothing is uploaded.
+plot it: download G-code, or drive an AxiDraw live over USB. Everything runs client-side; nothing
+is uploaded.
 
-**[Live app](https://kurven.ojdip.net)** -- installable PWA, works offline. Built for a Prusa MK4
-with a spring-loaded pen holder; the machine profile is editable.
+**[Live app](https://kurven.ojdip.net)** -- installable PWA, works offline. Machine profiles cover
+a Prusa MK4 with a spring-loaded pen holder (or any G-code machine) and AxiDraw-style plotters;
+everything is editable.
 
 ![Kurvengefahr with an imported SVG, one shape selected](docs/overview.png)
 
@@ -68,6 +70,12 @@ with a spring-loaded pen holder; the machine profile is editable.
 - **Plot directly** -- With the companion Bridge for PrusaLink browser extension, bind a profile to one of
   your printers and send the job straight to it with one click -- no download-and-transfer. Credentials
   live in the extension; the app only ever sees the printer's name and live status.
+- **AxiDraw support** -- Pick an AxiDraw profile and the app talks to the machine's EBB board
+  directly over USB (Web Serial) -- no G-code, no other software. Motion is planned in Rust with
+  proper acceleration and cornering profiles, then streamed live with a progress HUD, a moving
+  playhead on the canvas, and pause/resume (from the app or the board's physical button) that
+  always lands at a safe rest point. Stopping lifts the pen and returns the carriage home.
+  Fiducial alignment and pen swaps pause the machine and prompt in the app.
 - **Elements tree** -- A searchable, collapsible list of every element, with groups and clips as
   nested, named containers; selection is synced both ways with the canvas.
 - **Documents** -- Multiple drawings in tabs, autosaved, with cross-tab sync, undo/redo that survives
@@ -82,8 +90,8 @@ with a spring-loaded pen holder; the machine profile is editable.
 
 Every mark -- handwriting, a shape, an imported path, a traced image -- reduces to the same thing: a
 list of pen-down polylines in millimetres. That representation flows through one pipeline (place on
-the page, clip to the reachable area, optimize stroke order, emit G-code), so adding a new input type
-never touches the machinery downstream.
+the page, clip to the reachable area, optimize stroke order, then emit G-code or plan AxiDraw
+motion), so adding a new input type never touches the machinery downstream.
 
 The app is client-only React, but all the geometry -- the handwriting model, font and text layout,
 shape and path math, polygon booleans, SVG and DXF parsing, occlusion, image tracing, generative

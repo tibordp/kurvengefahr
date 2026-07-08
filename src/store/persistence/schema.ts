@@ -11,7 +11,7 @@
 //     callers report it and leave the stored bytes untouched rather than mangling them.
 import type { DocElement, Fiducial, MachineProfile, Transform } from '../../core/types'
 import { IDENTITY_TRANSFORM } from '../../core/types'
-import { PRUSA_MK4 } from '../profiles'
+import { AXIDRAW_V3, PRUSA_MK4 } from '../profiles'
 import { isContainer, isKnownType, sanitizeParams } from '../../elements/registry'
 import { sanitizeEffects } from '../../effects/registry'
 
@@ -28,8 +28,11 @@ import { sanitizeEffects } from '../../effects/registry'
 // `parent`. No migration step (buildout, no back-compat) — older docs just load without their old
 // grouping/clips, which the sanitizers tolerate.
 // v6: per-element non-destructive `effects` stack. Additive optional field, backfilled to [].
-export const CURRENT_DOC_SCHEMA = 6
-export const CURRENT_LIBRARY_SCHEMA = 1
+// v7: machine-kind union — profiles are now `prusa` | `axidraw` shapes (library v2 likewise). No
+// migration step (prusa data is unchanged; the sanitizer dispatches on `kind`); the bump fences off
+// older apps that coerce every profile to prusa and would mangle an axidraw one.
+export const CURRENT_DOC_SCHEMA = 7
+export const CURRENT_LIBRARY_SCHEMA = 2
 
 export const DOC_FILE_KIND = 'kurvengefahr/document'
 export const PROFILES_FILE_KIND = 'kurvengefahr/profiles'
@@ -78,22 +81,27 @@ function sanitizePen(p: unknown, i: number) {
   return { id: num(o.id, i), name: str(o.name, `Pen ${i + 1}`), color: str(o.color, '#1a1a1a') }
 }
 
-/** Coerce any object into a valid MachineProfile, backfilling from PRUSA_MK4 so fields added in a
+/** Coerce any object into a valid MachineProfile, dispatching on `kind` (unknown kinds coerce to
+ *  prusa — the pre-union shape) and backfilling from the kind's base preset so fields added in a
  *  later schema are present even when loading an older profile. Exported for the library + imports. */
 export function sanitizeProfile(p: unknown): MachineProfile {
+  if (isObj(p) && p.kind === 'axidraw') return sanitizeAxidrawProfile(p)
+  return sanitizePrusaProfile(isObj(p) ? p : {})
+}
+
+function sanitizePrusaProfile(p: Record<string, any>): MachineProfile {
   const base = PRUSA_MK4
-  if (!isObj(p)) return structuredClone(base)
   const pens = Array.isArray(p.pens) && p.pens.length ? p.pens.map(sanitizePen) : structuredClone(base.pens)
   // Physical-printer binding: keep only a well-formed prusalink binding, else drop (download-only).
   const d = p.device
-  const device: MachineProfile['device'] =
+  const device =
     isObj(d) && d.transport === 'prusalink' && typeof d.printerId === 'string' && typeof d.printerName === 'string'
-      ? { transport: 'prusalink', printerId: d.printerId, printerName: d.printerName }
+      ? ({ transport: 'prusalink', printerId: d.printerId, printerName: d.printerName } as const)
       : undefined
   return {
     id: str(p.id, base.id),
     name: str(p.name, base.name),
-    kind: 'prusa', // only machine kind today; validate against MachineKind when a second lands
+    kind: 'prusa',
     ...(device ? { device } : {}),
     bed: { width: num(p.bed?.width, base.bed.width), height: num(p.bed?.height, base.bed.height) },
     origin: p.origin === 'top-left' || p.origin === 'bottom-left' ? p.origin : base.origin,
@@ -111,6 +119,35 @@ export function sanitizeProfile(p: unknown): MachineProfile {
     preamble: str(p.preamble, base.preamble),
     postamble: str(p.postamble, base.postamble),
     pause: str(p.pause, base.pause),
+    units: 'mm',
+  }
+}
+
+function sanitizeAxidrawProfile(p: Record<string, any>): MachineProfile {
+  const base = AXIDRAW_V3
+  const pens = Array.isArray(p.pens) && p.pens.length ? p.pens.map(sanitizePen) : structuredClone(base.pens)
+  const pct = (v: unknown, d: number) => Math.min(100, Math.max(0, num(v, d)))
+  return {
+    id: str(p.id, base.id),
+    name: str(p.name, base.name),
+    kind: 'axidraw',
+    // Web Serial binding carries no payload — keep it iff well-formed.
+    ...(isObj(p.device) && p.device.transport === 'webserial' ? { device: { transport: 'webserial' as const } } : {}),
+    bed: { width: num(p.bed?.width, base.bed.width), height: num(p.bed?.height, base.bed.height) },
+    origin: 'top-left', // an AxiDraw's home corner — not editable for this kind
+    motion: {
+      drawSpeed: num(p.motion?.drawSpeed, base.motion.drawSpeed),
+      travelSpeed: num(p.motion?.travelSpeed, base.motion.travelSpeed),
+      acceleration: num(p.motion?.acceleration, base.motion.acceleration),
+      cornering: num(p.motion?.cornering, base.motion.cornering),
+    },
+    servo: {
+      upPercent: pct(p.servo?.upPercent, base.servo.upPercent),
+      downPercent: pct(p.servo?.downPercent, base.servo.downPercent),
+      liftMs: Math.max(0, num(p.servo?.liftMs, base.servo.liftMs)),
+      dropMs: Math.max(0, num(p.servo?.dropMs, base.servo.dropMs)),
+    },
+    pens,
     units: 'mm',
   }
 }

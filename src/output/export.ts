@@ -13,21 +13,24 @@ import { plot } from './plot'
  *  and the Bridge/PrusaLink send so both name the file the same way. */
 const gcodeFilename = () => `${safeFilename(useDocuments.getState().activeName, 'kurvengefahr')}.gcode`
 
-/** Build G-code for the whole page and hand it to the download sink. No-op on an empty document.
+/** Build G-code for the whole page and hand it to the download sink. No-op on an empty document
+ *  or a non-G-code machine (an AxiDraw plots live over serial — there's no file artifact).
  *  Refuses (with a toast) when the machine profile is invalid — the UI also disables the action. */
 export async function exportGcode(): Promise<void> {
   const { elements, profile, fiducial } = useDoc.getState()
-  if (elements.length === 0) return
+  if (elements.length === 0 || profile.kind !== 'prusa') return
   if (validateProfile(profile).length) {
     toast.error('Fix the machine profile before generating G-code.')
     return
   }
-  const gcode = await runPipeline(elements, profile, fiducial)
-  await downloadSink.send(gcodeFilename(), gcode)
+  const out = await runPipeline(elements, profile, fiducial)
+  if (out.kind !== 'gcode') return
+  await downloadSink.send(gcodeFilename(), out.gcode)
 }
 
-/** Build the same G-code and send it straight to the profile's bound physical device. No-op on an
- *  empty document or an unbound profile. Throws a BridgeError (mapped to a toast by the caller). */
+/** Build the same G-code and send it straight to the profile's bound physical device (PrusaLink
+ *  only — an AxiDraw plots through the streaming session, not a one-shot send). No-op on an empty
+ *  document or an unbound profile. Throws a BridgeError (mapped to a toast by the caller). */
 export async function plotGcode(): Promise<void> {
   const { elements, profile, fiducial } = useDoc.getState()
   if (elements.length === 0 || !profile.device) return
@@ -35,6 +38,7 @@ export async function plotGcode(): Promise<void> {
     toast.error('Fix the machine profile before plotting.')
     return
   }
-  const gcode = await runPipeline(elements, profile, fiducial)
-  await plot(profile, gcode, gcodeFilename())
+  const out = await runPipeline(elements, profile, fiducial)
+  if (out.kind !== 'gcode') return
+  await plot(profile, out.gcode, gcodeFilename())
 }

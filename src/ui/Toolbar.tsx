@@ -14,7 +14,10 @@ import { buildToolpath } from '../core/preview/toolpath'
 import { exportGcode, plotGcode } from '../output/export'
 import { BridgeError } from '../output/plot'
 import { useBridge, isPrinterConnected } from '../store/bridge'
+import { useSerial } from '../store/serial'
+import { usePlotSession } from '../store/plotSession'
 import { toast } from '../store/toast'
+import { AxidrawPlotCluster } from './PlotHUD'
 import { Button, IconButton } from './primitives'
 import { MOD_KEY } from './shortcuts'
 import { DocumentMenu } from './DocumentMenu'
@@ -64,6 +67,9 @@ export function Toolbar() {
   const canUndo = useHistory((s) => s.past.length > 0)
   const canRedo = useHistory((s) => s.future.length > 0)
   const device = useDoc((s) => s.profile.device)
+  const machineKind = useDoc((s) => s.profile.kind)
+  // The PrusaLink-bound printer, when that's what the profile plots to (narrows the binding union).
+  const printer = device?.transport === 'prusalink' ? device : undefined
   const profileInvalid = useDoc((s) => validateProfile(s.profile).length > 0)
   const [busy, setBusy] = useState(false)
   const [plotting, setPlotting] = useState(false)
@@ -76,8 +82,17 @@ export function Toolbar() {
   useEffect(() => {
     void useBridge.getState().probe()
   }, [])
-  const boundId = device?.transport === 'prusalink' ? device.printerId : null
+  // The serial port follows the profile kind: re-open a granted AxiDraw port so Plot is live
+  // without a click, and release it when the document targets a different machine — holding the
+  // port would lock out other software (and other tabs).
+  useEffect(() => {
+    const serial = useSerial.getState()
+    if (machineKind === 'axidraw') void serial.probe()
+    else if (serial.connected && usePlotSession.getState().phase === 'idle') void serial.disconnect()
+  }, [machineKind])
+  const boundId = printer?.printerId ?? null
   const printerConnected = isPrinterConnected(boundId, bridgeAvail, bridgePrinters)
+  const sessionActive = usePlotSession((s) => s.phase !== 'idle')
 
   const dirtyCount = elements.filter((e) => needsManualRegen(e.id, e.type, e.params)).length
 
@@ -115,11 +130,11 @@ export function Toolbar() {
   }
 
   const onPlot = async () => {
-    if (elements.length === 0 || !device || !printerConnected) return
+    if (elements.length === 0 || !printer || !printerConnected) return
     setPlotting(true)
     try {
       await plotGcode()
-      toast.success(`Sent to ${device.printerName}`)
+      toast.success(`Sent to ${printer.printerName}`)
     } catch (e) {
       const code = e instanceof BridgeError ? e.code : 'INTERNAL'
       if (code !== 'CANCELLED') toast.error(plotErrorMessage(code))
@@ -192,45 +207,50 @@ export function Toolbar() {
       <span className="flex-1" />
 
       {/* Output */}
-      <Button
-        onClick={togglePreview}
-        disabled={preparing}
-        aria-label={previewActive ? 'Exit preview' : 'Preview toolpath'}
-        title={previewActive ? 'Back to editing' : 'Preview the toolpath'}
-      >
-        {previewActive ? <Pencil size={15} /> : <Play size={15} />}
-        <span className="hidden sm:inline">
-          {previewActive ? 'Edit' : preparing ? 'Preparing…' : 'Preview'}
-        </span>
-      </Button>
-      {device && (
+      {!sessionActive && (
+        <Button
+          onClick={togglePreview}
+          disabled={preparing}
+          aria-label={previewActive ? 'Exit preview' : 'Preview toolpath'}
+          title={previewActive ? 'Back to editing' : 'Preview the toolpath'}
+        >
+          {previewActive ? <Pencil size={15} /> : <Play size={15} />}
+          <span className="hidden sm:inline">
+            {previewActive ? 'Edit' : preparing ? 'Preparing…' : 'Preview'}
+          </span>
+        </Button>
+      )}
+      {machineKind === 'axidraw' && <AxidrawPlotCluster />}
+      {printer && (
         <Button
           variant="primary"
           onClick={onPlot}
           disabled={plotting || elements.length === 0 || profileInvalid || !printerConnected}
-          aria-label={`Plot to ${device.printerName}`}
+          aria-label={`Plot to ${printer.printerName}`}
           title={
             profileInvalid
               ? 'Fix the machine profile to plot'
               : !printerConnected
-                ? `${device.printerName} is disconnected — reconnect it in Machine settings`
-                : `Plot to ${device.printerName}`
+                ? `${printer.printerName} is disconnected — reconnect it in Machine settings`
+                : `Plot to ${printer.printerName}`
           }
         >
           <Printer size={15} />
           <span className="hidden sm:inline">{plotting ? 'Sending…' : 'Plot'}</span>
         </Button>
       )}
-      <Button
-        variant={device ? 'default' : 'primary'}
-        onClick={onGenerate}
-        disabled={busy || profileInvalid}
-        aria-label="Generate and download G-code"
-        title={profileInvalid ? 'Fix the machine profile to generate G-code' : `Generate & download G-code (${MOD_KEY}S)`}
-      >
-        <Download size={15} />
-        <span className="hidden sm:inline">{busy ? 'Generating…' : 'Generate G-code'}</span>
-      </Button>
+      {machineKind === 'prusa' && (
+        <Button
+          variant={device ? 'default' : 'primary'}
+          onClick={onGenerate}
+          disabled={busy || profileInvalid}
+          aria-label="Generate and download G-code"
+          title={profileInvalid ? 'Fix the machine profile to generate G-code' : `Generate & download G-code (${MOD_KEY}S)`}
+        >
+          <Download size={15} />
+          <span className="hidden sm:inline">{busy ? 'Generating…' : 'Generate G-code'}</span>
+        </Button>
+      )}
 
       {/* Help / About + keyboard shortcuts. */}
       <IconButton

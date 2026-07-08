@@ -6,6 +6,7 @@ import { useCursor, useViewport } from '../store/viewport'
 import { useDoc } from '../store/document'
 import { useSnap } from '../store/snap'
 import { toMachine } from '../core/pipeline/toMachine'
+import { penOffsetOf } from '../core/types'
 
 const fmt = (v: number) => v.toFixed(1)
 
@@ -16,7 +17,7 @@ export function StatusBar() {
   const scale = useViewport((s) => s.scale)
   const fit = useViewport((s) => s.fit)
   const profile = useDoc((s) => s.profile)
-  const offset = profile.penOffset
+  const offset = penOffsetOf(profile)
 
   const hasOffset = offset.x !== 0 || offset.y !== 0
   const pen = toMachine({ x, y }, profile) // page → machine (origin-aware)

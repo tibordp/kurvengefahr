@@ -13,6 +13,7 @@ import { isContainer, isElementLocked, isMultiPen } from '../../elements/registr
 import { place } from './place'
 import { optimizeGeometry } from './optimize'
 import { emit } from './emit'
+import { planAxidraw, type PlotPlan } from './plan'
 import { penParkInPage } from './toMachine'
 import { clipToRegion, drawableRegion } from './clip'
 import { elementLocalGeometry, effectedLocal } from './clipGeometry'
@@ -76,14 +77,24 @@ export function buildPlottableGeometry(elements: DocElement[], profile: MachineP
   return clipToRegion(buildPageGeometry(elements), drawableRegion(profile))
 }
 
-/** Full run: plottable geometry → optimize → G-code. */
+/** What a full pipeline run produces, by machine kind: a G-code string to download/upload, or an
+ *  EBB motion plan for the streaming session (plus the optimized geometry, which feeds the live
+ *  plot playhead's toolpath — same input the plan was built from, so they agree). */
+export type PipelineOutput =
+  | { kind: 'gcode'; gcode: string }
+  | { kind: 'axidraw'; plan: PlotPlan; optimized: Geometry }
+
+/** Full run: plottable geometry → optimize → the machine-kind output (emit / plan). */
 export async function runPipeline(
   elements: DocElement[],
   profile: MachineProfile,
   fiducial?: Fiducial | null,
-): Promise<string> {
+): Promise<PipelineOutput> {
   const plottable = buildPlottableGeometry(elements, profile)
   const penOrder = profile.pens.map((p) => p.id)
   const optimized = await optimizeGeometry(plottable, penParkInPage(profile), penOrder)
-  return emit(optimized, profile, fiducial)
+  if (profile.kind === 'axidraw') {
+    return { kind: 'axidraw', plan: await planAxidraw(optimized, profile, fiducial), optimized }
+  }
+  return { kind: 'gcode', gcode: emit(optimized, profile, fiducial) }
 }

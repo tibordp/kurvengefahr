@@ -1004,7 +1004,9 @@ export const useDoc = create<DocStore>((set) => ({
 
   // A profile edit (or switch) also becomes the sticky default for new documents.
   setProfile: (patch) => {
-    const profile = { ...useDoc.getState().profile, ...patch }
+    // The cast is safe by construction: callers only patch fields of the *current* kind (the
+    // inspector is kind-branched), so the merge never mixes union branches.
+    const profile = { ...useDoc.getState().profile, ...patch } as MachineProfile
     set({ profile })
     writeDefaultProfile(profile)
   },

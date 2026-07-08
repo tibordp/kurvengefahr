@@ -11,16 +11,19 @@ import {
   RotateCcw,
   RefreshCw,
   Printer,
+  Cable,
 } from 'lucide-react'
 import { useDoc } from '../../store/document'
 import { useLibrary } from '../../store/library'
+import { useSerial, currentEbb } from '../../store/serial'
+import { usePlotSession } from '../../store/plotSession'
 import { PROFILE_PRESETS, findBuiltinProfile } from '../../store/profiles'
 import { hashParams } from '../../elements/registry'
 import { profilesFile, parseProfilesFile } from '../../store/persistence/schema'
 import { printerStatus, type PrinterStatus } from '../../output/plot'
 import { useBridge, isPrinterConnected } from '../../store/bridge'
 import { downloadJson, pickJsonFile } from '../../output/download'
-import type { Pen } from '../../core/types'
+import type { AxidrawProfile, Pen, PrusaProfile } from '../../core/types'
 import { pressureEnabled } from '../../core/types'
 import { validateProfile } from '../../core/profileValidation'
 import {
@@ -240,8 +243,6 @@ function PensSection() {
 
 export function MachineSection() {
   const profile = useDoc((s) => s.profile)
-  const setProfile = useDoc((s) => s.setProfile)
-  const pressureOn = pressureEnabled(profile)
   const errors = validateProfile(profile)
 
   return (
@@ -256,6 +257,18 @@ export function MachineSection() {
         </Banner>
       )}
       <ProfileControls />
+      {profile.kind === 'prusa' ? <PrusaMachineSection profile={profile} /> : <AxidrawMachineSection profile={profile} />}
+    </>
+  )
+}
+
+/** Everything G-code-machine-specific: PrusaLink binding, feeds, pen Z, pen offset, G-code text. */
+function PrusaMachineSection({ profile }: { profile: PrusaProfile }) {
+  const setProfile = useDoc((s) => s.setProfile)
+  const pressureOn = pressureEnabled(profile)
+
+  return (
+    <>
       <PhysicalPrinterSection />
       <PensSection />
 
@@ -370,6 +383,139 @@ export function MachineSection() {
   )
 }
 
+/** Everything AxiDraw-specific: work area, motion-planner limits, pen-lift servo. The machine is
+ *  natively top-left-origin with no pen offset, so neither control exists for this kind. */
+function AxidrawMachineSection({ profile }: { profile: AxidrawProfile }) {
+  const setProfile = useDoc((s) => s.setProfile)
+
+  return (
+    <>
+      <SerialDeviceSection profile={profile} />
+      <PensSection />
+
+      <SectionTitle title="Usable pen travel. The carriage is parked at the top-left corner before a plot — that corner is (0,0).">
+        Work area
+      </SectionTitle>
+      <Num label="Width (mm)" value={profile.bed.width} step={1}
+        onChange={(v) => setProfile({ bed: { ...profile.bed, width: v } })} />
+      <Num label="Height (mm)" value={profile.bed.height} step={1}
+        onChange={(v) => setProfile({ bed: { ...profile.bed, height: v } })} />
+
+      <SectionTitle title="Limits for the motion planner. Speeds are along the path; acceleration bounds speed changes; cornering is how far the path may cut a corner at speed (lower = truer corners, slower plots).">
+        Motion
+      </SectionTitle>
+      <Num label="Draw (mm/s)" value={profile.motion.drawSpeed} step={5}
+        onChange={(v) => setProfile({ motion: { ...profile.motion, drawSpeed: v } })} />
+      <Num label="Travel (mm/s)" value={profile.motion.travelSpeed} step={5}
+        onChange={(v) => setProfile({ motion: { ...profile.motion, travelSpeed: v } })} />
+      <Num label="Accel (mm/s²)" value={profile.motion.acceleration} step={50}
+        onChange={(v) => setProfile({ motion: { ...profile.motion, acceleration: v } })} />
+      <Num label="Cornering (mm)" title="Junction deviation: how far the path may cut a corner at speed. Lower is truer and slower."
+        value={profile.motion.cornering} step={0.01}
+        onChange={(v) => setProfile({ motion: { ...profile.motion, cornering: v } })} />
+
+      <SectionTitle title="The pen-lift servo. Positions are percent of the servo's travel range; delays are how long the physical lift/drop takes before motion resumes.">
+        Pen servo
+      </SectionTitle>
+      <Num label="Up (%)" value={profile.servo.upPercent} step={1}
+        onChange={(v) => setProfile({ servo: { ...profile.servo, upPercent: v } })} />
+      <Num label="Down (%)" value={profile.servo.downPercent} step={1}
+        onChange={(v) => setProfile({ servo: { ...profile.servo, downPercent: v } })} />
+      <Num label="Raise (ms)" value={profile.servo.liftMs} step={10}
+        onChange={(v) => setProfile({ servo: { ...profile.servo, liftMs: v } })} />
+      <Num label="Lower (ms)" value={profile.servo.dropMs} step={10}
+        onChange={(v) => setProfile({ servo: { ...profile.servo, dropMs: v } })} />
+      <ServoTest profile={profile} />
+    </>
+  )
+}
+
+/** Live pen-up/down toggle for dialing in the servo positions — programs the current profile
+ *  percents onto the board and bounces the pen, so edits are felt immediately. */
+function ServoTest({ profile }: { profile: AxidrawProfile }) {
+  const connected = useSerial((s) => s.connected)
+  const plotting = usePlotSession((s) => s.phase !== 'idle')
+  const [penUp, setPenUp] = useState(true)
+
+  if (!connected) return null
+  const bounce = async (up: boolean) => {
+    const ebb = currentEbb()
+    if (!ebb) return
+    try {
+      await ebb.configureServo(profile.servo.upPercent, profile.servo.downPercent)
+      await ebb.setPen(up, up ? profile.servo.liftMs : profile.servo.dropMs)
+      setPenUp(up)
+    } catch {
+      // connection dropped mid-test — the serial store's disconnect handling takes over
+    }
+  }
+  return (
+    <Button
+      className="mt-1 h-7 w-full text-xs"
+      disabled={plotting}
+      onClick={() => void bounce(!penUp)}
+      title="Move the pen servo with the current Up/Down positions"
+    >
+      {penUp ? 'Test: lower pen' : 'Test: raise pen'}
+    </Button>
+  )
+}
+
+/** Web Serial connection to the EBB board. Grants persist per-origin: once connected here, the
+ *  toolbar's Plot button re-arms automatically on future visits (the store re-opens granted
+ *  ports without a prompt). */
+function SerialDeviceSection({ profile }: { profile: AxidrawProfile }) {
+  const supported = useSerial((s) => s.supported)
+  const connected = useSerial((s) => s.connected)
+  const connecting = useSerial((s) => s.connecting)
+  const version = useSerial((s) => s.version)
+  const setProfile = useDoc((s) => s.setProfile)
+
+  // Re-open an already-granted port whenever the section (re)opens (no prompt).
+  useEffect(() => {
+    void useSerial.getState().probe()
+  }, [])
+
+  const connect = async () => {
+    await useSerial.getState().connect()
+    // The binding's presence marks the profile as plotting over Web Serial.
+    if (useSerial.getState().connected && !profile.device) {
+      setProfile({ device: { transport: 'webserial' } })
+    }
+  }
+
+  // Trim the version banner to its meaningful tail ("EBBv13_and_above EB Firmware Version 3.0.3").
+  const firmware = version?.replace(/^.*Firmware Version\s*/i, 'EBB ') ?? null
+
+  return (
+    <>
+      <div className="mt-5 mb-1.5 flex items-center justify-between gap-2">
+        <SectionTitle flush title="Plot over USB (Web Serial) to the AxiDraw's EBB board.">
+          Machine connection
+        </SectionTitle>
+        <StatusBadge
+          text={connected ? (firmware ?? 'Connected') : connecting ? 'connecting…' : 'Disconnected'}
+          color={connected ? 'bg-emerald-500' : connecting ? 'bg-zinc-400' : 'bg-accent-solid'}
+        />
+      </div>
+      {!supported ? (
+        <Banner>
+          This browser can’t open USB serial ports (no Web Serial support) — use a browser that
+          has it to plot directly.
+        </Banner>
+      ) : connected ? (
+        <Button className="w-full" onClick={() => void useSerial.getState().disconnect()}>
+          Disconnect
+        </Button>
+      ) : (
+        <Button className="w-full" disabled={connecting} onClick={() => void connect()}>
+          <Cable size={15} /> {connecting ? 'Connecting…' : 'Connect AxiDraw…'}
+        </Button>
+      )}
+    </>
+  )
+}
+
 const STATUS_COLOR: Record<string, string> = {
   idle: 'bg-emerald-500',
   printing: 'bg-amber-500',
@@ -409,7 +555,8 @@ function PhysicalPrinterSection() {
     void useBridge.getState().probe()
   }, [])
 
-  const boundId = device?.transport === 'prusalink' ? device.printerId : null
+  const binding = device?.transport === 'prusalink' ? device : undefined
+  const boundId = binding?.printerId ?? null
   const connected = isPrinterConnected(boundId, available, printers)
 
   // Live status of the bound printer — only while it's actually reachable.
@@ -438,7 +585,7 @@ function PhysicalPrinterSection() {
       setProfile({ device: undefined })
       return
     }
-    const name = printers.find((p) => p.id === val)?.name ?? device?.printerName ?? val
+    const name = printers.find((p) => p.id === val)?.name ?? binding?.printerName ?? val
     setProfile({ device: { transport: 'prusalink', printerId: val, printerName: name } })
   }
 
@@ -504,7 +651,7 @@ function PhysicalPrinterSection() {
               <optgroup label="Printers">
                 {boundMissing && (
                   <option value={boundId ?? ''} disabled={available === true}>
-                    {(device?.printerName ?? boundId) + (available === true ? ' (disconnected)' : '')}
+                    {(binding?.printerName ?? boundId) + (available === true ? ' (disconnected)' : '')}
                   </option>
                 )}
                 {printers.map((p) => (

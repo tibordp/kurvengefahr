@@ -12,6 +12,7 @@
 //!   - `vectorize_image` — raster → strokes (outline/hatch/TSP/flow/spiral/…).
 //!   - `clip` — split strokes to the reachable rectangle.
 //!   - `optimize` — reorder strokes (chain-aware, per-pen greedy nearest-neighbour).
+//!   - `plan_axidraw` — optimized strokes → timed EBB motion segments (trapezoidal profiles).
 
 mod boolean;
 mod cleanup;
@@ -23,6 +24,7 @@ mod generative;
 mod geom;
 mod hatch;
 mod model;
+mod plan;
 mod poly;
 mod raster;
 mod shapes;
@@ -357,6 +359,24 @@ pub fn optimize(
     // Cleanup first (dedupe / chain / collinear on free strokes), then order to minimise travel.
     let strokes = cleanup::cleanup(&strokes);
     GeometryBuffers::from_strokes(&order_greedy(&strokes, start_x, start_y, pen_order))
+}
+
+/// Plan an AxiDraw job from *already-optimized* geometry (pens contiguous, palette order — the
+/// same input `emit` gets on the G-code path). `params` is the JSON-serialized planning params
+/// (`plan::PlanParams`, mirrored by `src/core/pipeline/plan.ts`); geometry is page mm, which for
+/// this machine *is* machine mm. Returns the flat segment tape the streaming session executes.
+#[wasm_bindgen]
+pub fn plan_axidraw(
+    xy: &[f32],
+    pressure: &[f32],
+    offsets: &[u32],
+    pen: &[u16],
+    reversible: &[u8],
+    group: &[u32],
+    params: &str,
+) -> plan::PlanBuffers {
+    let strokes = decode(xy, pressure, offsets, pen, reversible, group);
+    plan::plan_from_json(&strokes, params)
 }
 
 /// An orderable unit: the indices of the strokes it covers (in plot order), whether it may be

@@ -7,6 +7,7 @@
 // never blocks the UI. The main thread never loads the model.
 import init, {
   optimize,
+  plan_axidraw,
   substitution_note,
   apply_effects,
   clip,
@@ -40,6 +41,7 @@ export function initWasm(): Promise<void> {
 
 export {
   optimize,
+  plan_axidraw,
   substitution_note,
   apply_effects,
   clip,
