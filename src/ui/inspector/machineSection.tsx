@@ -35,6 +35,7 @@ import {
   Field,
   SectionTitle,
   Banner,
+  Disclosure,
   Menu,
   MenuItem,
   MenuSeparator,
@@ -445,13 +446,13 @@ function AxidrawMachineSection({ profile }: { profile: AxidrawProfile }) {
 }
 
 /** Live pen-up/down toggle for dialing in the servo positions — programs the current profile
- *  percents onto the board and bounces the pen, so edits are felt immediately. */
+ *  percents onto the board and bounces the pen, so edits are felt immediately. Rendered even
+ *  while disconnected (disabled) so the feature is discoverable before a machine is attached. */
 function ServoTest({ profile }: { profile: AxidrawProfile }) {
   const connected = useSerial((s) => s.connected)
   const plotting = usePlotSession((s) => s.phase !== 'idle')
   const [penUp, setPenUp] = useState(true)
 
-  if (!connected) return null
   const bounce = async (up: boolean) => {
     const ebb = currentEbb()
     if (!ebb) return
@@ -466,9 +467,13 @@ function ServoTest({ profile }: { profile: AxidrawProfile }) {
   return (
     <Button
       className="mt-1 h-7 w-full text-xs"
-      disabled={plotting}
+      disabled={!connected || plotting}
       onClick={() => void bounce(!penUp)}
-      title="Move the pen servo with the current Up/Down positions"
+      title={
+        connected
+          ? 'Move the pen servo with the current Up/Down positions'
+          : 'Connect the machine to test the pen'
+      }
     >
       {penUp ? 'Test: lower pen' : 'Test: raise pen'}
     </Button>
@@ -497,25 +502,27 @@ function GrblMachineSection({ profile }: { profile: GrblProfile }) {
   return (
     <>
       <SerialDeviceSection profile={profile} />
-      <Field
-        label="Baud rate"
-        title="Must match the board's UART speed (GRBL default 115200). Changing it disconnects — reconnect after."
-      >
-        <select
-          className={controlClass}
-          value={profile.baudRate}
-          onChange={(e) => {
-            setProfile({ baudRate: Number(e.target.value) })
-            if (useSerial.getState().connected) void useSerial.getState().disconnect()
-          }}
+      <Disclosure label="Advanced">
+        <Field
+          label="Baud rate"
+          title="Must match the board's UART speed (GRBL default 115200). Changing it disconnects — reconnect after."
         >
-          {BAUD_RATES.map((b) => (
-            <option key={b} value={b}>
-              {b}
-            </option>
-          ))}
-        </select>
-      </Field>
+          <select
+            className={controlClass}
+            value={profile.baudRate}
+            onChange={(e) => {
+              setProfile({ baudRate: Number(e.target.value) })
+              if (useSerial.getState().connected) void useSerial.getState().disconnect()
+            }}
+          >
+            {BAUD_RATES.map((b) => (
+              <option key={b} value={b}>
+                {b}
+              </option>
+            ))}
+          </select>
+        </Field>
+      </Disclosure>
       <PensSection />
 
       <SectionTitle title="Usable pen travel from the work origin. Without homing, the origin is wherever the pen sits when the job starts.">
@@ -656,13 +663,13 @@ function GrblMachineSection({ profile }: { profile: GrblProfile }) {
 }
 
 /** Live pen-up/down toggle for dialing in the servo S values (or Z heights) — sends the current
- *  profile's pen lines, so edits are felt immediately. */
+ *  profile's pen lines, so edits are felt immediately. Rendered even while disconnected
+ *  (disabled) so the feature is discoverable before a machine is attached. */
 function GrblPenTest({ profile }: { profile: GrblProfile }) {
   const connected = useSerial((s) => s.connected)
   const plotting = usePlotSession((s) => s.phase !== 'idle')
   const [penUp, setPenUp] = useState(true)
 
-  if (!connected) return null
   const bounce = async (up: boolean) => {
     const grbl = currentGrbl()
     if (!grbl) return
@@ -676,9 +683,9 @@ function GrblPenTest({ profile }: { profile: GrblProfile }) {
   return (
     <Button
       className="mt-1 h-7 w-full text-xs"
-      disabled={plotting}
+      disabled={!connected || plotting}
       onClick={() => void bounce(!penUp)}
-      title="Actuate the pen with the current profile values"
+      title={connected ? 'Actuate the pen with the current profile values' : 'Connect the machine to test the pen'}
     >
       {penUp ? 'Test: lower pen' : 'Test: raise pen'}
     </Button>

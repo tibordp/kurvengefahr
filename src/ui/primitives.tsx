@@ -343,6 +343,28 @@ export function Modal({
   )
 }
 
+/** A lightweight inline disclosure for secondary/advanced controls — a chevron row that expands
+ *  in place. Collapsed by default; state is local (not persisted). */
+export function Disclosure({ label, children }: { label: ReactNode; children: ReactNode }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="mt-2">
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}
+        className="flex cursor-pointer items-center gap-1.5 text-xs text-muted transition-colors hover:text-text"
+      >
+        <span aria-hidden className={cx('text-2xs transition-transform', open && 'rotate-90')}>
+          ▶
+        </span>
+        {label}
+      </button>
+      {open && <div className="mt-2">{children}</div>}
+    </div>
+  )
+}
+
 /** Inline status/alert. `info` (accent-tinted) or `warn` (amber). Optional trailing action. */
 export function Banner({
   variant = 'info',
