@@ -24,7 +24,9 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          # Latest LTS: keeps CI's npm in step with the npm that writes package-lock.json
+          # (an older npm can reject a lockfile a newer one wrote — that broke npm ci on node 20).
+          node-version: lts/*
           cache: npm
 
       # The build's `prebuild` step compiles the Rust crate to WASM, so the toolchain is required.
