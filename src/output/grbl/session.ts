@@ -256,6 +256,12 @@ export class GrblRun {
     return p
   }
 
+  /** `status()` with a deadline — for probing a board that may not answer (mid-reset). A stale
+   *  waiter left behind by a timeout is harmless: the next report resolves it unread. */
+  private statusWithin(ms: number): Promise<GrblStatus | null> {
+    return Promise.race([this.status().catch(() => null), sleep(ms).then(() => null)])
+  }
+
   private handleStatus(s: GrblStatus): void {
     for (const w of this.statusWaiters.splice(0)) w.resolve(s)
     if (s.wpos) this.project(s.wpos)
@@ -322,12 +328,19 @@ export class GrblRun {
         if (s.state === 'Idle' || (s.state === 'Hold' && s.sub === 0)) break
         await sleep(DRAIN_POLL_MS)
       }
-      await grbl.softReset()
+      try {
+        await grbl.softReset(1500)
+      } catch {
+        // grblHAL resets silently from a latched alarm (no banner) — liveness is probed below.
+      }
       // The reset rejected every in-flight ack; the pre-settled promises absorb that.
       this.inflight.length = 0
       this.inflightBytes = 0
       this.fatal = null // the rejections above were self-inflicted
-      if ((await this.status()).state === 'Alarm') await grbl.unlock()
+      let alive: GrblStatus | null = null
+      for (let i = 0; i < 12 && !alive; i++) alive = await this.statusWithin(250)
+      if (!alive) throw new GrblError('no response after reset')
+      if (alive.state === 'Alarm') await grbl.unlock()
       // Reset cleared the modal state; the G10 L20 work offset survived.
       for (const line of ['G21', 'G90', 'G54']) await grbl.send(line)
       this.ctx = newEmitCtx()

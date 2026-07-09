@@ -10,8 +10,10 @@
 //
 // Unsolicited lines the FIFO must ignore: `<...>` status reports (replies to `?`), `ALARM:N`
 // (fatal — rejects everything pending), `[MSG:...]` feedback, `$N=...` settings dumps, and the
-// `Grbl 1.1h [...]` welcome banner (printed on power-up/DTR reset and after 0x18 — the reset and
-// connect handshakes wait on it).
+// welcome banner — `Grbl 1.1h [...]` or grblHAL's `GrblHAL 1.1f [...]` — printed on power-up/DTR
+// reset and (usually) after 0x18; the reset and connect handshakes wait on it. "Usually": grblHAL
+// observed to reset silently from a latched E-stop alarm, so callers must not treat a missing
+// reset banner as a dead board (the session probes with `?` instead).
 import type { LineTransport } from '../serial/transport'
 
 export class GrblError extends Error {
@@ -118,7 +120,7 @@ export class Grbl {
       for (const cb of this.alarmCbs) cb(code)
       return
     }
-    if (line.startsWith('Grbl ')) {
+    if (/^Grbl(HAL)? /.test(line)) {
       for (const b of this.bannerWaiters.splice(0)) {
         clearTimeout(b.timer)
         b.resolve(line)

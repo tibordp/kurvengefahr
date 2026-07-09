@@ -85,6 +85,14 @@ describe('Grbl protocol', () => {
     await expect(new Grbl(new MockGrbl()).waitBanner(20)).rejects.toThrow('timed out')
   })
 
+  it("recognizes grblHAL's banner (GrblHAL 1.1f, no 'Grbl ' prefix)", async () => {
+    const t = new MockGrbl({ banner: "GrblHAL 1.1f ['$' or '$HELP' for help]" })
+    const grbl = new Grbl(t)
+    const banner = grbl.waitBanner(1000)
+    t.boot()
+    await expect(banner).resolves.toContain('GrblHAL 1.1f')
+  })
+
   it('feed hold stalls acks; resume releases them', async () => {
     const t = new MockGrbl()
     const grbl = new Grbl(t)

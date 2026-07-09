@@ -19,6 +19,9 @@ export interface MockGrblOptions {
   /** Report `MPos:` (+ periodic `WCO:`) instead of `WPos:` — exercises the $10 default. */
   reportMPos?: boolean
   banner?: string
+  /** grblHAL quirk: a board latched in an E-stop alarm resets silently — no welcome banner after
+   *  0x18 (observed on a BlackPill running grblHAL 1.1f). Default true (vanilla behavior). */
+  bannerOnReset?: boolean
 }
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
@@ -144,7 +147,7 @@ export class MockGrbl implements LineTransport {
     this.inFlight = 0
     this.held = false
     this.buffer = ''
-    this.boot()
+    if (this.opts.bannerOnReset !== false) this.boot()
   }
 
   onLine(cb: (line: string) => void): void {

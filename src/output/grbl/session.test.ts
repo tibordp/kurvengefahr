@@ -128,6 +128,18 @@ describe('GrblRun', () => {
     expect(t.sent).not.toContain('G1 X20.000 Y10.000')
   })
 
+  it('cancel recovers even when the reset prints no banner (grblHAL quirk)', async () => {
+    const geom: Geometry = [stroke(Array.from({ length: 30 }, (_, i) => [i * 2, 0] as [number, number]))]
+    const { t, run } = makeRun(geom, profile(), { bannerOnReset: false, ackDelayMs: 10 })
+    const done = run.run()
+    await vi.waitFor(() => expect(t.sent.some((l) => l.startsWith('G1'))).toBe(true))
+    run.requestCancel()
+    expect(await done).toBe('cancelled')
+    // The silent reset didn't strand recovery: modes re-asserted, pen up, walked home.
+    const resetIdx = t.sent.lastIndexOf('G21')
+    expect(t.sent.slice(resetIdx)).toEqual(['G21', 'G90', 'G54', 'M3 S750', 'G4 P0.300', 'G0 X0 Y0', 'M5'])
+  }, 10000)
+
   it('cancel mid-stream does not wait for buffered motion', async () => {
     const dense: Geometry = [stroke(Array.from({ length: 80 }, (_, i) => [i, 0] as [number, number]))]
     const { t, run } = makeRun(dense, profile(), { ackDelayMs: (l) => (/^G1\b/.test(l) ? 50 : 0) })
