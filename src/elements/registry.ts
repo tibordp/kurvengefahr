@@ -17,6 +17,13 @@ export type Generator = (params: any) => Geometry
 export type LockPredicate = (params: any) => boolean
 
 interface ElementType {
+  /** Human name for the type, shown wherever elements are listed (Elements tree, etc.). Absent →
+   *  the capitalized type id, so even a label-less type displays sensibly. */
+  label?: string
+  /** Content-derived instance label — what THIS element is, not what type it is (handwriting's
+   *  text snippet, a generative pattern's kind). Return null when the content adds nothing; the
+   *  display falls back to `label`. Never sees a user-given `name` (that always wins upstream). */
+  describe?: (params: any) => string | null
   /** Synchronous generator, or undefined for async (worker-backed) types. */
   generate?: Generator
   isLocked?: LockPredicate
@@ -55,6 +62,18 @@ const types = new Map<string, ElementType>()
 
 export function registerElement(type: string, def: ElementType): void {
   types.set(type, def)
+}
+
+/** The human display name of an element type ("Model", "Image", …). Falls back to capitalizing
+ *  the type id, so a type registered without a `label` still reads sensibly. */
+export function typeLabel(type: string): string {
+  return types.get(type)?.label ?? (type ? type.charAt(0).toUpperCase() + type.slice(1) : type)
+}
+
+/** An element's display name: the user-given `name` wins, then the type's content-derived
+ *  `describe`, then the type label. The single naming path for every element list in the UI. */
+export function elementLabel(el: { type: string; name?: string; params: unknown }): string {
+  return el.name ?? types.get(el.type)?.describe?.(el.params) ?? typeLabel(el.type)
 }
 
 /** Whether a type has been registered. Persistence uses this to drop unknown element types safely

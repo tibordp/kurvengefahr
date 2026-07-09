@@ -159,11 +159,12 @@ function scheduleAutoRegen(id: string): void {
   )
 }
 
-// Three worker-backed types, each with its own WASM instance: handwriting (carries the ~7 MB
-// model), raster vectorization, and Logo interpretation. All speak the same message protocol, so
-// one `handleMessage` serves them; only the worker handle differs by element type.
+// Four worker-backed types, each with its own WASM instance: handwriting (carries the ~7 MB
+// model), raster vectorization, 3D-model wireframing, and Logo interpretation. All speak the same
+// message protocol, so one `handleMessage` serves them; only the worker handle differs by type.
 let hwWorker: Worker | null = null
 let vecWorker: Worker | null = null
+let modelWorker: Worker | null = null
 let logoWorker: Worker | null = null
 
 function workerFor(type: string): Worker {
@@ -173,6 +174,13 @@ function workerFor(type: string): Worker {
       vecWorker.onmessage = (e: MessageEvent<WorkerOut>) => handleMessage(e.data)
     }
     return vecWorker
+  }
+  if (type === 'model') {
+    if (!modelWorker) {
+      modelWorker = new Worker(new URL('./wasm/modelWorker.ts', import.meta.url), { type: 'module' })
+      modelWorker.onmessage = (e: MessageEvent<WorkerOut>) => handleMessage(e.data)
+    }
+    return modelWorker
   }
   if (type === 'logo') {
     if (!logoWorker) {

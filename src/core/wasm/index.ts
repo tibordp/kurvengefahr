@@ -27,6 +27,7 @@ import init, {
   boolean,
   import_svg,
   import_dxf,
+  stl_mesh_preview,
   SvgImport,
   GeometryBuffers,
 } from '@wasm/kg_core.js'
@@ -63,6 +64,7 @@ export {
   boolean,
   import_svg,
   import_dxf,
+  stl_mesh_preview,
   SvgImport,
   GeometryBuffers,
 }
