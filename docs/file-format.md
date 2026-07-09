@@ -12,7 +12,7 @@ images/<id>.png      one entry per referenced raster image (stored; PNG is alrea
 ```json
 {
   "kind": "kurvengefahr/document",
-  "schemaVersion": 7,
+  "schemaVersion": 8,
   "document": {
     "name": "Showcase",
     "elements": [ ... ],
@@ -50,3 +50,13 @@ degrades gracefully, never crashes.
 
 The same schema and rules govern the document copies the app keeps in `localStorage`; only the
 wrapper differs (stored documents carry their id and timestamps instead of the file envelope).
+
+## Sidecar JSON files
+
+Two device-global libraries export as plain JSON files (not zipped), with the same envelope
+pattern and compatibility rules:
+
+- `{"kind": "kurvengefahr/profiles", "schemaVersion": ..., "profiles": [...]}` -- saved machine
+  profiles (Machine tab).
+- `{"kind": "kurvengefahr/tools", "schemaVersion": ..., "tools": [...]}` -- saved Logo tools
+  (Preferences tab); each tool is `{id, name, source}`. Imports merge with fresh ids.
