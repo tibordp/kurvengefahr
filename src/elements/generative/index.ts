@@ -67,6 +67,8 @@ const num = (v: unknown, d: number) => (typeof v === 'number' && Number.isFinite
 const str = (v: unknown, d: string) => (typeof v === 'string' ? v : d)
 
 registerElement('generative', {
+  label: 'Generative',
+  describe: (p: GenerativeParams) => GEN_KINDS.find((k) => k.key === p.kind)?.name ?? null,
   generate: (p: GenerativeParams): Geometry => {
     if (p.width <= 0 || p.height <= 0) return []
     return generativeGeometry(JSON.stringify(p))

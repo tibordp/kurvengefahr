@@ -1,7 +1,7 @@
 // Left tool palette (Figma/Illustrator-style). Vertical on desktop (a grid column), a horizontal
 // strip above the canvas on mobile. Tools are grouped by purpose (a divider between groups; see
 // TOOL_GROUPS). Selecting a tool puts the canvas into that drawing mode; the trailing "Import"
-// entry is an action (opens a file picker for image/SVG/DXF), not a mode — so it's a plain button,
+// entry is an action (opens a file picker for image/SVG/DXF/STL), not a mode — so it's a plain button,
 // never a pressed toggle.
 import { Fragment } from 'react'
 import { Image as ImageIcon } from 'lucide-react'
@@ -54,8 +54,8 @@ export function ToolSidebar() {
 
       <button
         onClick={() => void importContentFile()}
-        title="Import file (image, SVG, or DXF)"
-        aria-label="Import file (image, SVG, or DXF)"
+        title="Import file (image, SVG, DXF, or STL)"
+        aria-label="Import file (image, SVG, DXF, or STL)"
         className={cx(buttonClass, 'text-muted hover:bg-bg hover:text-text')}
       >
         <ImageIcon size={17} />

@@ -10,6 +10,7 @@ export type ClipParams = Record<string, never>
 export const defaultClipParams = (): ClipParams => ({})
 
 registerElement('clip', {
+  label: 'Clip',
   generate: () => [],
   multiPen: true,
   container: true,

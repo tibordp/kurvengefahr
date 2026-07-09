@@ -5,7 +5,7 @@ import { memo, useMemo } from 'react'
 import { Group, Image as KonvaImage, Rect } from 'react-konva'
 import type { DocElement, Transform } from '../core/types'
 import { pressureEnabled } from '../core/types'
-import { isMultiPen } from '../elements/registry'
+import { getProvisionalExtent, isMultiPen } from '../elements/registry'
 import { effectedLocal } from '../core/pipeline/clipGeometry'
 import { useDoc } from '../store/document'
 import { useUI } from '../store/ui'
@@ -81,7 +81,7 @@ function ElementNodeImpl({ element, pxPerMm, interactive = true, effective }: Pr
           }
         : {})}
     >
-      {element.type === 'raster' && <RasterBounds element={element} />}
+      <BoxBounds element={element} />
       {element.type === 'raster' && <RasterUnderlay element={element} />}
       {/* Inner group carries the provisional resize scale for stale ink (1×1 normally). With
           strokeScaleEnabled false on the Lines, this scales positions but never pen width. */}
@@ -106,14 +106,14 @@ function ElementNodeImpl({ element, pxPerMm, interactive = true, effective }: Pr
  *  this element's ref). */
 export const ElementNode = memo(ElementNodeImpl)
 
-/** An invisible rect at the raster's physical box, so the element's bounds (and thus the selection
- *  Transformer) stay consistent even when it has no strokes and the source image is hidden — without
- *  it the Group would collapse to 0×0 and become un-resizable. `listening={false}` keeps click
- *  selection strokes-only (no new hit area). */
-function RasterBounds({ element }: { element: DocElement }) {
-  const p = element.params as RasterParams
-  if (p.targetWidthMm <= 0 || p.targetHeightMm <= 0) return null
-  return <Rect x={0} y={0} width={p.targetWidthMm} height={p.targetHeightMm} listening={false} />
+/** An invisible rect at the physical box of any type that declares a `provisionalExtent` (raster,
+ *  model), so the element's bounds (and thus the selection Transformer) stay consistent even
+ *  when it has no strokes yet — without it the Group would collapse to 0×0 and become
+ *  un-resizable. `listening={false}` keeps click selection strokes-only (no new hit area). */
+function BoxBounds({ element }: { element: DocElement }) {
+  const ext = getProvisionalExtent(element.type, element.params)
+  if (!ext || ext.w <= 0 || ext.h <= 0) return null
+  return <Rect x={0} y={0} width={ext.w} height={ext.h} listening={false} />
 }
 
 /** The raster element's source image, drawn faintly under its traced strokes as a registration

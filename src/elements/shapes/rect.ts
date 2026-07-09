@@ -22,6 +22,7 @@ export const defaultRectParams = (w = 40, h = 25): RectParams => ({
 const num = (v: unknown, d: number) => (typeof v === 'number' && Number.isFinite(v) ? v : d)
 
 registerElement('rect', {
+  label: 'Rectangle',
   generate: (p: RectParams): Geometry => {
     const w = Math.max(0, p.w)
     const h = Math.max(0, p.h)

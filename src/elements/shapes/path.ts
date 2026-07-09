@@ -193,6 +193,12 @@ function coerceNodes(arr: unknown): PathNode[] {
 }
 
 registerElement('path', {
+  label: 'Path',
+  describe: (p: PathParams) => {
+    const nodeCount = p.contours.reduce((a, c) => a + c.nodes.length, 0)
+    const closed = p.contours.length > 0 && p.contours.every((c) => c.closed)
+    return `${closed ? 'Shape' : 'Path'} (${nodeCount})`
+  },
   generate: (p: PathParams): Geometry => {
     const totalNodes = p.contours.reduce((a, c) => a + c.nodes.length, 0)
     if (totalNodes < 2) return []

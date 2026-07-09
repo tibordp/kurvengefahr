@@ -3,9 +3,9 @@
 *Achtung, die Kurve!*
 
 A browser-based CAM tool for pen plotters. Compose on a virtual bed -- handwriting, text, vector
-shapes, imported SVG and DXF, traced photos, generative patterns -- preview the exact toolpath, and
-plot it: download G-code, or drive an AxiDraw or GRBL plotter live over USB. Everything runs
-client-side; nothing is uploaded.
+shapes, imported SVG and DXF, traced photos, generative patterns, STL wireframes -- preview the
+exact toolpath, and plot it: download G-code, or drive an AxiDraw or GRBL plotter live over USB.
+Everything runs client-side; nothing is uploaded.
 
 **[Live app](https://kurven.ojdip.net)** -- installable PWA, works offline.
 [Machine profiles](docs/machines.md) cover Prusa printers with a pen attachment (or any G-code
@@ -34,6 +34,9 @@ machine), AxiDraw-style EBB plotters, and GRBL machines, with presets for popula
   pens; occluded fill regions are clipped away so they don't plot.
 - **Raster tracing** -- restyle a photo as strokes: outlines, centerlines, topographic levels,
   hatching, scanlines, a single TSP tour, flow fields, or spirals, with live preview.
+- **3D models** -- import an STL, orbit it in an interactive preview, and it renders as a
+  plottable wireframe of the model's feature edges: silhouettes, creases at a tunable angle, and
+  boundaries, with hidden lines removed or kept and a perspective or orthographic camera.
 - **Hatch fills** -- a pen can't lay solid ink, so closed shapes fill with lines, rings, Hilbert
   curves, mazes, and friends, at an adjustable density.
 - **Made for pens** -- a pen per element with color-grouped output and swap pauses, pressure as line

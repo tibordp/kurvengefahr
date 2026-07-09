@@ -22,6 +22,7 @@ import {
   Circle,
   Hexagon,
   Star,
+  Box,
   Eye,
   EyeOff,
   Spline,
@@ -33,48 +34,15 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { useDoc } from '../store/document'
-import { isContainer } from '../elements/registry'
+import { elementLabel, isContainer } from '../elements/registry'
 import { useGeneration, needsManualRegen } from '../core/generation'
 import { useHover } from '../store/hover'
 import type { DocElement } from '../core/types'
-import type { HandwritingParams } from '../elements/handwriting'
-import type { PathParams, PolygonParams } from '../elements/shapes'
-import type { TextParams } from '../elements/text'
-import { GEN_KINDS, type GenerativeParams } from '../elements/generative'
+import type { PolygonParams } from '../elements/shapes'
 import { SectionTitle, controlClass, cx } from './primitives'
 
-/** A label derived from the element's content, used when it has no user-given name. */
-function derivedName(el: DocElement): string {
-  if (el.type === 'handwriting') {
-    const text = (el.params as HandwritingParams).text.replace(/\s+/g, ' ').trim()
-    if (!text) return 'Handwriting (empty)'
-    return text.length > 20 ? `“${text.slice(0, 20)}…”` : `“${text}”`
-  }
-  if (el.type === 'text') {
-    const t = (el.params as TextParams).text.replace(/\s+/g, ' ').trim()
-    return t ? (t.length > 20 ? `${t.slice(0, 20)}…` : t) : 'Text'
-  }
-  if (el.type === 'generative') {
-    const g = el.params as GenerativeParams
-    return GEN_KINDS.find((k) => k.key === g.kind)?.name ?? 'Generative'
-  }
-  if (el.type === 'rect') return 'Rectangle'
-  if (el.type === 'ellipse') return 'Ellipse'
-  if (el.type === 'polygon') return (el.params as PolygonParams).star ? 'Star' : 'Polygon'
-  if (el.type === 'path') {
-    const p = el.params as PathParams
-    const nodeCount = p.contours.reduce((a, c) => a + c.nodes.length, 0)
-    const closed = p.contours.length > 0 && p.contours.every((c) => c.closed)
-    return `${closed ? 'Shape' : 'Path'} (${nodeCount})`
-  }
-  if (el.type === 'raster') return 'Image'
-  if (el.type === 'logo') return 'Logo'
-  if (el.type === 'clip') return 'Clip'
-  if (el.type === 'group') return 'Group'
-  return el.type
-}
-
-const labelOf = (el: DocElement) => el.name ?? derivedName(el)
+// Naming lives in the element registry (each type's `label`/`describe`) — see elements/registry.ts.
+const labelOf = elementLabel
 
 const TYPE_ICON: Record<string, LucideIcon> = {
   handwriting: Signature,
@@ -84,6 +52,7 @@ const TYPE_ICON: Record<string, LucideIcon> = {
   ellipse: Circle,
   path: Spline,
   raster: ImageIcon,
+  model: Box,
   logo: Turtle,
   clip: Scissors,
   group: Folder,

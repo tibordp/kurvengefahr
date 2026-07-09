@@ -20,6 +20,7 @@ import { pressureEnabled } from '../../core/types'
 import type { HandwritingParams } from '../../elements/handwriting'
 import type { LogoParams } from '../../elements/logo'
 import type { RasterParams } from '../../elements/raster'
+import type { ModelParams } from '../../elements/model'
 import type { TextParams } from '../../elements/text'
 import type { GenerativeParams } from '../../elements/generative'
 import type { RectParams, EllipseParams, PolygonParams, PathParams } from '../../elements/shapes'
@@ -38,6 +39,7 @@ import {
   TextInspector,
   GenerativeInspector,
   RasterInspector,
+  ModelInspector,
   LogoInspector,
 } from './contentInspectors'
 
@@ -254,6 +256,9 @@ export function ElementSection() {
       )}
       {element.type === 'path' && <PathInspector id={element.id} params={element.params as PathParams} />}
       {element.type === 'raster' && <RasterInspector id={element.id} params={element.params as RasterParams} />}
+      {element.type === 'model' && (
+        <ModelInspector id={element.id} params={element.params as ModelParams} />
+      )}
       {element.type === 'logo' && <LogoInspector id={element.id} params={element.params as LogoParams} />}
 
       {element.type !== 'path' && (

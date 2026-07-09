@@ -15,6 +15,7 @@ export const defaultEllipseParams = (rx = 20, ry = 20): EllipseParams => ({ rx, 
 const num = (v: unknown, d: number) => (typeof v === 'number' && Number.isFinite(v) ? v : d)
 
 registerElement('ellipse', {
+  label: 'Ellipse',
   generate: (p: EllipseParams): Geometry => {
     const rx = Math.max(0, p.rx)
     const ry = Math.max(0, p.ry)

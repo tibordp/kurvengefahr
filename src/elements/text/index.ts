@@ -58,6 +58,11 @@ const num = (v: unknown, d: number) => (typeof v === 'number' && Number.isFinite
 const str = (v: unknown, d: string) => (typeof v === 'string' ? v : d)
 
 registerElement('text', {
+  label: 'Text',
+  describe: (p: TextParams) => {
+    const t = p.text.replace(/\s+/g, ' ').trim()
+    return t ? (t.length > 20 ? `${t.slice(0, 20)}…` : t) : null
+  },
   generate: (p: TextParams): Geometry => {
     if (!p.text.trim()) return []
     const geom = textGeometry(

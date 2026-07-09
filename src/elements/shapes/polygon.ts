@@ -49,6 +49,8 @@ export function polygonVertices(
 const num = (v: unknown, d: number) => (typeof v === 'number' && Number.isFinite(v) ? v : d)
 
 registerElement('polygon', {
+  label: 'Polygon',
+  describe: (p: PolygonParams) => (p.star ? 'Star' : null),
   generate: (p: PolygonParams): Geometry => {
     const rx = Math.max(0, p.rx)
     const ry = Math.max(0, p.ry)

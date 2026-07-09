@@ -67,6 +67,7 @@ export function sanitizeLogoParams(raw: unknown): LogoParams {
 }
 
 registerElement('logo', {
+  label: 'Logo',
   isLocked: () => false,
   sanitizeParams: sanitizeLogoParams,
   // Live re-run on edits (raster-style): the interpreter is fast and hard-limited.

@@ -43,6 +43,12 @@ export interface HandwritingParams {
 // Async (worker-backed). Locked into natural reading order unless the element opts into global
 // optimization. No synchronous `generate` — the controller produces geometry off-thread.
 registerElement('handwriting', {
+  label: 'Handwriting',
+  describe: (p: HandwritingParams) => {
+    const text = p.text.replace(/\s+/g, ' ').trim()
+    if (!text) return 'Handwriting (empty)'
+    return text.length > 20 ? `“${text.slice(0, 20)}…”` : `“${text}”`
+  },
   isLocked: (p: HandwritingParams) => !p.globalOptimize,
   sanitizeParams: sanitizeHandwritingParams,
 })

@@ -12,6 +12,7 @@ export type GroupParams = Record<string, never>
 export const defaultGroupParams = (): GroupParams => ({})
 
 registerElement('group', {
+  label: 'Group',
   generate: () => [],
   multiPen: true,
   container: true,

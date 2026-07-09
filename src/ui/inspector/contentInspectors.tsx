@@ -11,6 +11,7 @@ import type { HandwritingParams } from '../../elements/handwriting'
 import type { LogoParams } from '../../elements/logo'
 import { analyzeLogo, type LogoParamDecl } from '../../elements/logo/analysis'
 import { SEEDED_METHODS, type RasterParams, type RasterMethod } from '../../elements/raster'
+import type { ModelParams, ModelProjection } from '../../elements/model'
 import {
   HERSHEY_FONTS,
   OUTLINE_FONTS,
@@ -38,6 +39,7 @@ import {
 import { Num, SliderNum } from './controls'
 import { HatchControls } from './hatch'
 import { GenerationNote } from './GenerationNote'
+import { OrbitPreview } from './OrbitPreview'
 
 export function HandwritingInspector({ id, params }: { id: string; params: HandwritingParams }) {
   const setParams = useDoc((s) => s.setParams)
@@ -467,6 +469,52 @@ export function RasterInspector({ id, params }: { id: string; params: RasterPara
           onChange={(e) => up({ showUnderlay: e.target.checked })}
         />
       </Field>
+    </>
+  )
+}
+
+export function ModelInspector({ id, params }: { id: string; params: ModelParams }) {
+  const setParams = useDoc((s) => s.setParams)
+  // Every edit re-renders live (debounced, off-thread) — orbit drags included.
+  const up = (patch: Partial<ModelParams>) => setParams(id, { ...params, ...patch })
+
+  return (
+    <>
+      <SectionTitle>3D model</SectionTitle>
+      {!params.modelId && (
+        <Banner variant="warn">⚠ Model data missing — re-import this STL.</Banner>
+      )}
+      <OrbitPreview modelId={params.modelId} params={params} commit={up} />
+      {/* Below the preview (not under the header): its reserved status line doubles as the
+          breathing room between the triangle-count caption and the controls. */}
+      <GenerationNote id={id} />
+      <Field label="Style" title="Occluded removes hidden lines (solid object); transparent draws the full wireframe.">
+        <select
+          className={controlClass}
+          value={params.occluded ? 'occluded' : 'transparent'}
+          onChange={(e) => up({ occluded: e.target.value === 'occluded' })}
+        >
+          <option value="occluded">Occluded</option>
+          <option value="transparent">Transparent</option>
+        </select>
+      </Field>
+      <Field label="Projection" title="Perspective foreshortens with distance; orthographic keeps parallel edges parallel (technical-drawing look).">
+        <select
+          className={controlClass}
+          value={params.projection}
+          onChange={(e) => up({ projection: e.target.value as ModelProjection })}
+        >
+          <option value="perspective">Perspective</option>
+          <option value="orthographic">Orthographic</option>
+        </select>
+      </Field>
+      <SliderNum label="Edge angle (°)" min={1} max={90} step={1} value={params.creaseAngle} int
+        title="Edges between faces meeting at more than this angle are drawn. Lower shows more mesh detail; smooth surfaces keep just their outline."
+        onChange={(v) => up({ creaseAngle: v })} />
+      <SliderNum label="Width (mm)" min={1} max={400} step={1} value={params.targetWidthMm} int
+        onChange={(v) => up({ targetWidthMm: v })} />
+      <SliderNum label="Height (mm)" min={1} max={400} step={1} value={params.targetHeightMm} int
+        onChange={(v) => up({ targetHeightMm: v })} />
     </>
   )
 }

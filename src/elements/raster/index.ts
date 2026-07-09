@@ -80,6 +80,7 @@ export interface RasterParams {
 // bakes into the physical box so tracing stays crisp at any size (and the element goes dirty →
 // Regenerate, like handwriting edits). Single pen.
 registerElement('raster', {
+  label: 'Image',
   isLocked: () => false,
   sanitizeParams: sanitizeRasterParams,
   applyScale: (p: RasterParams, sx, sy) => ({
