@@ -22,6 +22,46 @@ pub const UNITS_PER_EM: f32 = 14.0;
 /// Hard cap on sampled timesteps (matches upstream `MAX_STROKE_LEN`).
 const MAX_STROKE_LEN: usize = 1200;
 
+// ---- sampling-quality knobs (see `generate_word`) ----
+//
+// The model's attention window can skate over characters it doesn't expect (rare letter sequences,
+// non-English words), producing skipped or garbled letters; and per-word generation ends against
+// the sequence terminator, which rushes final letters and amputates delayed strokes (t-bars and
+// i-dots are written after the word body in real hands). All sampling problems, not weight
+// problems, fixed here:
+//  • the attention sequence carries a trailing space before NUL (as in the training data), so the
+//    model finishes final letters under "a space comes next" instead of against the end;
+//  • after attention reaches that space, keep sampling briefly and adopt trailing strokes that
+//    read as delayed strokes (a wide high bar over the word's right region, or a mark well inside
+//    it), discarding the landing tick / first letter of an imagined next word;
+//  • score every attempt by its weakest character's attention dwell, and resample with a derived
+//    seed when a character was skipped, keeping the best of a few attempts.
+// What this cannot fix: letters the model *visits* but under-forms (a shallow y-tail reading as v,
+// a final n arch reading as r) — that's the hand itself; try a different golden style for those.
+
+/// Extra timesteps allowed after the stop condition, to pick up delayed strokes (t-bars, i-dots).
+const TRAIL_MAX_STEPS: usize = 32;
+/// Hard bounds for trailing ink, in model units (14/em): it may overshoot the word a little (this
+/// hand's t-bars sweep well past the stem) but escaping these means the model is writing on.
+const TRAIL_MARGIN_LEFT: f32 = 6.0;
+const TRAIL_MARGIN_RIGHT: f32 = 12.0;
+const TRAIL_MARGIN_Y: f32 = 7.0;
+/// Adoption test for a completed trailing stroke, all in model units. A delayed stroke never
+/// dips toward the baseline (t-bars cross at or above x-height ≈ 7, i-dots float higher), and it
+/// is either a wide bar overlapping the word's right region or a mark well inside the word. The
+/// stray marks to reject — the landing tick or first letter of an imagined next word — start at
+/// or past the word's right edge, hug it narrowly, and usually descend.
+const TRAIL_MIN_Y: f32 = 5.0;
+const TRAIL_BAR_SPAN: f32 = 4.5; // a t-bar is at least this wide...
+const TRAIL_BAR_OVERLAP: f32 = 2.0; // ...and starts at least this far left of the right edge
+const TRAIL_DOT_OVERLAP: f32 = 4.0; // a dot/short mark must sit clearly inside the word
+/// Rejection sampling: attempts per word (the first uses the caller's seed unchanged, so words
+/// that pass keep their previous look) and the acceptance threshold on `rel_dwell_score`.
+/// Calibrated on English + Latin words: clean renders score ≥ ~0.67, skipped/garbled letters
+/// collapse below ~0.2 — 0.45 splits the clusters with margin on both sides.
+const WORD_ATTEMPTS: u32 = 4;
+const MIN_REL_DWELL: f32 = 0.45;
+
 const MAGIC: &[u8; 4] = b"KGM1";
 
 /// One synthesized line: pen-down polylines in **em units** (baseline ≈ y=0, +y up, x from 0),
@@ -344,44 +384,176 @@ impl Model {
 
     /// Synthesize one **word**, primed on the golden sample for a consistent hand. Returns ink in em
     /// (baseline≈0, +y up, x from 0) plus its width (em). `word` must be in-alphabet and contain no
-    /// spaces (the worker splits + lays out). Deterministic for `(word, seed, bias)`.
+    /// spaces (the worker splits + lays out). Deterministic for `(word, seed, bias)`: rejection
+    /// sampling derives attempt seeds from `seed`, and attempt 0 IS `seed` — so words the scorer
+    /// accepts first try render exactly as a single-attempt sampler would.
     pub fn generate_word(&self, word: &str, seed: u32, bias: f32) -> LineInk {
         let word_idx = encode_indices(word); // word + NUL terminator
         if word_idx.len() <= 1 {
             return LineInk { strokes: Vec::new(), width: 0.0 };
         }
-        // Attention sequence: golden text + space + this word. The free-run starts from the cached
-        // golden-primed state (kappa at the golden/space boundary) and advances through the word.
+        let (full_idx, word_start) = self.word_attention(&word_idx);
+        let word_chars = word_idx.len() - 1;
+
+        let mut best: Option<(f32, Vec<(f32, f32, bool)>)> = None;
+        for attempt in 0..WORD_ATTEMPTS {
+            let aseed = seed.wrapping_add(attempt.wrapping_mul(0x85EB_CA6B));
+            let raw = self.sample_word(&full_idx, word_start, word_chars, aseed, bias);
+            let score = rel_dwell_score(&raw.dwell).min(width_score(&raw.traj, word_chars));
+            if score >= MIN_REL_DWELL {
+                return finish_word(&raw.traj);
+            }
+            if best.as_ref().map_or(true, |(s, _)| score > *s) {
+                best = Some((score, raw.traj));
+            }
+        }
+        finish_word(&best.expect("WORD_ATTEMPTS > 0").1)
+    }
+
+    /// The attention sequence for one word — golden text + space + word + **space** + NUL — and
+    /// the index of the word's first char within it. The free-run starts from the cached
+    /// golden-primed state (kappa at the golden/space boundary) and advances through the word.
+    /// The trailing space is load-bearing: in the training data a word is always followed by one,
+    /// so the model finishes final letters (last arches, descender tails) under "a space comes
+    /// next" instead of rushing them against the end of the sequence. `word_idx` is
+    /// `encode_indices` output (chars + NUL).
+    fn word_attention(&self, word_idx: &[usize]) -> (Vec<usize>, usize) {
         let space = ALPHABET.chars().position(|c| c == ' ').unwrap_or(1);
         let mut full_idx = self.golden.char_idx.clone();
         full_idx.push(space);
-        full_idx.extend_from_slice(&word_idx);
+        full_idx.extend_from_slice(&word_idx[..word_idx.len() - 1]); // the word's chars
+        full_idx.push(space);
+        full_idx.push(0); // NUL terminator
+        let word_start = full_idx.len() - 1 - word_idx.len();
+        (full_idx, word_start)
+    }
 
+    /// One free-run attempt: sample the trajectory, accumulate per-character attention dwell, and
+    /// terminate carefully. The stop condition (attention argmax on the NUL terminator + pen up)
+    /// fires at the pen-lift *before* any delayed stroke — a t-bar or i-dot is written after the
+    /// word body — so after it fires we keep sampling for a short trail window and extend the cut
+    /// over any stroke that completes inside the word's ink box, discarding ink that wanders off
+    /// (the start of an imagined next word).
+    fn sample_word(&self, full_idx: &[usize], word_start: usize, word_chars: usize, seed: u32, bias: f32) -> Sampled {
         let mut st = self.golden_state.clone();
         let mut rng = Mulberry32::new(seed.wrapping_mul(0x9E37_79B1).wrapping_add(0x6D2B_79F5));
         let mut gmm = self.mdn(&st.h3); // first offset comes from the primed state
         let mut x = self.sample(&gmm, bias, &mut rng);
 
-        let max_steps = (40 * word.chars().count()).clamp(1, MAX_STROKE_LEN);
+        let max_steps = (40 * word_chars).clamp(1, MAX_STROKE_LEN);
         let mut cx = 0.0f32;
         let mut cy = 0.0f32;
-        let mut raw: Vec<(f32, f32, bool)> = Vec::new();
+        let mut traj: Vec<(f32, f32, bool)> = Vec::new();
+        let mut dwell = vec![0.0f32; word_chars];
+        // Set once the stop condition fires: accepted end of the word + its ink box.
+        let mut cut: Option<(usize, [f32; 4])> = None; // (traj len, [min_x, max_x, min_y, max_y])
+        let mut trail = 0usize;
 
-        for _ in 0..max_steps {
+        while traj.len() < max_steps + TRAIL_MAX_STEPS {
             cx += x.0;
             cy += x.1;
-            raw.push((cx, cy, x.2));
-            // Stop once attention reaches the terminator and the pen lifts. (The first iteration sees
-            // the golden state's shorter `phi`, whose argmax is well before the word's end — safe.)
-            if argmax(&st.phi) >= full_idx.len() - 1 && x.2 {
-                break;
+            traj.push((cx, cy, x.2));
+
+            // Done once attention reaches the trailing space (index len-2) — the word's letters
+            // are behind the window and the model is in the inter-word gap. (The first iteration
+            // sees the golden state's shorter `phi`, whose argmax is well before the word's end —
+            // safe for the stop test, and skipped by the dwell guard.)
+            let attn_done = argmax(&st.phi) >= full_idx.len() - 2;
+            match &mut cut {
+                None => {
+                    if attn_done && x.2 {
+                        cut = Some((traj.len(), ink_box(&traj)));
+                    } else if traj.len() >= max_steps {
+                        break; // never terminated: cap as before
+                    }
+                }
+                Some((end, bx)) => {
+                    trail += 1;
+                    let inside = cx >= bx[0] - TRAIL_MARGIN_LEFT
+                        && cx <= bx[1] + TRAIL_MARGIN_RIGHT
+                        && cy >= bx[2] - TRAIL_MARGIN_Y
+                        && cy <= bx[3] + TRAIL_MARGIN_Y;
+                    if !inside {
+                        break; // escaped the word's vicinity — discard everything past `end`
+                    }
+                    if x.2 {
+                        // Stroke completed: adopt it only if it looks like a delayed stroke —
+                        // high-riding, and either a wide bar over the word's right region (the
+                        // terminal t-bar) or a mark well inside the word (an i-dot). Anything
+                        // else is the model starting an imagined next word.
+                        let s = ink_box(&traj[*end..]);
+                        let bar = s[1] - s[0] >= TRAIL_BAR_SPAN && s[0] <= bx[1] - TRAIL_BAR_OVERLAP;
+                        let dot = s[0] <= bx[1] - TRAIL_DOT_OVERLAP;
+                        if s[2] < TRAIL_MIN_Y || !(bar || dot) {
+                            break;
+                        }
+                        *end = traj.len();
+                    }
+                    if trail >= TRAIL_MAX_STEPS {
+                        break;
+                    }
+                }
             }
+
             gmm = self.forward_step(&[x.0, x.1, if x.2 { 1.0 } else { 0.0 }], &mut st, &full_idx);
             x = self.sample(&gmm, bias, &mut rng);
+            // Attention dwell per word character: how much window mass each received in total. A
+            // skipped/garbled letter shows up as a near-zero slot (see `rel_dwell_score`).
+            if st.phi.len() == full_idx.len() {
+                for (i, d) in dwell.iter_mut().enumerate() {
+                    *d += st.phi[word_start + i];
+                }
+            }
         }
 
-        finish_word(&raw)
+        if let Some((end, _)) = cut {
+            traj.truncate(end);
+        }
+        Sampled { traj, dwell }
     }
+}
+
+/// One sampling attempt's raw output: the trajectory and per-word-char attention dwell.
+struct Sampled {
+    traj: Vec<(f32, f32, bool)>,
+    dwell: Vec<f32>,
+}
+
+/// Bounding box of a trajectory's points as `[min_x, max_x, min_y, max_y]` (model units).
+fn ink_box(traj: &[(f32, f32, bool)]) -> [f32; 4] {
+    let mut b = [f32::INFINITY, f32::NEG_INFINITY, f32::INFINITY, f32::NEG_INFINITY];
+    for &(x, y, _) in traj {
+        b[0] = b[0].min(x);
+        b[1] = b[1].max(x);
+        b[2] = b[2].min(y);
+        b[3] = b[3].max(y);
+    }
+    b
+}
+
+/// Attention-dwell quality score: the weakest character's dwell relative to the word's median.
+/// A cleanly-written word scores near 1; a skipped letter drives it toward 0. Relative, so it
+/// self-calibrates across word lengths, biases, and styles.
+fn rel_dwell_score(dwell: &[f32]) -> f32 {
+    if dwell.is_empty() {
+        return 1.0;
+    }
+    let mut sorted = dwell.to_vec();
+    sorted.sort_by(|a, b| a.total_cmp(b));
+    let median = sorted[sorted.len() / 2].max(1e-6);
+    sorted[0] / median
+}
+
+/// Coarse width sanity: a word whose ink is drastically narrower than ~0.15 em per character has
+/// dropped letters even if the window nominally visited them. Returns a score on the same scale
+/// as `rel_dwell_score` (>= threshold passes).
+fn width_score(traj: &[(f32, f32, bool)], word_chars: usize) -> f32 {
+    if traj.is_empty() {
+        return 0.0;
+    }
+    let b = ink_box(traj);
+    let width_em = (b[1] - b[0]) / UNITS_PER_EM;
+    if width_em >= 0.15 * word_chars as f32 { 1.0 } else { 0.0 }
 }
 
 // ---- post-processing: scale to em, split into strokes ----
@@ -576,6 +748,53 @@ mod tests {
         }
     }
 
+    /// Dev diagnostic (ignored by default): prints attempt-0 dwell scores for a spread of easy and
+    /// attention-hostile words and dumps an SVG grid of the final (rejection-sampled) ink to
+    /// /tmp/kg_dwell_diag.svg for eyeballing. Use it to recalibrate MIN_REL_DWELL / the trail
+    /// constants after any change to sampling, the golden style, or the weights.
+    /// Run: cargo test diag_dwell -- --ignored --nocapture
+    #[test]
+    #[ignore]
+    fn diag_dwell() {
+        let blob = std::fs::read("../public/models/kg_model.f16.bin").expect("blob");
+        let model = Model::load(&blob).unwrap();
+        let words = [
+            "hello", "world", "running", "the", "through", // English (in-distribution)
+            "consectetur", "lobortis", "porttitor", "adipiscing", "vulputate", // Latin (OOD)
+            "dolor", "odio", "sit", "ut", "et", "ante", "amet", // short + t-final
+            "my", "name", "man", "brothers", "children", // weak-ending suspects
+        ];
+        let bias = 1.8f32;
+        let mut svg = String::from("<svg xmlns='http://www.w3.org/2000/svg' width='1400' height='2600' style='background:#fff'>\n");
+        let em = 22.0f32;
+        for (wi, word) in words.iter().enumerate() {
+            for seed in 1u32..=4 {
+                let word_idx = encode_indices(word);
+                let (full_idx, word_start) = model.word_attention(&word_idx);
+                let s = model.sample_word(&full_idx, word_start, word_idx.len() - 1, seed, bias);
+                let score = rel_dwell_score(&s.dwell).min(width_score(&s.traj, word_idx.len() - 1));
+                let dw: Vec<String> = s.dwell.iter().map(|d| format!("{d:.1}")).collect();
+                println!("{word:>12} seed {seed}: score {score:.3}  dwell [{}]", dw.join(" "));
+
+                // Render the FINAL (rejection-sampled) ink for the eyeball grid.
+                let ink = model.generate_word(word, seed, bias);
+                let ox = 40.0 + (seed - 1) as f32 * 340.0;
+                let oy = 60.0 + wi as f32 * 110.0;
+                for stroke in &ink.strokes {
+                    let d: Vec<String> = stroke
+                        .iter()
+                        .enumerate()
+                        .map(|(i, p)| format!("{}{:.1},{:.1}", if i == 0 { "M" } else { "L" }, ox + p.x * em, oy - p.y * em))
+                        .collect();
+                    svg.push_str(&format!("<path d='{}' fill='none' stroke='#111' stroke-width='1.3'/>\n", d.join(" ")));
+                }
+            }
+        }
+        svg.push_str("</svg>\n");
+        std::fs::write("/tmp/kg_dwell_diag.svg", svg).unwrap();
+        println!("wrote /tmp/kg_dwell_diag.svg");
+    }
+
     #[test]
     fn synthesizes_plausible_strokes() {
         let blob = std::fs::read("../public/models/kg_model.f16.bin").expect("blob");
@@ -585,5 +804,55 @@ mod tests {
         assert!(ink.width > 1.0, "implausible width {}", ink.width);
         let pts: usize = ink.strokes.iter().map(|s| s.len()).sum();
         assert!(pts > 20, "too few points {pts}");
+    }
+
+    #[test]
+    fn generation_is_deterministic() {
+        let blob = std::fs::read("../public/models/kg_model.f16.bin").expect("blob");
+        let model = Model::load(&blob).unwrap();
+        let a = model.generate_word("consectetur", 5, 1.8);
+        let b = model.generate_word("consectetur", 5, 1.8);
+        assert_eq!(a.width, b.width);
+        assert_eq!(a.strokes.len(), b.strokes.len());
+        for (sa, sb) in a.strokes.iter().zip(&b.strokes) {
+            assert_eq!(sa.len(), sb.len());
+            for (pa, pb) in sa.iter().zip(sb) {
+                assert_eq!((pa.x, pa.y), (pb.x, pb.y));
+            }
+        }
+    }
+
+    #[test]
+    fn rel_dwell_score_flags_skipped_chars() {
+        // Even dwell → near 1; one starved slot → collapses toward 0; degenerate → trivially 1.
+        assert!((rel_dwell_score(&[20.0, 22.0, 18.0]) - 18.0 / 20.0).abs() < 1e-6);
+        assert!(rel_dwell_score(&[20.0, 22.0, 0.5]) < 0.05);
+        assert_eq!(rel_dwell_score(&[7.0]), 1.0);
+        assert_eq!(rel_dwell_score(&[]), 1.0);
+    }
+
+    /// Pins the rejection-sampling mechanism to a known-bad fixture: `dolor` at seed 4 garbles on
+    /// attempt 0 (attention skips the tail — dwell collapses), so `generate_word` must reject it
+    /// and return a different, accepted attempt. If a recalibration makes attempt 0 pass, update
+    /// the fixture to a currently-failing (word, seed).
+    #[test]
+    fn rejection_sampling_replaces_garbled_attempts() {
+        let blob = std::fs::read("../public/models/kg_model.f16.bin").expect("blob");
+        let model = Model::load(&blob).unwrap();
+        let word = "dolor";
+        let (seed, bias) = (4u32, 1.8f32);
+
+        let word_idx = encode_indices(word);
+        let (full_idx, word_start) = model.word_attention(&word_idx);
+        let a0 = model.sample_word(&full_idx, word_start, word_idx.len() - 1, seed, bias);
+        let a0_score = rel_dwell_score(&a0.dwell).min(width_score(&a0.traj, word_idx.len() - 1));
+        assert!(a0_score < MIN_REL_DWELL, "fixture stale: attempt 0 now passes ({a0_score:.3})");
+
+        let chosen = model.generate_word(word, seed, bias);
+        let rejected = finish_word(&a0.traj);
+        assert!(
+            chosen.width != rejected.width || chosen.strokes.len() != rejected.strokes.len(),
+            "generate_word returned the garbled attempt"
+        );
     }
 }

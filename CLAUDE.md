@@ -56,6 +56,14 @@ weights as pure scalar Rust. The decisions that shape the surrounding code:
   checkpoint is **not** committed; `tools/` derives the blob and the NumPy twin (`reference.py`)
   validates the math + dumps the Rust gold-test fixtures. Deterministic for `(text, seed, bias)`;
   no fallback (generation requires the model loaded).
+- **Sampling QA in `generate_word`** (fidelity without touching the weights): each attempt is scored
+  by its weakest character's attention dwell and low scorers are resampled best-of-N with derived
+  seeds — attempt 0 *is* the caller's seed, so words that pass first try are stable across this
+  feature. After the attention-based stop, trailing strokes that overlap the word's ink (t-bars,
+  i-dots — delayed strokes the old stop condition amputated) are adopted; ink that wanders off is
+  discarded. Recalibrate the thresholds with `cargo test diag_dwell -- --ignored --nocapture`
+  (prints scores + dumps an SVG eyeball grid) after any change to sampling, golden style, or
+  weights.
 
 ## The IR (the waist of everything)
 
