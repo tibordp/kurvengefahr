@@ -23,10 +23,12 @@ mod effects;
 mod generative;
 mod geom;
 mod hatch;
+mod logo;
 mod model;
 mod plan;
 mod poly;
 mod raster;
+mod rng;
 mod shapes;
 mod svg;
 mod tess;
@@ -192,6 +194,88 @@ pub fn tessellate_path(nodes: &[f32], contour_starts: &[u32], closed: &[u8], tol
 #[wasm_bindgen]
 pub fn generative(params: &str) -> GeometryBuffers {
     GeometryBuffers::from_strokes(&generative::generate(params))
+}
+
+/// A Logo run: the strokes (same flat-buffer getters as `GeometryBuffers`) plus the turtle's
+/// final pose in element-local page space — the editor draws a turtle marker there so programs
+/// can be grown iteratively by appending to the end.
+#[wasm_bindgen]
+pub struct LogoRunResult {
+    geom: GeometryBuffers,
+    x: f32,
+    y: f32,
+    heading: f32,
+}
+
+#[wasm_bindgen]
+impl LogoRunResult {
+    #[wasm_bindgen(getter)]
+    pub fn xy(&self) -> Vec<f32> {
+        self.geom.xy()
+    }
+    #[wasm_bindgen(getter)]
+    pub fn pressure(&self) -> Vec<f32> {
+        self.geom.pressure()
+    }
+    #[wasm_bindgen(getter)]
+    pub fn offsets(&self) -> Vec<u32> {
+        self.geom.offsets()
+    }
+    #[wasm_bindgen(getter)]
+    pub fn pen(&self) -> Vec<u16> {
+        self.geom.pen()
+    }
+    #[wasm_bindgen(getter)]
+    pub fn reversible(&self) -> Vec<u8> {
+        self.geom.reversible()
+    }
+    #[wasm_bindgen(getter)]
+    pub fn group(&self) -> Vec<u32> {
+        self.geom.group()
+    }
+    #[wasm_bindgen(getter)]
+    pub fn x(&self) -> f32 {
+        self.x
+    }
+    #[wasm_bindgen(getter)]
+    pub fn y(&self) -> f32 {
+        self.y
+    }
+    /// Compass heading in degrees, 0 = up on screen, clockwise positive.
+    #[wasm_bindgen(getter)]
+    pub fn heading(&self) -> f32 {
+        self.heading
+    }
+}
+
+/// Run a Logo program into strokes (element-local mm) plus the turtle's end pose. `params` is
+/// JSON (`{source, args: {name: number}, seed}`); deterministic per `(source, args, seed)`, cut
+/// off by deterministic step/depth/output limits. The error is a JSON-serialized `LogoError`
+/// (`{message, line, col, from, to}`) for the editor + banner.
+#[wasm_bindgen]
+pub fn logo_run(params: &str) -> Result<LogoRunResult, JsValue> {
+    let res = logo::run(params).map_err(|e| JsValue::from_str(&e))?;
+    Ok(LogoRunResult {
+        geom: GeometryBuffers::from_strokes(&res.strokes),
+        x: res.pose.x,
+        y: res.pose.y,
+        heading: res.pose.heading,
+    })
+}
+
+/// Static analysis of a Logo source (parse-only, never executes): diagnostics, `param`
+/// declarations for the inspector, user procedures/globals for autocomplete. Synchronous —
+/// the editor calls it live as the user types. All offsets are UTF-16 code units.
+#[wasm_bindgen]
+pub fn logo_analyze(source: &str) -> String {
+    logo::analyze::analyze(source)
+}
+
+/// The Logo builtin vocabulary (names, aliases, signatures, docs) as JSON, for editor
+/// autocomplete + hover docs. Static — call once and cache.
+#[wasm_bindgen]
+pub fn logo_builtins() -> String {
+    logo::analyze::builtins_json()
 }
 
 /// Lay out text as strokes. `params` is JSON (`{text, mode, font, size, letter_spacing,

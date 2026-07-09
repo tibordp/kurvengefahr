@@ -1,6 +1,7 @@
 // Transient chrome UI state that isn't part of the authoritative document. The mobile inspector
 // drawer (on narrow viewports the inspector slides in over the canvas, toggled from the toolbar;
-// on desktop it's always docked and the flag is ignored) and the Help/About dialog.
+// on desktop it's always docked and the flag is ignored), the Help/About dialog, and the Logo
+// code dock (a resizable editor panel under the canvas — see ui/LogoDock.tsx).
 import { create } from 'zustand'
 
 interface UIStore {
@@ -12,6 +13,14 @@ interface UIStore {
   helpOpen: boolean
   toggleHelp: () => void
   setHelpOpen: (open: boolean) => void
+  /** Logo code dock: the id of the element being edited, or null when closed. Opening is always
+   *  explicit (inspector button, canvas double-click, or element creation — never mere selection)
+   *  and the session is modal-ish: the canvas mutes everything else while it's set. */
+  codeDockFor: string | null
+  setCodeDockFor: (id: string | null) => void
+  /** Dock height in px (transient — never persisted with the document). */
+  codeDockHeight: number
+  setCodeDockHeight: (h: number) => void
 }
 
 export const useUI = create<UIStore>((set) => ({
@@ -21,4 +30,8 @@ export const useUI = create<UIStore>((set) => ({
   helpOpen: false,
   toggleHelp: () => set((s) => ({ helpOpen: !s.helpOpen })),
   setHelpOpen: (open) => set({ helpOpen: open }),
+  codeDockFor: null,
+  setCodeDockFor: (id) => set({ codeDockFor: id }),
+  codeDockHeight: 240,
+  setCodeDockHeight: (h) => set({ codeDockHeight: h }),
 }))

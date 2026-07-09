@@ -6,6 +6,8 @@ The [README](../README.md) has the feature tour; the source has the rest.
 - [Browser API](browser-api.md) -- the `window.kurvengefahr` surface for userscripts, extensions,
   and headless automation.
 - [File format](file-format.md) -- the `.kgz` container and how compatibility is handled.
+- [Logo](logo.md) -- the turtle-graphics dialect: vocabulary, `param` knobs, pens and pressure
+  from code, custom tools, limits.
 - [Machines](machines.md) -- what a machine profile means, for G-code plotters and AxiDraw.
 
 The screenshots in this directory regenerate through the real app in headless Chrome:

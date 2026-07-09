@@ -8,6 +8,8 @@
 import { create } from 'zustand'
 import { useTools } from '../store/tools'
 import { useDoc } from '../store/document'
+import { useUI } from '../store/ui'
+import { useLogoTools } from '../store/logoTools'
 import {
   cornerNode,
   defaultRectParams,
@@ -18,6 +20,7 @@ import {
 } from '../elements/shapes'
 import { defaultTextParams } from '../elements/text'
 import { defaultGenerativeParams } from '../elements/generative'
+import { defaultLogoParams } from '../elements/logo'
 import { simplifyPolyline } from '../core/wasm/shapes'
 import { snap } from './snap'
 
@@ -170,9 +173,22 @@ export function drawPointerDown(p: Pt, mods: Mods): void {
   } else if (tool === 'generative') {
     useDoc.getState().addElement('generative', defaultGenerativeParams(), sp)
     useTools.getState().setTool('select')
+  } else if (tool === 'logo') {
+    const id = useDoc.getState().addElement('logo', defaultLogoParams(), sp)
+    useUI.getState().setCodeDockFor(id) // a fresh program is for editing — open its code dock
+    useTools.getState().setTool('select')
   } else if (tool === 'fiducial') {
     // Singleton: placing simply sets (or moves) the one document fiducial.
     useDoc.getState().setFiducial(sp)
+    useTools.getState().setTool('select')
+  } else if (tool.startsWith('custom:')) {
+    // A saved Logo tool: stamp an element with the tool's source snapshot, named after the tool.
+    // No dock auto-open — the point of a stamp is placing, not editing (Edit code still works).
+    const saved = useLogoTools.getState().tools.find((t) => t.id === tool.slice('custom:'.length))
+    if (saved) {
+      const id = useDoc.getState().addElement('logo', { ...defaultLogoParams(), source: saved.source }, sp)
+      useDoc.getState().setElementName(id, saved.name)
+    }
     useTools.getState().setTool('select')
   }
 }

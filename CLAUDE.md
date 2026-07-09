@@ -4,7 +4,7 @@ Browser CAM for pen plotters. Two machine families: G-code plotters (Prusa MK4 +
 pen-holder toolhead: Z = pen up/down + pressure, X/Y = position; download or PrusaLink) and
 AxiDraw-style EBB machines (streamed live over Web Serial). Client-only React/TS SPA. Inputs:
 handwriting (the original MVP), text, vector shapes/paths, SVG and DXF import, raster stylization,
-and generative primitives — all reduced to the same `Stroke[]` IR.
+generative primitives, and Logo programs — all reduced to the same `Stroke[]` IR.
 
 This file is the *why* and the non-obvious invariants — the stuff you can't grep. Mechanical detail
 (field lists, function names, arch numbers) is intentionally left to the code; don't re-document it
@@ -173,6 +173,45 @@ bits:
   a param-only edit re-runs only the Rust, not the decode. The randomized methods (tsp/flow, in
   `SEEDED_METHODS`) are deterministic per `seed` (re-roll = new arrangement).
 
+## Logo programs (`crate/src/logo/`, `src/elements/logo/`) — the third worker
+
+A real UCB-style interpreter; worker-backed + live like raster. The invariants that shape it:
+
+- **Determinism is a memoization contract, not a nicety**: the registry caches geometry on
+  `hash(source, args, seed)` and assumes params → geometry is pure. So the interpreter has **no
+  wall clock** — runaway programs are cut off by deterministic budgets in `Limits` (steps, non-tail
+  depth, points, strokes), never a timer. Don't add time-based anything.
+- **`builtins.rs` is the single source of truth** for the vocabulary: the parser reads arities from
+  it (Logo parses *greedily by arity*, hence the two-pass parse — procedure headers first, bodies
+  second), the evaluator dispatches on it, the analyzer flags unknown names against it, and
+  `logo_builtins()` feeds editor autocomplete. Adding a builtin = one table entry + one eval arm.
+- **Lists are data until run**: `[…]` never arity-parses at parse time; running one as code
+  re-parses its original token range (cached, real spans) — runtime-built lists synthesize tokens
+  carrying the call site's span. Error spans always point into the source; the boundary converts
+  byte spans → line/col (banner) + **UTF-16 offsets** (CodeMirror).
+- **Tail calls are required semantics** (the canonical Logo loop is tail recursion): `Sig::Tail`
+  unwinds to the running `call_proc`, which rebinds its frame — constant Logo *and* Rust/WASM
+  stack. The non-tail depth cap (256) exists because each Logo frame costs several Rust frames of
+  eval recursion against a ~1 MB WASM stack; re-validate it if the evaluator's shape changes.
+- **The first natively multi-pen generator**: `setpen n` stamps per-stroke pens (n = the palette's
+  PenId, which the profile editor assigns as 0, 1, 2…; unknown ids degrade gracefully downstream),
+  so the type registers `multiPen` and the inspector's pen/pressure sections hide. Turtle math is
+  y-up/heading-0-up (textbook Logo); **emission negates y** into page space.
+- **One `logo_analyze` call serves everything** (knobs, diagnostics, completion symbols) —
+  parse-only, sync, memoized per source string in `analysis.ts`. `param` declarations become
+  inspector knobs only when literal + top-level; the element stores just the *overrides* (`args`),
+  so untouched knobs follow the source default.
+- **The editor** (CodeMirror 6 in the bottom dock, `ui/LogoDock.tsx`) is lazy-loaded — CM never
+  ships unless a Logo element is edited. Highlighting is a deliberate `StreamLanguage` (a Lezer
+  grammar can't express arity-directed syntax and would lie exactly where it matters); intelligence
+  comes from the analyzer. Two-way source sync: user edits write through per transaction; external
+  changes (undo, cross-tab) replace the buffer only while unfocused, tagged with an `External`
+  annotation to stop echo. Runtime errors merge into the lint via the `detail` field on
+  `GenStatus` (clamped to the current doc — the user keeps typing after a failed run).
+- **Custom tools** (`store/logoTools.ts`, `kg-tools`) are source *snapshots*, never live links —
+  stamped elements are self-contained. The tool sidebar arms them via the `custom:<id>` member of
+  the `Tool` union.
+
 ## Pipeline (`src/core/pipeline`)
 
 generate (Rust, per element, **memoized**) → **effect** (Rust effect stack, local mm, **memoized**) →
@@ -201,9 +240,10 @@ geometry fn returns one struct → one decode path in JS (the worker uses the sa
 transferring buffers back). After reading a returned struct's arrays, **call `.free()`**.
 
 Main-thread WASM is instantiated **before first render** (`main.tsx` gates on `initWasm()`), so
-clip/optimize/`substitution_note` are **synchronous** in app code — **handwriting generation is the
-only exception** (async, in the worker). Build with `wasm-pack --target web`; `@wasm` → `crate/pkg`
-(gitignored, regenerated).
+clip/optimize/`substitution_note`/`logo_analyze` are **synchronous** in app code — the exceptions
+are the three worker-backed generators (handwriting, raster, Logo), each with its own WASM
+instance and one shared message protocol/controller (`core/generation.ts`). Build with
+`wasm-pack --target web`; `@wasm` → `crate/pkg` (gitignored, regenerated).
 
 ## Coordinate spaces (plotter bugs live in the seams)
 

@@ -28,8 +28,8 @@ interface ElementType {
    *  the scale in their transform (e.g. handwriting scales its ink). */
   applyScale?: (params: any, sx: number, sy: number) => unknown
   /** Natively multi-colour: the generator assigns per-stroke `pen`s itself, so concatenation must
-   *  NOT stamp the element's single `pen` over them. None today; the seam is here so adding such a
-   *  type (e.g. a multi-layer SVG import) needs no pipeline change. */
+   *  NOT stamp the element's single `pen` over them (logo; also containers, whose members carry
+   *  their own pens). */
   multiPen?: boolean
   /** A **container** element: it has no generator of its own; its geometry is composed from member
    *  elements (tagged with their `parent` = this element's id) in the pipeline / on the canvas. Both

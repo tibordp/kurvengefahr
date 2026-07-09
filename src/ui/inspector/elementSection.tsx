@@ -18,6 +18,7 @@ import { isMultiPen } from '../../elements/registry'
 import { drawableRegion } from '../../core/pipeline/clip'
 import { pressureEnabled } from '../../core/types'
 import type { HandwritingParams } from '../../elements/handwriting'
+import type { LogoParams } from '../../elements/logo'
 import type { RasterParams } from '../../elements/raster'
 import type { TextParams } from '../../elements/text'
 import type { GenerativeParams } from '../../elements/generative'
@@ -37,6 +38,7 @@ import {
   TextInspector,
   GenerativeInspector,
   RasterInspector,
+  LogoInspector,
 } from './contentInspectors'
 
 /** Shown when 2+ elements are selected: align + group actions. */
@@ -252,6 +254,7 @@ export function ElementSection() {
       )}
       {element.type === 'path' && <PathInspector id={element.id} params={element.params as PathParams} />}
       {element.type === 'raster' && <RasterInspector id={element.id} params={element.params as RasterParams} />}
+      {element.type === 'logo' && <LogoInspector id={element.id} params={element.params as LogoParams} />}
 
       {element.type !== 'path' && (
         <Button

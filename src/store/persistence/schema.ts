@@ -31,11 +31,15 @@ import { sanitizeEffects } from '../../effects/registry'
 // v7: machine-kind union — profiles are now `prusa` | `axidraw` shapes (library v2 likewise). No
 // migration step (prusa data is unchanged; the sanitizer dispatches on `kind`); the bump fences off
 // older apps that coerce every profile to prusa and would mangle an axidraw one.
-export const CURRENT_DOC_SCHEMA = 7
+// v8: the `logo` element type. No migration (purely additive); the bump makes older apps report a
+// doc containing Logo programs as `unsupported` instead of silently dropping those elements.
+export const CURRENT_DOC_SCHEMA = 8
 export const CURRENT_LIBRARY_SCHEMA = 2
+export const CURRENT_TOOLS_SCHEMA = 1
 
 export const DOC_FILE_KIND = 'kurvengefahr/document'
 export const PROFILES_FILE_KIND = 'kurvengefahr/profiles'
+export const TOOLS_FILE_KIND = 'kurvengefahr/tools'
 
 /** The mutable content of a document (what the working store holds). */
 export interface DocSnapshot {
@@ -294,6 +298,42 @@ export function loadStoredLibrary(raw: unknown): Outcome<MachineProfile[]> {
   }
 }
 
+// ---- custom-tool library load -------------------------------------------------------------------
+
+/** A saved Logo program that appears as a tool in the sidebar (see store/logoTools.ts). The source
+ *  is a snapshot — stamped elements are self-contained, never live-linked back to the tool. */
+export interface LogoTool {
+  id: string
+  name: string
+  source: string
+}
+
+function sanitizeTool(raw: unknown): LogoTool | null {
+  if (!isObj(raw)) return null
+  const name = str(raw.name, '').trim()
+  if (!name || typeof raw.source !== 'string') return null
+  return { id: str(raw.id, crypto.randomUUID()), name, source: raw.source }
+}
+
+const toolsMigrations: Record<number, Migrator> = {}
+
+function sanitizeTools(raw: unknown): LogoTool[] {
+  return Array.isArray(raw) ? raw.map(sanitizeTool).filter((t): t is LogoTool => t !== null) : []
+}
+
+export function loadStoredTools(raw: unknown): Outcome<LogoTool[]> {
+  try {
+    if (!isObj(raw)) return { status: 'invalid', message: 'not an object' }
+    const v = num(raw.schemaVersion, 1)
+    if (v > CURRENT_TOOLS_SCHEMA)
+      return { status: 'unsupported', message: `tools schema v${v} (supported: v${CURRENT_TOOLS_SCHEMA})` }
+    const migrated = applyMigrations(raw, v, CURRENT_TOOLS_SCHEMA, toolsMigrations)
+    return { status: 'ok', value: sanitizeTools(migrated.tools) }
+  } catch (e) {
+    return { status: 'invalid', message: String(e) }
+  }
+}
+
 // ---- file (import/export) envelopes -------------------------------------------------------------
 
 export function documentFile(doc: StoredDoc) {
@@ -312,6 +352,24 @@ export function documentFile(doc: StoredDoc) {
 
 export function profilesFile(profiles: MachineProfile[]) {
   return { kind: PROFILES_FILE_KIND, schemaVersion: CURRENT_LIBRARY_SCHEMA, profiles }
+}
+
+export function toolsFile(tools: LogoTool[]) {
+  return { kind: TOOLS_FILE_KIND, schemaVersion: CURRENT_TOOLS_SCHEMA, tools }
+}
+
+/** Parse an imported tools file → tool array. Total. */
+export function parseToolsFile(raw: unknown): Outcome<LogoTool[]> {
+  try {
+    if (!isObj(raw) || raw.kind !== TOOLS_FILE_KIND)
+      return { status: 'invalid', message: 'not a Kurvengefahr tools file' }
+    const v = num(raw.schemaVersion, 1)
+    if (v > CURRENT_TOOLS_SCHEMA) return { status: 'unsupported', message: `tools file schema v${v}` }
+    const migrated = applyMigrations(raw, v, CURRENT_TOOLS_SCHEMA, toolsMigrations)
+    return { status: 'ok', value: sanitizeTools(migrated.tools) }
+  } catch (e) {
+    return { status: 'invalid', message: String(e) }
+  }
 }
 
 /** Parse an imported document file → snapshot + name. Total. */

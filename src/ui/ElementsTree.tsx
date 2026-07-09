@@ -26,6 +26,7 @@ import {
   EyeOff,
   Spline,
   Sparkles,
+  Turtle,
   Image as ImageIcon,
   Scissors,
   Crop,
@@ -67,6 +68,7 @@ function derivedName(el: DocElement): string {
     return `${closed ? 'Shape' : 'Path'} (${nodeCount})`
   }
   if (el.type === 'raster') return 'Image'
+  if (el.type === 'logo') return 'Logo'
   if (el.type === 'clip') return 'Clip'
   if (el.type === 'group') return 'Group'
   return el.type
@@ -82,6 +84,7 @@ const TYPE_ICON: Record<string, LucideIcon> = {
   ellipse: Circle,
   path: Spline,
   raster: ImageIcon,
+  logo: Turtle,
   clip: Scissors,
   group: Folder,
 }

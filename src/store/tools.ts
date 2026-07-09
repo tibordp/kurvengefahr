@@ -1,7 +1,8 @@
 // The active drawing tool (a transient UI concern, like viewport). `select` is the default
 // arrow/transform tool; the others put the canvas into a create-on-drag/click mode (see
 // canvas/DrawingLayer.tsx). Tools auto-return to `select` after committing a shape (the pen
-// continues until the path is finished).
+// continues until the path is finished). `custom:<id>` arms a saved Logo tool from the library
+// (store/logoTools.ts) — the next canvas click stamps a logo element with that tool's source.
 import { create } from 'zustand'
 import { usePreview } from './preview'
 
@@ -15,7 +16,9 @@ export type Tool =
   | 'pen'
   | 'freehand'
   | 'generative'
+  | 'logo'
   | 'fiducial'
+  | `custom:${string}`
 
 interface ToolsStore {
   tool: Tool

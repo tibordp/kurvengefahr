@@ -10,6 +10,7 @@ import '../elements/shapes' // side-effect: registers rect/ellipse/path before p
 import '../elements/text' // side-effect: registers the text element before persistence boot
 import '../elements/generative' // side-effect: registers the generative element before persistence boot
 import '../elements/raster' // side-effect: registers the raster image type before persistence boot
+import '../elements/logo' // side-effect: registers the Logo program element before persistence boot
 import '../elements/clip' // side-effect: registers the clip container element before persistence boot
 import '../elements/group' // side-effect: registers the group container element before persistence boot
 import { PRUSA_MK4, findBuiltinProfile } from './profiles'

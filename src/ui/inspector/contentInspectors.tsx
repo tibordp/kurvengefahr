@@ -1,10 +1,14 @@
-// Per-type inspectors for the content elements: handwriting / text / generative / raster.
-import { Dices } from 'lucide-react'
+// Per-type inspectors for the content elements: handwriting / text / generative / raster / logo.
+import { Code, Dices, Hammer } from 'lucide-react'
 import { useDoc } from '../../store/document'
+import { useUI } from '../../store/ui'
+import { useLogoTools } from '../../store/logoTools'
 import { useGeneration, regenerate, needsManualRegen } from '../../core/generation'
 import { substitution_note } from '../../core/wasm'
 import { pressureEnabled } from '../../core/types'
 import type { HandwritingParams } from '../../elements/handwriting'
+import type { LogoParams } from '../../elements/logo'
+import { analyzeLogo, type LogoParamDecl } from '../../elements/logo/analysis'
 import { SEEDED_METHODS, type RasterParams, type RasterMethod } from '../../elements/raster'
 import {
   HERSHEY_FONTS,
@@ -462,6 +466,113 @@ export function RasterInspector({ id, params }: { id: string; params: RasterPara
           onChange={(e) => up({ showUnderlay: e.target.checked })}
         />
       </Field>
+    </>
+  )
+}
+
+/** One knob for a program's `param` declaration: a slider when it declares a range, a plain
+ *  number field otherwise. The element only stores *overrides* — an untouched knob follows the
+ *  source default. */
+function LogoParamKnob({
+  decl, value, onChange,
+}: {
+  decl: LogoParamDecl
+  value: number
+  onChange: (v: number) => void
+}) {
+  if (decl.min !== undefined && decl.max !== undefined) {
+    const span = decl.max - decl.min
+    // A declared step wins ([min max step]); otherwise integer-looking ranges step by 1.
+    const intish = Number.isInteger(decl.min) && Number.isInteger(decl.max) && Number.isInteger(decl.default)
+    const step = decl.step ?? (intish && span >= 8 ? 1 : Math.max(span / 100, 0.01))
+    const int = intish && Number.isInteger(step) && step >= 1
+    return (
+      <SliderNum
+        label={decl.name}
+        min={decl.min}
+        max={decl.max}
+        step={step}
+        int={int}
+        hardMax
+        value={value}
+        onChange={onChange}
+      />
+    )
+  }
+  return <Num label={decl.name} value={value} step={decl.step ?? 1} onChange={onChange} />
+}
+
+export function LogoInspector({ id, params }: { id: string; params: LogoParams }) {
+  const setParams = useDoc((s) => s.setParams)
+  const up = (patch: Partial<LogoParams>) => setParams(id, { ...params, ...patch })
+
+  // Parse-only static analysis (memoized on the exact source): param knobs + seed relevance.
+  const analysis = analyzeLogo(params.source)
+  const setArg = (name: string, v: number) => up({ args: { ...params.args, [name]: v } })
+
+  return (
+    <>
+      <SectionTitle title="A Logo turtle-graphics program. It re-runs live as you edit; distances are mm.">
+        Logo program
+      </SectionTitle>
+      <GenerationNote id={id} reserveIdle={false} />
+      <div className="flex gap-2">
+        <Button
+          className="min-w-0 flex-1"
+          title="Open the code editor in the panel under the canvas (or double-click the element)"
+          onClick={() => useUI.getState().setCodeDockFor(id)}
+        >
+          <Code size={15} /> Edit code
+        </Button>
+        <Button
+          className="min-w-0 flex-1"
+          title="Save this program to the tool sidebar — click it to stamp copies in any document"
+          onClick={() => {
+            const name = prompt('Save as tool:', 'My tool')?.trim()
+            if (name) useLogoTools.getState().addTool(name, params.source)
+          }}
+        >
+          <Hammer size={15} /> Save as tool
+        </Button>
+      </div>
+      {analysis.params.length > 0 && (
+        <>
+          <SectionTitle title="Knobs declared by the program's param statements. Values live on this element; the code keeps its defaults.">
+            Parameters
+          </SectionTitle>
+          {analysis.params.map((decl) => (
+            <LogoParamKnob
+              key={decl.name}
+              decl={decl}
+              value={params.args[decl.name] ?? decl.default}
+              onChange={(v) => setArg(decl.name, v)}
+            />
+          ))}
+        </>
+      )}
+      {analysis.usesRandom && (
+        <Field label="Seed" title="Seed for the program's random / pick. Re-roll for a new arrangement.">
+          <div className="flex min-w-0 items-center gap-2">
+            <input
+              className={cx(controlClass, 'min-w-0 flex-1')}
+              type="text"
+              inputMode="numeric"
+              value={params.seed}
+              onChange={(e) => {
+                const v = parseInt(e.target.value, 10)
+                if (Number.isFinite(v)) up({ seed: Math.max(0, v) })
+              }}
+            />
+            <IconButton
+              aria-label="Re-roll seed"
+              title="Re-roll: new random arrangement"
+              onClick={() => up({ seed: Math.floor(Math.random() * 1e9) })}
+            >
+              <Dices size={16} />
+            </IconButton>
+          </div>
+        </Field>
+      )}
     </>
   )
 }

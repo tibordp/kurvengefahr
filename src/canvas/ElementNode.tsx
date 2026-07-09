@@ -8,6 +8,7 @@ import { pressureEnabled } from '../core/types'
 import { isMultiPen } from '../elements/registry'
 import { effectedLocal } from '../core/pipeline/clipGeometry'
 import { useDoc } from '../store/document'
+import { useUI } from '../store/ui'
 import { useGeneration, needsManualRegen, provisionalScale } from '../core/generation'
 import { useRasterImage } from './useRasterImage'
 import type { RasterParams } from '../elements/raster'
@@ -72,6 +73,13 @@ function ElementNodeImpl({ element, pxPerMm, interactive = true, effective }: Pr
       listening={interactive}
       draggable={interactive}
       {...handlers}
+      // Double-clicking a Logo program opens its code (the click already selected it).
+      {...(element.type === 'logo' && interactive
+        ? {
+            onDblClick: () => useUI.getState().setCodeDockFor(element.id),
+            onDblTap: () => useUI.getState().setCodeDockFor(element.id),
+          }
+        : {})}
     >
       {element.type === 'raster' && <RasterBounds element={element} />}
       {element.type === 'raster' && <RasterUnderlay element={element} />}

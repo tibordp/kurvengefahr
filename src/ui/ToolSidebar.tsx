@@ -8,6 +8,7 @@ import { Image as ImageIcon } from 'lucide-react'
 import { useTools } from '../store/tools'
 import { importContentFile } from '../canvas/importImage'
 import { TOOL_GROUPS } from './shortcuts'
+import { LogoToolsSection } from './LogoToolsSection'
 import { cx } from './primitives'
 
 const buttonClass =
@@ -23,6 +24,9 @@ export function ToolSidebar() {
     <nav
       aria-label="Tools"
       className="flex min-w-0 shrink-0 gap-1 overflow-x-auto border-b border-border bg-surface p-1.5 md:min-h-0 md:flex-col md:overflow-x-visible md:overflow-y-auto md:border-b-0 md:border-r"
+      // Custom tool tiles have their own right-click actions; suppress the browser menu on the
+      // rest of the palette so right-click behaves consistently across it.
+      onContextMenu={(e) => e.preventDefault()}
     >
       {TOOL_GROUPS.map((group, gi) => (
         <Fragment key={gi}>
@@ -41,6 +45,9 @@ export function ToolSidebar() {
           ))}
         </Fragment>
       ))}
+
+      {/* Saved Logo tools (custom stamps) + their management menu. */}
+      <LogoToolsSection buttonClass={buttonClass} dividerClass={dividerClass} />
 
       {/* Separator between drawing modes and the one-shot insert action. */}
       <span className={dividerClass} aria-hidden />

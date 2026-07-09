@@ -11,6 +11,7 @@ import {
   PenTool,
   Pencil,
   Sparkles,
+  Turtle,
   Crosshair,
 } from 'lucide-react'
 import type { ComponentType } from 'react'
@@ -50,6 +51,7 @@ export const TOOL_GROUPS: ToolDef[][] = [
     { tool: 'handwriting', icon: Signature, label: 'Handwriting', key: 'T' },
     { tool: 'text', icon: Type, label: 'Text', key: 'Y' },
     { tool: 'generative', icon: Sparkles, label: 'Generative', key: 'G' },
+    { tool: 'logo', icon: Turtle, label: 'Logo program', key: 'L' },
   ],
   [{ tool: 'fiducial', icon: Crosshair, label: 'Fiducial (align point)', key: 'X' }],
 ]

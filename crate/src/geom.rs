@@ -7,14 +7,14 @@
 
 use wasm_bindgen::prelude::*;
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct Point {
     pub x: f32,
     pub y: f32,
     pub pressure: f32,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Stroke {
     pub points: Vec<Point>,
     pub pen: u16,

@@ -30,7 +30,7 @@ machine's own origin.
 - `listElements()` -- light metadata for every element in z-order:
   `{id, type, name?, pen, parent?, hidden?}`.
 - `addElement(type, params?, at?)` -- add an element of any registered type (`rect`, `ellipse`,
-  `polygon`, `path`, `text`, `handwriting`, `generative`, `raster`, ...) at a page-space transform
+  `polygon`, `path`, `text`, `handwriting`, `generative`, `raster`, `logo`, ...) at a page-space transform
   `{x, y, rotation?, scaleX?, scaleY?}`, and select it. Partial params are fine -- see the
   sanitization convention above. Returns the new element's id, or `null` for an unknown type. The
   param shapes are the same ones the `.kgz` format persists; they are defined in
@@ -52,7 +52,7 @@ machine's own origin.
 ## App state
 
 - `generationStatus()` -- `{busy, errors}` for worker-backed generation (handwriting, raster
-  tracing). `busy` stays true while any such element still lacks settled geometry; `errors` lists
+  tracing, Logo programs). `busy` stays true while any such element still lacks settled geometry; `errors` lists
   elements whose generation failed (those never settle). Poll this before reading geometry or
   taking a screenshot.
 - `fitView()` -- fit the bed into the viewport (same as the toolbar zoom-to-fit).

@@ -4,6 +4,7 @@
 //! tiles, Voronoi, and a noise flow field.
 
 use crate::geom::{Point, Stroke};
+use crate::rng::Rng;
 use std::f32::consts::TAU;
 
 #[derive(serde::Deserialize)]
@@ -69,24 +70,6 @@ pub fn generate(json: &str) -> Vec<Stroke> {
 }
 
 // ---- helpers ------------------------------------------------------------------------------------
-
-struct Rng(u32);
-impl Rng {
-    fn new(s: u32) -> Self {
-        Rng(s.max(1).wrapping_mul(2654435761).max(1))
-    }
-    fn next(&mut self) -> u32 {
-        let mut x = self.0;
-        x ^= x << 13;
-        x ^= x >> 17;
-        x ^= x << 5;
-        self.0 = x;
-        x
-    }
-    fn f32(&mut self) -> f32 {
-        self.next() as f32 / u32::MAX as f32
-    }
-}
 
 fn pt(x: f32, y: f32) -> Point {
     Point { x, y, pressure: 1.0 }

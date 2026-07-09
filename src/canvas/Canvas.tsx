@@ -14,6 +14,7 @@ import type { KonvaEventObject } from 'konva/lib/Node'
 import { useDoc } from '../store/document'
 import { usePreview } from '../store/preview'
 import { useTools } from '../store/tools'
+import { useUI } from '../store/ui'
 import { useViewport, useCursor } from '../store/viewport'
 import { clampViewport, fitScale, MIN_SCALE, MAX_SCALE } from './viewport'
 import { drawableRegion } from '../core/pipeline/clip'
@@ -24,6 +25,7 @@ import { PreviewLayer } from './PreviewLayer'
 import { DrawingPreview } from './DrawingPreview'
 import { NodeEditLayer } from './NodeEditLayer'
 import { GhostLayer } from './GhostLayer'
+import { TurtleMarker } from './TurtleMarker'
 import { FiducialLayer } from './FiducialLayer'
 import { SnapGrid } from './SnapLayer'
 import { useSnap } from '../store/snap'
@@ -71,6 +73,9 @@ export function Canvas() {
   const previewActive = usePreview((s) => s.active)
   const tool = useTools((s) => s.tool)
   const drawing = tool !== 'select' && !previewActive
+  // A Logo code-editing session is modal-ish: every other element mutes (dimmed, non-interactive,
+  // like preview mode) and the edited element keeps no Transformer — the program owns its shape.
+  const editingId = useUI((s) => s.codeDockFor)
 
   const scale = useViewport((s) => s.scale)
   const vx = useViewport((s) => s.x)
@@ -189,7 +194,7 @@ export function Canvas() {
   // Transformer; everything else (incl. multi-selection) uses the Transformer for group transforms.
   const solePath =
     selectedIds.length === 1 && elements.find((e) => e.id === selectedIds[0])?.type === 'path'
-  const showTransformer = selectedIds.length > 0 && !previewActive && !drawing && !solePath
+  const showTransformer = selectedIds.length > 0 && !previewActive && !drawing && !solePath && !editingId
 
   useEffect(() => {
     const tr = trRef.current
@@ -570,7 +575,7 @@ export function Canvas() {
           ))}
           {elements.map((el) => {
             if (el.hidden) return null // hidden = no marks (a hidden clip mask still clips, inside its container)
-            const interactive = !previewActive && !spaceHeld && !drawing
+            const interactive = !previewActive && !spaceHeld && !drawing && (!editingId || el.id === editingId)
             // Container members aren't drawn at the top level — only via their container's composed
             // geometry. A *selected* member renders raw at its effective page transform, so you can
             // see and edit it in context (the container chain is composed in).
@@ -593,6 +598,7 @@ export function Canvas() {
           {previewActive && <PreviewLayer pxPerMm={scale} />}
           {drawing && <DrawingPreview pxPerMm={scale} />}
           {!previewActive && !drawing && <GhostLayer />}
+          {!previewActive && !drawing && <TurtleMarker pxPerMm={scale} />}
           {!previewActive && !drawing && <NodeEditLayer pxPerMm={scale} />}
           {!previewActive && !drawing && <HoverHighlight pxPerMm={scale} />}
           {!previewActive && !drawing && <KeyHighlight pxPerMm={scale} />}

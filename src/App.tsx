@@ -11,6 +11,7 @@ import { Toaster } from './ui/Toaster'
 import { Canvas } from './canvas/Canvas'
 import { PreviewControls } from './ui/PreviewControls'
 import { PlotHUD } from './ui/PlotHUD'
+import { LogoDock } from './ui/LogoDock'
 import { StatusBar } from './ui/StatusBar'
 import { useShortcuts } from './ui/useShortcuts'
 import { useDoc } from './store/document'
@@ -111,6 +112,7 @@ export function App() {
         <Canvas />
         <PreviewControls />
         <PlotHUD />
+        <LogoDock />
         <StatusBar />
       </main>
 

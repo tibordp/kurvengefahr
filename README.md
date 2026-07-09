@@ -26,6 +26,10 @@ G-code machine) and AxiDraw-style plotters.
   it. The source stays editable throughout.
 - **Generative patterns** -- spirographs, L-system fractals, Truchet tiles, Voronoi diagrams, and
   flow fields, reproducible per seed.
+- **Logo programs** -- write turtle graphics in a real Logo (procedures, recursion, lists, seeded
+  randomness) in an editor with live diagnostics and autocomplete; `param` declarations become
+  inspector knobs, `setpen`/`setpressure` drive color and line weight from code, and programs save
+  as reusable tools in the sidebar, importable and exportable. See [docs/logo.md](docs/logo.md).
 - **SVG and DXF import** -- files become native, editable paths at real-world size, colors mapped to
   pens; occluded fill regions are clipped away so they don't plot.
 - **Raster tracing** -- restyle a photo as strokes: outlines, centerlines, topographic levels,
@@ -53,8 +57,9 @@ motion), so adding a new input type never touches the machinery downstream.
 
 The app is client-only React, but all the geometry -- the handwriting model, font and text layout,
 shape and path math, polygon booleans, SVG and DXF parsing, occlusion, image tracing, generative
-patterns, clipping, and path optimization -- is Rust compiled to WebAssembly (the `kg_core` crate). The
-handwriting model and image tracing run in Web Workers so the UI stays responsive.
+patterns, the Logo interpreter, clipping, and path optimization -- is Rust compiled to WebAssembly
+(the `kg_core` crate). The handwriting model, image tracing, and Logo programs run in Web Workers
+so the UI stays responsive.
 
 ## Building
 

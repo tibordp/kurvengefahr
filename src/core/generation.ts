@@ -24,6 +24,9 @@ export interface GenStatus {
   done?: number
   total?: number
   message?: string
+  /** Structured error payload from the worker (opaque to the controller) — e.g. the Logo
+   *  interpreter's `{message, line, col, from, to}` for editor diagnostics. */
+  detail?: unknown
 }
 
 interface GenStore {
@@ -76,6 +79,9 @@ interface PartialMsg {
   /** Words placed so far / total (for progress). */
   done: number
   total: number
+  /** Worker-specific sidecar stored alongside the geometry, opaque to the controller (e.g. the
+   *  Logo turtle's end pose for the editor's on-canvas marker). Read via `getGeneratedMeta`. */
+  meta?: unknown
   // Full placed geometry so far (replaces the cache each tick — the worker handles layout/alignment).
   xy: Float32Array
   pressure: Float32Array
@@ -88,7 +94,7 @@ type WorkerOut =
   | { type: 'loading-model'; jobId: number; elementId: string }
   | PartialMsg
   | { type: 'done'; jobId: number; elementId: string }
-  | { type: 'error'; jobId: number; elementId: string; message: string }
+  | { type: 'error'; jobId: number; elementId: string; message: string; detail?: unknown }
 
 interface Job {
   jobId: number
@@ -106,6 +112,14 @@ const failed = new Map<string, string>()
 /** The box the *currently cached* geometry was fit into, per element. Set when a trace lands; read
  *  to provisionally rescale stale ink while a resize's re-trace is pending. */
 const generatedExtent = new Map<string, { w: number; h: number }>()
+/** Worker-specific sidecar delivered with the cached geometry (see `PartialMsg.meta`). */
+const generatedMeta = new Map<string, unknown>()
+
+/** The sidecar the worker delivered with this element's current geometry (undefined if none).
+ *  Matches the cache's lifetime — it describes the *generated* strokes, possibly stale like them. */
+export function getGeneratedMeta(id: string): unknown {
+  return generatedMeta.get(id)
+}
 
 /** Scale factor to apply to an element's stale cached ink so it matches its current (possibly
  *  just-resized) box: current-box / generated-box. 1 when sizes agree or no extent is tracked. */
@@ -145,11 +159,12 @@ function scheduleAutoRegen(id: string): void {
   )
 }
 
-// Two worker-backed types, each with its own WASM instance: handwriting (carries the ~7 MB model)
-// and raster vectorization. Both speak the same message protocol, so one `handleMessage` serves
-// both; only the worker handle differs by element type.
+// Three worker-backed types, each with its own WASM instance: handwriting (carries the ~7 MB
+// model), raster vectorization, and Logo interpretation. All speak the same message protocol, so
+// one `handleMessage` serves them; only the worker handle differs by element type.
 let hwWorker: Worker | null = null
 let vecWorker: Worker | null = null
+let logoWorker: Worker | null = null
 
 function workerFor(type: string): Worker {
   if (type === 'raster') {
@@ -158,6 +173,13 @@ function workerFor(type: string): Worker {
       vecWorker.onmessage = (e: MessageEvent<WorkerOut>) => handleMessage(e.data)
     }
     return vecWorker
+  }
+  if (type === 'logo') {
+    if (!logoWorker) {
+      logoWorker = new Worker(new URL('./wasm/logoWorker.ts', import.meta.url), { type: 'module' })
+      logoWorker.onmessage = (e: MessageEvent<WorkerOut>) => handleMessage(e.data)
+    }
+    return logoWorker
   }
   if (!hwWorker) {
     hwWorker = new Worker(new URL('./wasm/genWorker.ts', import.meta.url), { type: 'module' })
@@ -177,7 +199,7 @@ function handleMessage(msg: WorkerOut) {
   if (msg.type === 'error') {
     inflight.delete(msg.elementId)
     failed.set(msg.elementId, job.hash)
-    setStatus(msg.elementId, { phase: 'error', message: msg.message })
+    setStatus(msg.elementId, { phase: 'error', message: msg.message, detail: msg.detail })
     return
   }
   if (msg.type === 'partial') {
@@ -192,6 +214,7 @@ function handleMessage(msg: WorkerOut) {
       group: msg.group,
     })
     markGenerated(msg.elementId, job.hash, geom)
+    if (msg.meta !== undefined) generatedMeta.set(msg.elementId, msg.meta)
     // This geometry is now fit to the job's box; clear any provisional rescale (sizes agree again).
     if (job.extent) generatedExtent.set(msg.elementId, job.extent)
     setStatus(msg.elementId, { phase: 'generating', done: msg.done, total: msg.total })
@@ -225,6 +248,7 @@ function cleanup(id: string) {
   }
   clearAutoTimer(id)
   generatedExtent.delete(id)
+  generatedMeta.delete(id)
   failed.delete(id)
   clearStatus(id)
 }
