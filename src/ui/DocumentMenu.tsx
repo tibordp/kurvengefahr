@@ -5,6 +5,8 @@ import { useEffect, useState } from 'react'
 import { ChevronDown, FilePlus, Copy, Trash2, Upload, Download, FileText, FolderOpen, Save } from 'lucide-react'
 import { importContentFile } from '../canvas/importImage'
 import { useExportDialog } from '../store/exportDialog'
+import { toast } from '../store/toast'
+import { confirmDialog } from '../store/dialogs'
 import { useDocuments } from '../store/documents'
 import { useSaveStatus } from '../store/saveStatus'
 import { downloadBlob, pickFile, safeFilename } from '../output/download'
@@ -73,21 +75,26 @@ export function DocumentMenu() {
       if (!file) return
       const res = await importDocumentContainer(file)
       if (res.status === 'unsupported') {
-        alert(`Can't import — ${res.message}. Try updating the app.`)
+        toast.error(`Can't import — ${res.message}. Try updating the app.`)
         return
       }
       if (res.status !== 'ok') {
-        alert('That file is not a valid Kurvengefahr document.')
+        toast.error('That file is not a valid Kurvengefahr document.')
         return
       }
     } catch {
-      alert('Could not read that file.')
+      toast.error('Could not read that file.')
     }
   }
 
-  const onDelete = () => {
-    if (!confirm('Delete this document? This cannot be undone.')) return
-    useDocuments.getState().deleteDocument(activeId)
+  const onDelete = async () => {
+    const ok = await confirmDialog({
+      title: 'Delete document',
+      message: 'Delete this document? This cannot be undone.',
+      confirmLabel: 'Delete',
+      danger: true,
+    })
+    if (ok) useDocuments.getState().deleteDocument(activeId)
   }
 
   const recent = index.filter((m) => m.id !== activeId).slice(0, 8)

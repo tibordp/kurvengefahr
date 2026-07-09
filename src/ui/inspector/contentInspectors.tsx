@@ -3,6 +3,7 @@ import { Code, Dices, Hammer } from 'lucide-react'
 import { useDoc } from '../../store/document'
 import { useUI } from '../../store/ui'
 import { useLogoTools } from '../../store/logoTools'
+import { promptDialog } from '../../store/dialogs'
 import { useGeneration, regenerate, needsManualRegen } from '../../core/generation'
 import { substitution_note } from '../../core/wasm'
 import { pressureEnabled } from '../../core/types'
@@ -527,8 +528,8 @@ export function LogoInspector({ id, params }: { id: string; params: LogoParams }
         <Button
           className="min-w-0 flex-1"
           title="Save this program to the tool sidebar — click it to stamp copies in any document"
-          onClick={() => {
-            const name = prompt('Save as tool:', 'My tool')?.trim()
+          onClick={async () => {
+            const name = await promptDialog({ title: 'Save as tool', initial: 'My tool' })
             if (name) useLogoTools.getState().addTool(name, params.source)
           }}
         >

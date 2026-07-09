@@ -4,6 +4,7 @@
 import { Download, Moon, Monitor, Pencil, Sun, Trash2, Upload } from 'lucide-react'
 import { useTheme, type Theme } from '../../store/theme'
 import { useLogoTools } from '../../store/logoTools'
+import { toast } from '../../store/toast'
 import { parseToolsFile, toolsFile } from '../../store/persistence/schema'
 import { downloadJson, pickJsonFile } from '../../output/download'
 import { deleteTool, monogram, renameTool } from '../LogoToolsSection'
@@ -29,10 +30,10 @@ function LogoToolsPrefs() {
       if (raw == null) return
       const res = parseToolsFile(raw)
       if (res.status === 'ok') useLogoTools.getState().importTools(res.value)
-      else if (res.status === 'unsupported') alert(`Can't import — ${res.message}. Try updating the app.`)
-      else alert('That file is not a valid Kurvengefahr tools file.')
+      else if (res.status === 'unsupported') toast.error(`Can't import — ${res.message}. Try updating the app.`)
+      else toast.error('That file is not a valid Kurvengefahr tools file.')
     } catch {
-      alert('Could not read that file.')
+      toast.error('Could not read that file.')
     }
   }
   const exportTools = () => downloadJson('kurvengefahr-tools', toolsFile(useLogoTools.getState().tools))
@@ -54,10 +55,10 @@ function LogoToolsPrefs() {
                 {monogram(t.name)}
               </span>
               <span className="min-w-0 flex-1 truncate text-sm">{t.name}</span>
-              <IconButton aria-label={`Rename ${t.name}`} title="Rename" className="h-7 w-7" onClick={() => renameTool(t)}>
+              <IconButton aria-label={`Rename ${t.name}`} title="Rename" className="h-7 w-7" onClick={() => void renameTool(t)}>
                 <Pencil size={14} />
               </IconButton>
-              <IconButton aria-label={`Delete ${t.name}`} title="Delete" className="h-7 w-7" onClick={() => deleteTool(t)}>
+              <IconButton aria-label={`Delete ${t.name}`} title="Delete" className="h-7 w-7" onClick={() => void deleteTool(t)}>
                 <Trash2 size={14} />
               </IconButton>
             </li>

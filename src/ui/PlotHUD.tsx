@@ -3,6 +3,7 @@
 // ETA + current pen + pause/stop, plus the operator-prompt modal (fiducial alignment / pen swaps
 // have no LCD to pause on; the app is the operator interface).
 import { Pause, Play, Printer, Square } from 'lucide-react'
+import { confirmDialog } from '../store/dialogs'
 import { useDoc } from '../store/document'
 import { usePlotSession } from '../store/plotSession'
 import { useSerial } from '../store/serial'
@@ -103,8 +104,14 @@ export function PlotHUD() {
       <IconButton
         aria-label="Stop plot"
         title="Stop the plot — the pen lifts and returns home"
-        onClick={() => {
-          if (confirm('Stop the plot? The pen will lift and return home.')) s.cancel()
+        onClick={async () => {
+          const ok = await confirmDialog({
+            title: 'Stop plot',
+            message: 'Stop the plot? The pen will lift and return home.',
+            confirmLabel: 'Stop plot',
+            danger: true,
+          })
+          if (ok) s.cancel()
         }}
       >
         <Square size={14} />

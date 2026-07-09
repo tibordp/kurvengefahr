@@ -8,6 +8,7 @@ import { DxfImportDialog } from './ui/DxfImportDialog'
 import { ExportDialog } from './ui/ExportDialog'
 import { CommandPalette } from './ui/CommandPalette'
 import { Toaster } from './ui/Toaster'
+import { DialogHost } from './ui/DialogHost'
 import { Canvas } from './canvas/Canvas'
 import { PreviewControls } from './ui/PreviewControls'
 import { PlotHUD } from './ui/PlotHUD'
@@ -132,6 +133,7 @@ export function App() {
       <ExportDialog />
       <CommandPalette />
       <Toaster />
+      <DialogHost />
     </div>
   )
 }

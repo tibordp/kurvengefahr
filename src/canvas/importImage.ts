@@ -5,6 +5,7 @@
 // modes; they're one-shot actions, not `Tool`s. A new raster element auto-vectorizes via the
 // generation controller.
 import { useDoc } from '../store/document'
+import { toast } from '../store/toast'
 import { importImage } from '../store/images'
 import { defaultRasterParams } from '../elements/raster'
 import { pickFile } from '../output/download'
@@ -46,7 +47,7 @@ export async function addImageElement(source: File | Blob): Promise<string | nul
     const th = Math.max(1, height * s)
     return useDoc.getState().addElement('raster', defaultRasterParams(imageId, width, height, tw, th), { x: 20, y: 20 })
   } catch {
-    alert('Could not import that image.')
+    toast.error('Could not import that image.')
     return null
   }
 }

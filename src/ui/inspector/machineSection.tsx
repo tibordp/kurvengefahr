@@ -14,6 +14,8 @@ import {
   Cable,
 } from 'lucide-react'
 import { useDoc } from '../../store/document'
+import { confirmDialog, promptDialog } from '../../store/dialogs'
+import { toast } from '../../store/toast'
 import { useLibrary } from '../../store/library'
 import { useSerial, currentEbb } from '../../store/serial'
 import { usePlotSession } from '../../store/plotSession'
@@ -54,8 +56,8 @@ function ProfileControls() {
   const detached = !source
   const modified = detached || hashParams(profile) !== hashParams(source)
 
-  const saveAs = () => {
-    const name = prompt('Save profile as:', profile.name || 'My machine')?.trim()
+  const saveAs = async () => {
+    const name = await promptDialog({ title: 'Save profile as', initial: profile.name || 'My machine' })
     if (!name) return
     const created = useLibrary.getState().addProfile(profile, name)
     selectProfile(created.id)
@@ -64,15 +66,20 @@ function ProfileControls() {
   // Discard working edits by re-loading the source profile (undoable via ⌘Z). Only meaningful when
   // a source still exists (not for a detached/unsaved profile).
   const revert = () => selectProfile(profile.id)
-  const rename = () => {
-    const name = prompt('Rename profile:', profile.name)?.trim()
+  const rename = async () => {
+    const name = await promptDialog({ title: 'Rename profile', initial: profile.name })
     if (!name) return
     useLibrary.getState().renameProfile(profile.id, name)
     useDoc.getState().setProfile({ name })
   }
-  const remove = () => {
-    if (!confirm(`Delete profile "${profile.name}"? Your current settings stay loaded but unsaved.`)) return
-    useLibrary.getState().removeProfile(profile.id)
+  const remove = async () => {
+    const ok = await confirmDialog({
+      title: 'Delete profile',
+      message: `Delete "${profile.name}"? Your current settings stay loaded but unsaved.`,
+      confirmLabel: 'Delete',
+      danger: true,
+    })
+    if (ok) useLibrary.getState().removeProfile(profile.id)
   }
   const exportProfiles = () => downloadJson('kurvengefahr-profiles', profilesFile(custom))
   const importProfiles = async () => {
@@ -81,10 +88,10 @@ function ProfileControls() {
       if (raw == null) return
       const res = parseProfilesFile(raw)
       if (res.status === 'ok') useLibrary.getState().importProfiles(res.value)
-      else if (res.status === 'unsupported') alert(`Can't import — ${res.message}. Try updating the app.`)
-      else alert('That file is not a valid Kurvengefahr profiles file.')
+      else if (res.status === 'unsupported') toast.error(`Can't import — ${res.message}. Try updating the app.`)
+      else toast.error('That file is not a valid Kurvengefahr profiles file.')
     } catch {
-      alert('Could not read that file.')
+      toast.error('Could not read that file.')
     }
   }
 

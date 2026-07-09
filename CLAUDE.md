@@ -323,6 +323,10 @@ command/reply framing, and the session state machine.
   is the rule; the Help dialog updates itself from the list.
 - **Icon-only buttons** use the `IconButton` primitive, which *requires* an `aria-label`; pair it
   with a `title` (and the shortcut, if any).
+- **Never use native `alert()`/`confirm()`/`prompt()`.** Notifications → `toast` (`store/toast`);
+  confirmations and quick naming → `confirmDialog`/`promptDialog` (`store/dialogs`, rendered by
+  `DialogHost` as app Modals). Anything passed to `Modal`'s `onClose` must be referentially stable
+  (its focus effect re-runs on change and steals focus from inputs mid-typing).
 - **Konva Transformer keeps its handles screen-constant itself** — pass plain pixel values
   (`anchorSize={10}`), do NOT divide by `scale` (double-compensates → handles invert with zoom).
   Ordinary shapes *inside* the scaled Layer DO need `/scale` for screen-constant size (origin

@@ -6,6 +6,7 @@ import { useState } from 'react'
 import { Pencil, Trash2 } from 'lucide-react'
 import { useTools } from '../store/tools'
 import { useLogoTools, type LogoTool } from '../store/logoTools'
+import { confirmDialog, promptDialog } from '../store/dialogs'
 import { cx, ContextMenu, MenuItem } from './primitives'
 
 /** First letters of up to two words — the tile label ("Fern Leaf" → FL, "spiral" → S). */
@@ -17,15 +18,19 @@ export function monogram(name: string): string {
     .join('')
 }
 
-export function renameTool(t: LogoTool): void {
-  const name = prompt('Rename tool:', t.name)?.trim()
+export async function renameTool(t: LogoTool): Promise<void> {
+  const name = await promptDialog({ title: 'Rename tool', initial: t.name })
   if (name) useLogoTools.getState().renameTool(t.id, name)
 }
 
-export function deleteTool(t: LogoTool): void {
-  if (confirm(`Delete tool "${t.name}"? Elements stamped with it are unaffected.`)) {
-    useLogoTools.getState().removeTool(t.id)
-  }
+export async function deleteTool(t: LogoTool): Promise<void> {
+  const ok = await confirmDialog({
+    title: 'Delete tool',
+    message: `Delete "${t.name}"? Elements stamped with it are unaffected.`,
+    confirmLabel: 'Delete',
+    danger: true,
+  })
+  if (ok) useLogoTools.getState().removeTool(t.id)
 }
 
 export function LogoToolsSection({ buttonClass, dividerClass }: { buttonClass: string; dividerClass: string }) {
@@ -60,10 +65,10 @@ export function LogoToolsSection({ buttonClass, dividerClass }: { buttonClass: s
       {/* The ContextMenu clamps itself into the viewport and closes on any click. */}
       {menu && (
         <ContextMenu x={menu.x} y={menu.y} onClose={() => setMenu(null)}>
-          <MenuItem onClick={() => renameTool(menu.tool)}>
+          <MenuItem onClick={() => void renameTool(menu.tool)}>
             <Pencil size={14} /> Rename…
           </MenuItem>
-          <MenuItem danger onClick={() => deleteTool(menu.tool)}>
+          <MenuItem danger onClick={() => void deleteTool(menu.tool)}>
             <Trash2 size={14} /> Delete
           </MenuItem>
         </ContextMenu>

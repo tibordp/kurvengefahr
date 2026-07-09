@@ -17,6 +17,7 @@ import { Hammer, X } from 'lucide-react'
 import { useDoc } from '../store/document'
 import { useUI } from '../store/ui'
 import { useLogoTools } from '../store/logoTools'
+import { promptDialog } from '../store/dialogs'
 import { LOGO_EXAMPLES } from '../elements/logo/examples'
 import type { LogoParams } from '../elements/logo'
 import { IconButton, controlClass, cx } from './primitives'
@@ -79,8 +80,8 @@ export function LogoDock() {
     useDoc.getState().setParams(target.id, { ...params, source: ex.source, args: {} })
   }
 
-  const saveAsTool = () => {
-    const name = prompt('Save as tool:', 'My tool')?.trim()
+  const saveAsTool = async () => {
+    const name = await promptDialog({ title: 'Save as tool', initial: 'My tool' })
     if (name) useLogoTools.getState().addTool(name, (target.params as LogoParams).source)
   }
 
@@ -120,7 +121,7 @@ export function LogoDock() {
           aria-label="Save this program as a tool"
           title="Save as tool — click it in the sidebar to stamp copies"
           className="h-7 w-7"
-          onClick={saveAsTool}
+          onClick={() => void saveAsTool()}
         >
           <Hammer size={15} />
         </IconButton>
