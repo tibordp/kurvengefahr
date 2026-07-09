@@ -51,6 +51,16 @@ pub const ELLIPSE_FILL_TOL: f32 = 0.1;
 /// distortion reads smoothly even on long straight segments (which start with only two points).
 pub const EFFECT_RESAMPLE_STEP: f32 = 1.0;
 
+// ── Wireframe (STL → 3D model line art) ─────────────────────────────────────────────────────────
+/// Hidden-line-removal z-buffer resolution, px per mm. Bounds how crisply visibility cuts land
+/// at silhouettes.
+pub const WIREFRAME_HLR_RES: f32 = 4.0;
+/// Visibility sampling stride along a projected edge, mm.
+pub const WIREFRAME_SAMPLE_STEP: f32 = 0.3;
+/// Fixed vertical FOV (deg); the `distance` param is the dolly/perspective knob. Mirrored by the
+/// inspector's orbit preview (`OrbitPreview.tsx`) — keep in sync.
+pub const WIREFRAME_FOV_DEG: f32 = 40.0;
+
 // ── Raster tracing: step length along a traced stroke, mm (sampling stride) ─────────────────────
 pub const RASTER_SPIRAL_STEP: f32 = 0.5;
 pub const RASTER_HATCH_STEP: f32 = 0.4;

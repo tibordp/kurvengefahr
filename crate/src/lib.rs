@@ -10,6 +10,7 @@
 //!   - `boolean` — polygon booleans (union/intersect/difference/xor) for combining shapes.
 //!   - `import_svg` — parse an SVG (usvg) → occluded multi-contour geometry.
 //!   - `vectorize_image` — raster → strokes (outline/hatch/TSP/flow/spiral/…).
+//!   - `wireframe` / `stl_mesh_preview` — STL → 3D-model wireframe strokes, + the orbit-preview mesh.
 //!   - `clip` — split strokes to the reachable rectangle.
 //!   - `optimize` — reorder strokes (chain-aware, per-pen greedy nearest-neighbour).
 //!   - `plan_axidraw` — optimized strokes → timed EBB motion segments (trapezoidal profiles).
@@ -34,6 +35,7 @@ mod svg;
 mod tess;
 mod text;
 mod typeset;
+mod wireframe;
 
 use std::cell::RefCell;
 
@@ -362,6 +364,49 @@ pub fn import_dxf(bytes: &[u8], params: &str) -> dxf::DxfImport {
 #[wasm_bindgen]
 pub fn vectorize_image(rgba: &[u8], width: u32, height: u32, params: &str) -> GeometryBuffers {
     GeometryBuffers::from_strokes(&raster::vectorize(rgba, width, height, params))
+}
+
+/// Wireframe strokes from an STL (raw bytes, binary or ASCII) + the JSON-serialized model params
+/// (camera orbit/pan/distance, perspective/orthographic, occluded/transparent, crease angle —
+/// see `wireframe::Params` / `src/elements/model`). Errors on an unparseable STL.
+#[wasm_bindgen]
+pub fn wireframe(bytes: &[u8], params: &str) -> Result<GeometryBuffers, JsValue> {
+    let strokes = wireframe::generate(bytes, params).map_err(|e| JsValue::from_str(&e))?;
+    Ok(GeometryBuffers::from_strokes(&strokes))
+}
+
+/// The inspector orbit preview's mesh: bbox-centered triangle positions (9 f32 per triangle,
+/// stride-decimated to ≤ `max_tris`), the full-mesh bounding radius, and the undecimated count —
+/// centered/measured *before* decimation so the TS preview frames exactly what `stereogram` sees.
+#[wasm_bindgen]
+pub struct MeshPreview {
+    positions: Vec<f32>,
+    radius: f32,
+    total_tris: u32,
+}
+
+#[wasm_bindgen]
+impl MeshPreview {
+    #[wasm_bindgen(getter)]
+    pub fn positions(&self) -> Vec<f32> {
+        self.positions.clone()
+    }
+    #[wasm_bindgen(getter)]
+    pub fn radius(&self) -> f32 {
+        self.radius
+    }
+    #[wasm_bindgen(getter)]
+    pub fn total_tris(&self) -> u32 {
+        self.total_tris
+    }
+}
+
+/// Parse an STL for the orbit preview. Errors on an unparseable STL.
+#[wasm_bindgen]
+pub fn stl_mesh_preview(bytes: &[u8], max_tris: u32) -> Result<MeshPreview, JsValue> {
+    let (positions, radius, total_tris) =
+        wireframe::preview(bytes, max_tris).map_err(|e| JsValue::from_str(&e))?;
+    Ok(MeshPreview { positions, radius, total_tris })
 }
 
 /// Apply a stack of non-destructive geometry effects (roughen / wave / sketch / twist / bulge) to
