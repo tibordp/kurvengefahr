@@ -274,6 +274,8 @@ const $ = (id) => document.getElementById(id)
 
 let port = null
 let writer = null
+let reader = null
+let readDone = Promise.resolve()
 let readAbort = null
 let connected = false
 
@@ -283,7 +285,7 @@ async function openPort() {
   writer = port.writable.getWriter()
   connected = true
   readAbort = new AbortController()
-  readLoop(readAbort.signal)
+  readDone = readLoop(readAbort.signal)
   port.addEventListener('disconnect', () => teardown('device disconnected'))
 }
 
@@ -292,7 +294,7 @@ async function readLoop(signal) {
   let buffer = ''
   try {
     while (port.readable && !signal.aborted) {
-      const reader = port.readable.getReader()
+      reader = port.readable.getReader()
       try {
         for (;;) {
           const { value, done } = await reader.read()
@@ -304,6 +306,7 @@ async function readLoop(signal) {
         }
       } finally {
         reader.releaseLock()
+        reader = null
       }
     }
   } catch {
@@ -325,7 +328,11 @@ async function teardown(reason) {
   for (const c of queue.splice(0)) c.reject(new Error('disconnected'))
   inflight?.reject(new Error('disconnected'))
   inflight = null
-  try { readAbort?.abort() } catch {}
+  readAbort?.abort()
+  // Cancelling the reader resolves the pending read() as done, letting the read loop release its
+  // stream lock — a locked readable makes port.close() throw and the port stays hogged.
+  try { await reader?.cancel() } catch {}
+  await readDone.catch(() => {})
   try { await writer?.close() } catch {}
   try { await port?.close() } catch {}
   writer = null
