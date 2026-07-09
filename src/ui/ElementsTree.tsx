@@ -497,7 +497,7 @@ export function ElementsTree() {
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Effect elements…"
+            placeholder="Filter elements…"
             className={cx(controlClass, 'pl-7')}
           />
         </div>

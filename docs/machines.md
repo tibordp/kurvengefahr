@@ -35,10 +35,12 @@ and a Z axis fits.
 - **Pause** -- an operator-pause macro with a `{message}` placeholder (e.g. `M0`), used for pen
   swaps and the fiducial stop. Leave it empty for machines with no way to pause.
 
-## AxiDraw (`axidraw` kind)
+## EBB plotters (`axidraw` kind)
 
-Talks to the machine's EBB board directly over Web Serial -- no G-code, no other software. Motion
-is planned with trapezoidal acceleration and junction-deviation cornering, then streamed live.
+AxiDraw machines and EBB-compatible plotters like the iDraw family. The app is the whole
+toolchain for this kind: it plans the motion itself -- trapezoidal acceleration,
+junction-deviation cornering -- and streams it to the EBB board live over Web Serial. Plotting
+happens with the Plot button; there is no exported file in between.
 
 - **No endstops.** Home is wherever you park the carriage (top-left, against both stops); the
   board's step counters are zeroed there when a plot starts, and position is dead-reckoned from

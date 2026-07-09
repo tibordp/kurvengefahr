@@ -1,7 +1,8 @@
 # Kurvengefahr — pen-plotter CAM
 
-Browser CAM for pen plotters. Two machine families: G-code plotters (Prusa MK4 + spring-loaded
-pen-holder toolhead) and AxiDraw-style EBB machines (streamed live over Web Serial). Client-only
+Browser CAM for pen plotters. Three machine families: G-code plotters (Prusa printers + a
+spring-loaded pen-holder toolhead, or any G-code machine), AxiDraw-style EBB machines (streamed
+live over Web Serial), and GRBL 1.1 plotters (G-code download or live Web Serial). Client-only
 React/TS SPA. Inputs: handwriting (the original MVP), text, vector shapes/paths, SVG and DXF
 import, raster stylization, generative primitives, and Logo programs — all reduced to the same
 `Stroke[]` IR.

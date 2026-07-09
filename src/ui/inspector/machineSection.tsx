@@ -19,7 +19,8 @@ import { toast } from '../../store/toast'
 import { useLibrary } from '../../store/library'
 import { useSerial, currentEbb, currentGrbl, type SerialKind } from '../../store/serial'
 import { usePlotSession } from '../../store/plotSession'
-import { PROFILE_PRESETS, findBuiltinProfile } from '../../store/profiles'
+import { findBuiltinProfile } from '../../store/profiles'
+import { ProfilePicker } from './profilePicker'
 import { hashParams } from '../../elements/registry'
 import { profilesFile, parseProfilesFile } from '../../store/persistence/schema'
 import { printerStatus, type PrinterStatus } from '../../output/plot'
@@ -163,29 +164,7 @@ function ProfileControls() {
           </Menu>
         </div>
       </div>
-      <select
-        className={cx(controlClass, 'w-full')}
-        value={profile.id}
-        onChange={(e) => selectProfile(e.target.value)}
-      >
-        {detached && <option value={profile.id}>{profile.name || 'Unsaved'} (unsaved)</option>}
-        <optgroup label="Built-in">
-          {PROFILE_PRESETS.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.name}
-            </option>
-          ))}
-        </optgroup>
-        {custom.length > 0 && (
-          <optgroup label="Saved">
-            {custom.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </optgroup>
-        )}
-      </select>
+      <ProfilePicker detached={detached} />
     </>
   )
 }

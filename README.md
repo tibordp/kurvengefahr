@@ -8,8 +8,8 @@ plot it: download G-code, or drive an AxiDraw or GRBL plotter live over USB. Eve
 client-side; nothing is uploaded.
 
 **[Live app](https://kurven.ojdip.net)** -- installable PWA, works offline.
-[Machine profiles](docs/machines.md) cover a Prusa MK4 with a spring-loaded pen holder (or any
-G-code machine), AxiDraw-style plotters, and GRBL machines.
+[Machine profiles](docs/machines.md) cover Prusa printers with a pen attachment (or any G-code
+machine), AxiDraw-style EBB plotters, and GRBL machines, with presets for popular models.
 
 ![The showcase document: handwriting, generative patterns, effects, and hatch fills](docs/showcase.png)
 
