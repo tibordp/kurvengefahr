@@ -9,7 +9,7 @@
 //   * most replies are zero or more data lines followed by `OK`;
 //   * `V` and `QM` reply with a single line and NO `OK`;
 //   * errors are a line starting with `!` with NO trailing `OK` (3.x) — rejected immediately.
-import type { EbbTransport } from './transport'
+import type { LineTransport } from '../serial/transport'
 
 export class EbbError extends Error {}
 
@@ -43,7 +43,7 @@ export class Ebb {
   private closed = false
   private disconnectCbs: (() => void)[] = []
 
-  constructor(private transport: EbbTransport) {
+  constructor(private transport: LineTransport) {
     transport.onLine((line) => this.handleLine(line))
     transport.onDisconnect(() => this.handleDisconnect())
   }

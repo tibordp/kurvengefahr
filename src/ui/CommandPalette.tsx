@@ -82,7 +82,7 @@ function buildCommands(): Command[] {
   add('import', 'Import…', 'File', () => void importContentFile())
   add('export', 'Export…', 'File', () => useExportDialog.getState().set(true))
   // G-code is a file artifact only G-code machines have; an AxiDraw plots live over serial.
-  if (doc.profile.kind === 'prusa') add('gcode', 'Generate G-code', 'File', () => void exportGcode())
+  if (doc.profile.kind !== 'axidraw') add('gcode', 'Generate G-code', 'File', () => void exportGcode())
 
   for (const th of ['light', 'dark', 'system'] as const)
     add(`theme-${th}`, `Theme: ${th[0].toUpperCase() + th.slice(1)}`, 'View', () => useTheme.getState().setTheme(th))

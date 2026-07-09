@@ -17,7 +17,7 @@ import { useDoc } from '../../store/document'
 import { confirmDialog, promptDialog } from '../../store/dialogs'
 import { toast } from '../../store/toast'
 import { useLibrary } from '../../store/library'
-import { useSerial, currentEbb } from '../../store/serial'
+import { useSerial, currentEbb, currentGrbl, type SerialKind } from '../../store/serial'
 import { usePlotSession } from '../../store/plotSession'
 import { PROFILE_PRESETS, findBuiltinProfile } from '../../store/profiles'
 import { hashParams } from '../../elements/registry'
@@ -25,8 +25,9 @@ import { profilesFile, parseProfilesFile } from '../../store/persistence/schema'
 import { printerStatus, type PrinterStatus } from '../../output/plot'
 import { useBridge, isPrinterConnected } from '../../store/bridge'
 import { downloadJson, pickJsonFile } from '../../output/download'
-import type { AxidrawProfile, Pen, PrusaProfile } from '../../core/types'
+import type { AxidrawProfile, GrblProfile, Pen, PrusaProfile } from '../../core/types'
 import { pressureEnabled } from '../../core/types'
+import { grblPenLines, newEmitCtx } from '../../core/pipeline/emitGrbl'
 import { validateProfile } from '../../core/profileValidation'
 import {
   Button,
@@ -264,7 +265,13 @@ export function MachineSection() {
         </Banner>
       )}
       <ProfileControls />
-      {profile.kind === 'prusa' ? <PrusaMachineSection profile={profile} /> : <AxidrawMachineSection profile={profile} />}
+      {profile.kind === 'prusa' ? (
+        <PrusaMachineSection profile={profile} />
+      ) : profile.kind === 'axidraw' ? (
+        <AxidrawMachineSection profile={profile} />
+      ) : (
+        <GrblMachineSection profile={profile} />
+      )}
     </>
   )
 }
@@ -468,36 +475,257 @@ function ServoTest({ profile }: { profile: AxidrawProfile }) {
   )
 }
 
-/** Web Serial connection to the EBB board. Grants persist per-origin: once connected here, the
- *  toolbar's Plot button re-arms automatically on future visits (the store re-opens granted
- *  ports without a prompt). */
-function SerialDeviceSection({ profile }: { profile: AxidrawProfile }) {
+const BAUD_RATES = [9600, 19200, 38400, 57600, 115200, 230400]
+
+/** Everything GRBL-specific: connection + baud, feeds, the pen-actuation choice (Z axis vs
+ *  spindle-PWM servo), homing, G-code text. Origin stays editable — GRBL plotters vary. */
+function GrblMachineSection({ profile }: { profile: GrblProfile }) {
+  const setProfile = useDoc((s) => s.setProfile)
+  const pen = profile.pen
+  const pressureOn = pressureEnabled(profile)
+
+  const setPenMode = (mode: 'z' | 'servo') => {
+    if (mode === pen.mode) return
+    setProfile({
+      pen:
+        mode === 'z'
+          ? { mode: 'z', up: 5, down: 0 }
+          : { mode: 'servo', upS: 750, downS: 250, raiseMs: 300, lowerMs: 300 },
+    })
+  }
+
+  return (
+    <>
+      <SerialDeviceSection profile={profile} />
+      <Field
+        label="Baud rate"
+        title="Must match the board's UART speed (GRBL default 115200). Changing it disconnects — reconnect after."
+      >
+        <select
+          className={controlClass}
+          value={profile.baudRate}
+          onChange={(e) => {
+            setProfile({ baudRate: Number(e.target.value) })
+            if (useSerial.getState().connected) void useSerial.getState().disconnect()
+          }}
+        >
+          {BAUD_RATES.map((b) => (
+            <option key={b} value={b}>
+              {b}
+            </option>
+          ))}
+        </select>
+      </Field>
+      <PensSection />
+
+      <SectionTitle title="Usable pen travel from the work origin. Without homing, the origin is wherever the pen sits when the job starts.">
+        Bed &amp; motion
+      </SectionTitle>
+      <Num label="Bed W (mm)" value={profile.bed.width} step={1}
+        onChange={(v) => setProfile({ bed: { ...profile.bed, width: v } })} />
+      <Num label="Bed H (mm)" value={profile.bed.height} step={1}
+        onChange={(v) => setProfile({ bed: { ...profile.bed, height: v } })} />
+      <Field label="Origin">
+        <select
+          className={controlClass}
+          value={profile.origin}
+          onChange={(e) => setProfile({ origin: e.target.value as typeof profile.origin })}
+        >
+          <option value="bottom-left">bottom-left</option>
+          <option value="top-left">top-left</option>
+        </select>
+      </Field>
+      <Num label="Travel (mm/min)" title="Z-mode pen drops move at this feed; XY travels are G0 rapids (the firmware's $110/$111)."
+        value={profile.feeds.travel} step={100}
+        onChange={(v) => setProfile({ feeds: { ...profile.feeds, travel: v } })} />
+      <Num label="Draw (mm/min)" value={profile.feeds.draw} step={100}
+        onChange={(v) => setProfile({ feeds: { ...profile.feeds, draw: v } })} />
+      <Field
+        label="Home first ($H)"
+        title="Only enable if the machine has limit switches — $H on a switchless machine drives into the frame. Off: the job starts (and the origin sits) wherever the pen was parked."
+      >
+        <input
+          type="checkbox"
+          className="h-4 w-4 justify-self-start"
+          checked={profile.homing}
+          onChange={(e) => setProfile({ homing: e.target.checked })}
+        />
+      </Field>
+
+      <SectionTitle title="How the pen lifts: a real Z axis, or a servo on the spindle-PWM pin (M3 S… — the common cheap-plotter setup).">
+        Pen
+      </SectionTitle>
+      <Field label="Actuation">
+        <select className={controlClass} value={pen.mode} onChange={(e) => setPenMode(e.target.value as 'z' | 'servo')}>
+          <option value="servo">Servo (spindle PWM)</option>
+          <option value="z">Z axis</option>
+        </select>
+      </Field>
+      {pen.mode === 'z' ? (
+        <>
+          <Field label="Variable pressure" title="On adds a light-pressure pen-down Z; a stroke's pressure picks a height between it and Pen down Z. Off = pen up/down only.">
+            <input
+              type="checkbox"
+              className="h-4 w-4 justify-self-start"
+              checked={pressureOn}
+              onChange={(e) =>
+                setProfile({
+                  pen: e.target.checked
+                    ? { ...pen, downLight: (pen.up + pen.down) / 2 }
+                    : (({ downLight: _drop, ...rest }) => rest)(pen),
+                })
+              }
+            />
+          </Field>
+          <Num label="Pen up Z" title="Clearance height — the pen lifts here to travel." value={pen.up} step={0.1}
+            onChange={(v) => setProfile({ pen: { ...pen, up: v } })} />
+          {pressureOn && (
+            <Num label="Pen down Z (light)" title="Pen-down height at minimum (0%) pressure."
+              value={pen.downLight ?? pen.down} step={0.1}
+              onChange={(v) => setProfile({ pen: { ...pen, downLight: v } })} />
+          )}
+          <Num
+            label={pressureOn ? 'Pen down Z (full)' : 'Pen down Z'}
+            title={pressureOn ? 'Pen-down height at full (100%) pressure.' : 'Pen-down height for every stroke.'}
+            value={pen.down}
+            step={0.1}
+            onChange={(v) => setProfile({ pen: { ...pen, down: v } })}
+          />
+        </>
+      ) : (
+        <>
+          <Num label="Up (S)" title="M3 S value for pen up. What S means depends on the servo firmware — dial it in with the test button."
+            value={pen.upS} step={10}
+            onChange={(v) => setProfile({ pen: { ...pen, upS: v } })} />
+          <Num label="Down (S)" title="M3 S value for pen down."
+            value={pen.downS} step={10}
+            onChange={(v) => setProfile({ pen: { ...pen, downS: v } })} />
+          <Num label="Raise (ms)" title="Dwell after raising, so motion waits for the physical lift."
+            value={pen.raiseMs} step={10}
+            onChange={(v) => setProfile({ pen: { ...pen, raiseMs: v } })} />
+          <Num label="Lower (ms)" title="Dwell after lowering."
+            value={pen.lowerMs} step={10}
+            onChange={(v) => setProfile({ pen: { ...pen, lowerMs: v } })} />
+        </>
+      )}
+      <GrblPenTest profile={profile} />
+
+      <SectionTitle>G-code</SectionTitle>
+      <Field
+        full
+        label="Preamble"
+        title="Emitted before the generated job setup (units, work zero, pen up are added automatically)."
+      >
+        <textarea
+          className={cx(textareaClass, 'font-mono text-xs')}
+          rows={3}
+          value={profile.preamble}
+          spellCheck={false}
+          onChange={(e) => setProfile({ preamble: e.target.value })}
+        />
+      </Field>
+      <Field full label="Postamble">
+        <textarea
+          className={cx(textareaClass, 'font-mono text-xs')}
+          rows={3}
+          value={profile.postamble}
+          spellCheck={false}
+          onChange={(e) => setProfile({ postamble: e.target.value })}
+        />
+      </Field>
+      <Field
+        full
+        label="Pause"
+        title="Operator pause in the downloaded file, for pen swaps and the fiducial (M0 support depends on your G-code sender). Live plotting prompts in the app instead."
+      >
+        <textarea
+          className={cx(textareaClass, 'font-mono text-xs')}
+          rows={2}
+          value={profile.pause}
+          spellCheck={false}
+          placeholder={'M0 ; {message}'}
+          onChange={(e) => setProfile({ pause: e.target.value })}
+        />
+        <p className="mt-1 text-2xs text-faint">
+          Used only in the downloaded file — live plotting pauses in the app. <code>{'{message}'}</code>{' '}
+          = the context message.
+        </p>
+      </Field>
+    </>
+  )
+}
+
+/** Live pen-up/down toggle for dialing in the servo S values (or Z heights) — sends the current
+ *  profile's pen lines, so edits are felt immediately. */
+function GrblPenTest({ profile }: { profile: GrblProfile }) {
+  const connected = useSerial((s) => s.connected)
+  const plotting = usePlotSession((s) => s.phase !== 'idle')
+  const [penUp, setPenUp] = useState(true)
+
+  if (!connected) return null
+  const bounce = async (up: boolean) => {
+    const grbl = currentGrbl()
+    if (!grbl) return
+    try {
+      for (const line of grblPenLines(profile, up ? 'up' : 'down', 1, newEmitCtx())) await grbl.send(line)
+      setPenUp(up)
+    } catch {
+      toast.error('Pen test failed — is the machine in an alarm state? Try reconnecting.')
+    }
+  }
+  return (
+    <Button
+      className="mt-1 h-7 w-full text-xs"
+      disabled={plotting}
+      onClick={() => void bounce(!penUp)}
+      title="Actuate the pen with the current profile values"
+    >
+      {penUp ? 'Test: lower pen' : 'Test: raise pen'}
+    </Button>
+  )
+}
+
+/** Web Serial connection to the machine (EBB or GRBL board). Grants persist per-origin: once
+ *  connected here, the toolbar's Plot button re-arms automatically on future visits (the store
+ *  re-opens granted ports without a prompt). */
+function SerialDeviceSection({ profile }: { profile: AxidrawProfile | GrblProfile }) {
   const supported = useSerial((s) => s.supported)
   const connected = useSerial((s) => s.connected)
   const connecting = useSerial((s) => s.connecting)
   const version = useSerial((s) => s.version)
   const setProfile = useDoc((s) => s.setProfile)
+  const kind: SerialKind = profile.kind
+  const baudRate = profile.kind === 'grbl' ? profile.baudRate : undefined
+  const machine = profile.kind === 'axidraw' ? 'AxiDraw' : 'plotter'
 
   // Re-open an already-granted port whenever the section (re)opens (no prompt).
   useEffect(() => {
-    void useSerial.getState().probe()
-  }, [])
+    void useSerial.getState().probe(kind, baudRate)
+  }, [kind, baudRate])
 
   const connect = async () => {
-    await useSerial.getState().connect()
+    await useSerial.getState().connect(kind, baudRate)
     // The binding's presence marks the profile as plotting over Web Serial.
     if (useSerial.getState().connected && !profile.device) {
       setProfile({ device: { transport: 'webserial' } })
     }
   }
 
-  // Trim the version banner to its meaningful tail ("EBBv13_and_above EB Firmware Version 3.0.3").
-  const firmware = version?.replace(/^.*Firmware Version\s*/i, 'EBB ') ?? null
+  // Trim the version banner to its meaningful tail: "EBBv13… Firmware Version 3.0.3" → "EBB 3.0.3",
+  // "Grbl 1.1h ['$' for help]" → "Grbl 1.1h".
+  const firmware = version?.replace(/^.*Firmware Version\s*/i, 'EBB ').replace(/\s*\[.*\]$/, '') ?? null
 
   return (
     <>
       <div className="mt-5 mb-1.5 flex items-center justify-between gap-2">
-        <SectionTitle flush title="Plot over USB (Web Serial) to the AxiDraw's EBB board.">
+        <SectionTitle
+          flush
+          title={
+            profile.kind === 'axidraw'
+              ? "Plot over USB (Web Serial) to the AxiDraw's EBB board."
+              : 'Stream over USB (Web Serial) to the GRBL board.'
+          }
+        >
           Machine connection
         </SectionTitle>
         <StatusBadge
@@ -516,7 +744,7 @@ function SerialDeviceSection({ profile }: { profile: AxidrawProfile }) {
         </Button>
       ) : (
         <Button className="w-full" disabled={connecting} onClick={() => void connect()}>
-          <Cable size={15} /> {connecting ? 'Connecting…' : 'Connect AxiDraw…'}
+          <Cable size={15} /> {connecting ? 'Connecting…' : `Connect ${machine}…`}
         </Button>
       )}
     </>

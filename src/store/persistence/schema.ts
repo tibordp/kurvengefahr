@@ -11,7 +11,7 @@
 //     callers report it and leave the stored bytes untouched rather than mangling them.
 import type { DocElement, Fiducial, MachineProfile, Transform } from '../../core/types'
 import { IDENTITY_TRANSFORM } from '../../core/types'
-import { AXIDRAW_V3, PRUSA_MK4 } from '../profiles'
+import { AXIDRAW_V3, GRBL_PLOTTER, PRUSA_MK4 } from '../profiles'
 import { isContainer, isKnownType, sanitizeParams } from '../../elements/registry'
 import { sanitizeEffects } from '../../effects/registry'
 
@@ -33,8 +33,10 @@ import { sanitizeEffects } from '../../effects/registry'
 // older apps that coerce every profile to prusa and would mangle an axidraw one.
 // v8: the `logo` element type. No migration (purely additive); the bump makes older apps report a
 // doc containing Logo programs as `unsupported` instead of silently dropping those elements.
-export const CURRENT_DOC_SCHEMA = 8
-export const CURRENT_LIBRARY_SCHEMA = 2
+// v9: the `grbl` machine kind (library v3 likewise). No migration (additive kind; the sanitizer
+// dispatches on `kind`); the bump fences off older apps that coerce a grbl profile to prusa.
+export const CURRENT_DOC_SCHEMA = 9
+export const CURRENT_LIBRARY_SCHEMA = 3
 export const CURRENT_TOOLS_SCHEMA = 1
 
 export const DOC_FILE_KIND = 'kurvengefahr/document'
@@ -90,6 +92,7 @@ function sanitizePen(p: unknown, i: number) {
  *  later schema are present even when loading an older profile. Exported for the library + imports. */
 export function sanitizeProfile(p: unknown): MachineProfile {
   if (isObj(p) && p.kind === 'axidraw') return sanitizeAxidrawProfile(p)
+  if (isObj(p) && p.kind === 'grbl') return sanitizeGrblProfile(p)
   return sanitizePrusaProfile(isObj(p) ? p : {})
 }
 
@@ -152,6 +155,48 @@ function sanitizeAxidrawProfile(p: Record<string, any>): MachineProfile {
       dropMs: Math.max(0, num(p.servo?.dropMs, base.servo.dropMs)),
     },
     pens,
+    units: 'mm',
+  }
+}
+
+function sanitizeGrblProfile(p: Record<string, any>): MachineProfile {
+  const base = GRBL_PLOTTER
+  const pens = Array.isArray(p.pens) && p.pens.length ? p.pens.map(sanitizePen) : structuredClone(base.pens)
+  // Pen actuation union, coerced on `mode`. An unknown/absent mode falls back to the preset's.
+  const pen =
+    isObj(p.pen) && p.pen.mode === 'z'
+      ? {
+          mode: 'z' as const,
+          up: num(p.pen.up, 5),
+          down: num(p.pen.down, 0),
+          ...(typeof p.pen.downLight === 'number' && Number.isFinite(p.pen.downLight)
+            ? { downLight: p.pen.downLight }
+            : {}),
+        }
+      : isObj(p.pen) && p.pen.mode === 'servo'
+        ? {
+            mode: 'servo' as const,
+            upS: num(p.pen.upS, 750),
+            downS: num(p.pen.downS, 250),
+            raiseMs: Math.max(0, num(p.pen.raiseMs, 300)),
+            lowerMs: Math.max(0, num(p.pen.lowerMs, 300)),
+          }
+        : structuredClone(base.pen)
+  return {
+    id: str(p.id, base.id),
+    name: str(p.name, base.name),
+    kind: 'grbl',
+    ...(isObj(p.device) && p.device.transport === 'webserial' ? { device: { transport: 'webserial' as const } } : {}),
+    bed: { width: num(p.bed?.width, base.bed.width), height: num(p.bed?.height, base.bed.height) },
+    origin: p.origin === 'top-left' || p.origin === 'bottom-left' ? p.origin : base.origin,
+    baudRate: num(p.baudRate, base.baudRate),
+    feeds: { travel: num(p.feeds?.travel, base.feeds.travel), draw: num(p.feeds?.draw, base.feeds.draw) },
+    pen,
+    homing: p.homing === true,
+    pens,
+    preamble: str(p.preamble, base.preamble),
+    postamble: str(p.postamble, base.postamble),
+    pause: str(p.pause, base.pause),
     units: 'mm',
   }
 }

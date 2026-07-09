@@ -1,4 +1,4 @@
-// Minimal Web Serial API surface (not yet in TypeScript's lib.dom) — just what the EBB transport
+// Minimal Web Serial API surface (not yet in TypeScript's lib.dom) — just what the serial transport
 // uses. Spec: https://wicg.github.io/serial/
 interface SerialPortInfo {
   usbVendorId?: number

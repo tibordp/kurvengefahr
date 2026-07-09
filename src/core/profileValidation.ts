@@ -24,6 +24,31 @@ export function validateProfile(p: MachineProfile): string[] {
     return errs
   }
 
+  if (p.kind === 'grbl') {
+    if (!(p.baudRate > 0)) errs.push('Baud rate must be greater than zero.')
+    if (!(p.feeds.travel > 0)) errs.push('Travel feed must be greater than zero.')
+    if (!(p.feeds.draw > 0)) errs.push('Draw feed must be greater than zero.')
+    if (p.pen.mode === 'z') {
+      // Same monotonicity as the prusa pen: up (clearance) ≥ light ≥ full, with a real lift.
+      const { up, down, downLight } = p.pen
+      if (downLight === undefined) {
+        if (!(up > down)) errs.push('Pen up Z must be above Pen down Z.')
+      } else {
+        if (!(up >= downLight && downLight >= down && up > down))
+          errs.push('Pen heights must step down: Pen up, then down (light), then down (full).')
+      }
+    } else {
+      // Spindle-PWM servo: S is capped by GRBL's $30 (default 1000); two distinct positions or the
+      // pen never lifts.
+      const { upS, downS, raiseMs, lowerMs } = p.pen
+      const s = (v: number) => v >= 0 && v <= 1000
+      if (!s(upS) || !s(downS)) errs.push('Servo S values must be between 0 and 1000.')
+      else if (upS === downS) errs.push('Servo up and down S values must differ.')
+      if (!(raiseMs >= 0) || !(lowerMs >= 0)) errs.push('Servo delays must be zero or more.')
+    }
+    return errs
+  }
+
   // axidraw: the motion planner needs positive limits, and the servo needs two distinct positions
   // or the pen never actually lifts.
   if (!(p.motion.drawSpeed > 0)) errs.push('Draw speed must be greater than zero.')

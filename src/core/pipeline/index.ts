@@ -14,6 +14,7 @@ import { place } from './place'
 import { optimizeGeometry } from './optimize'
 import { emit } from './emit'
 import { planAxidraw, type PlotPlan } from './plan'
+import { planGrblTape, type GrblTape } from './grblTape'
 import { penParkInPage } from './toMachine'
 import { clipToRegion, drawableRegion } from './clip'
 import { elementLocalGeometry, effectedLocal } from './clipGeometry'
@@ -77,12 +78,14 @@ export function buildPlottableGeometry(elements: DocElement[], profile: MachineP
   return clipToRegion(buildPageGeometry(elements), drawableRegion(profile))
 }
 
-/** What a full pipeline run produces, by machine kind: a G-code string to download/upload, or an
- *  EBB motion plan for the streaming session (plus the optimized geometry, which feeds the live
- *  plot playhead's toolpath — same input the plan was built from, so they agree). */
+/** What a full pipeline run produces, by machine kind: a G-code string to download/upload, an
+ *  EBB motion plan for the streaming session, or a GRBL tape (which the download artifact and the
+ *  streaming session both render). The live kinds also carry the optimized geometry, which feeds
+ *  the plot playhead's toolpath — same input the plan was built from, so they agree. */
 export type PipelineOutput =
   | { kind: 'gcode'; gcode: string }
   | { kind: 'axidraw'; plan: PlotPlan; optimized: Geometry }
+  | { kind: 'grbl'; tape: GrblTape; optimized: Geometry }
 
 /** Full run: plottable geometry → optimize → the machine-kind output (emit / plan). */
 export async function runPipeline(
@@ -95,6 +98,9 @@ export async function runPipeline(
   const optimized = await optimizeGeometry(plottable, penParkInPage(profile), penOrder)
   if (profile.kind === 'axidraw') {
     return { kind: 'axidraw', plan: await planAxidraw(optimized, profile, fiducial), optimized }
+  }
+  if (profile.kind === 'grbl') {
+    return { kind: 'grbl', tape: planGrblTape(optimized, profile, fiducial), optimized }
   }
   return { kind: 'gcode', gcode: emit(optimized, profile, fiducial) }
 }

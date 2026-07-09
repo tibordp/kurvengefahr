@@ -1,7 +1,7 @@
-// AxiDraw plotting UI, in two pieces: the toolbar's Plot button (idle), and the plot HUD — a
-// bottom-of-canvas transport bar (same slot and styling as the preview transport) with progress +
-// ETA + current pen + pause/stop, plus the operator-prompt modal (fiducial alignment / pen swaps
-// have no LCD to pause on; the app is the operator interface).
+// Live plotting UI (AxiDraw or GRBL), in two pieces: the toolbar's Plot button (idle), and the
+// plot HUD — a bottom-of-canvas transport bar (same slot and styling as the preview transport)
+// with progress + ETA + current pen + pause/stop, plus the operator-prompt modal (fiducial
+// alignment / pen swaps have no LCD to pause on; the app is the operator interface).
 import { Pause, Play, Printer, Square } from 'lucide-react'
 import { confirmDialog } from '../store/dialogs'
 import { useDoc } from '../store/document'
@@ -22,30 +22,39 @@ const PHASE_LABEL: Record<string, string> = {
   waiting: 'Waiting…',
 }
 
-/** The toolbar's output button for axidraw profiles. While a session runs the transport bar
- *  ({@link PlotHUD}) owns the controls, so this renders nothing. */
-export function AxidrawPlotCluster() {
+/** The toolbar's output button for serial-plotted profiles (AxiDraw / GRBL). While a session runs
+ *  the transport bar ({@link PlotHUD}) owns the controls, so this renders nothing. */
+export function SerialPlotCluster() {
   const phase = usePlotSession((s) => s.phase)
   const connected = useSerial((s) => s.connected)
   const elements = useDoc((s) => s.elements)
   const profileInvalid = useDoc((s) => validateProfile(s.profile).length > 0)
+  const kind = useDoc((s) => s.profile.kind)
+  const homing = useDoc((s) => (s.profile.kind === 'grbl' ? s.profile.homing : false))
   const start = usePlotSession((s) => s.start)
 
   if (phase !== 'idle') return null
 
+  const machine = kind === 'axidraw' ? 'AxiDraw' : 'plotter'
+  const parkHint =
+    kind === 'axidraw'
+      ? 'park the carriage at the home corner first'
+      : homing
+        ? 'the machine homes first'
+        : 'the job starts from the current pen position'
   const disabled = !connected || elements.length === 0 || profileInvalid
   return (
     <Button
       variant="primary"
       onClick={() => void start()}
       disabled={disabled}
-      aria-label="Plot on the AxiDraw"
+      aria-label={`Plot on the ${machine}`}
       title={
         !connected
-          ? 'Connect the AxiDraw in Machine settings to plot'
+          ? `Connect the ${machine} in Machine settings to plot`
           : profileInvalid
             ? 'Fix the machine profile to plot'
-            : 'Plot on the AxiDraw (park the carriage at the home corner first)'
+            : `Plot on the ${machine} (${parkHint})`
       }
     >
       <Printer size={15} />
@@ -58,8 +67,9 @@ export function AxidrawPlotCluster() {
  *  of the two is ever visible — a running session puts the preview in `driven` mode). */
 export function PlotHUD() {
   const phase = usePlotSession((s) => s.phase)
-  const doneMs = usePlotSession((s) => s.doneMs)
-  const totalMs = usePlotSession((s) => s.totalMs)
+  const done = usePlotSession((s) => s.done)
+  const total = usePlotSession((s) => s.total)
+  const etaMs = usePlotSession((s) => s.etaMs)
   const currentPen = usePlotSession((s) => s.currentPen)
   const prompt = usePlotSession((s) => s.prompt)
   const pens = useDoc((s) => s.profile.pens)
@@ -68,7 +78,7 @@ export function PlotHUD() {
   if (phase === 'idle') return null
 
   const pen = pens.find((p) => p.id === currentPen)
-  const frac = totalMs > 0 ? Math.min(1, doneMs / totalMs) : 0
+  const frac = total > 0 ? Math.min(1, done / total) : 0
 
   return (
     <div
@@ -85,7 +95,7 @@ export function PlotHUD() {
         <div className="h-full bg-accent-solid transition-[width]" style={{ width: `${frac * 100}%` }} />
       </div>
       <span className="min-w-[72px] text-right font-mono text-xs tabular-nums text-muted">
-        {phase === 'plotting' ? `−${fmtEta(totalMs - doneMs)}` : PHASE_LABEL[phase]}
+        {phase === 'plotting' ? (etaMs !== null ? `−${fmtEta(etaMs)}` : '…') : PHASE_LABEL[phase]}
       </span>
       {phase === 'paused' ? (
         <IconButton aria-label="Resume plot" title="Resume plot" onClick={s.resume}>

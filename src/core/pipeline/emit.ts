@@ -15,8 +15,9 @@ const f3 = (n: number) => n.toFixed(3)
  *  not the pause macro — is emitted by `emit`. */
 const CLEARANCE_Z = 30
 
-/** The operator-pause macro lines with `{message}` filled in. Empty template → no lines. */
-function pauseLines(template: string, message: string): string[] {
+/** The operator-pause macro lines with `{message}` filled in. Empty template → no lines.
+ *  (Shared with the GRBL emitter — the pause-macro contract is the same.) */
+export function pauseLines(template: string, message: string): string[] {
   const text = template.replaceAll('{message}', message).trim()
   return text ? text.split('\n') : []
 }

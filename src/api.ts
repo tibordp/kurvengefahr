@@ -16,6 +16,7 @@ import { useGeneration } from './core/generation'
 import { getCached, isAsyncType, isKnownType, sanitizeParams } from './elements/registry'
 import { useViewport } from './store/viewport'
 import { buildPlottableGeometry, runPipeline } from './core/pipeline'
+import { emitGrbl } from './core/pipeline/emitGrbl'
 import { validateProfile } from './core/profileValidation'
 
 export interface ApiElementMeta {
@@ -107,11 +108,13 @@ export function installApi(): void {
     },
     buildGcode: async () => {
       const { elements, profile, fiducial } = useDoc.getState()
-      if (elements.length === 0 || profile.kind !== 'prusa') return null
+      if (elements.length === 0 || profile.kind === 'axidraw') return null
       const issues = validateProfile(profile)
       if (issues.length) throw new Error(`machine profile invalid: ${issues.join('; ')}`)
       const out = await runPipeline(elements, profile, fiducial)
-      return out.kind === 'gcode' ? out.gcode : null
+      if (out.kind === 'gcode') return out.gcode
+      if (out.kind === 'grbl' && profile.kind === 'grbl') return emitGrbl(out.tape, profile)
+      return null
     },
     renderSvg: buildSvgBlob,
     renderPng: buildPngBlob,

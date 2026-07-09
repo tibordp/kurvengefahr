@@ -17,7 +17,7 @@ import { useBridge, isPrinterConnected } from '../store/bridge'
 import { useSerial } from '../store/serial'
 import { usePlotSession } from '../store/plotSession'
 import { toast } from '../store/toast'
-import { AxidrawPlotCluster } from './PlotHUD'
+import { SerialPlotCluster } from './PlotHUD'
 import { Button, IconButton } from './primitives'
 import { MOD_KEY } from './shortcuts'
 import { DocumentMenu } from './DocumentMenu'
@@ -82,12 +82,19 @@ export function Toolbar() {
   useEffect(() => {
     void useBridge.getState().probe()
   }, [])
-  // The serial port follows the profile kind: re-open a granted AxiDraw port so Plot is live
-  // without a click, and release it when the document targets a different machine — holding the
-  // port would lock out other software (and other tabs).
+  // The serial port follows the profile kind: re-open a granted port of the right family so Plot
+  // is live without a click, and release it when the document targets a different machine —
+  // holding the port would lock out other software (and other tabs). Switching between the two
+  // serial kinds disconnects first (the effect re-runs on kind change) and re-probes.
   useEffect(() => {
     const serial = useSerial.getState()
-    if (machineKind === 'axidraw') void serial.probe()
+    const probeSerial = async () => {
+      if (serial.connected && usePlotSession.getState().phase === 'idle') await serial.disconnect()
+      const { profile } = useDoc.getState()
+      if (profile.kind === 'axidraw') void serial.probe('axidraw')
+      else if (profile.kind === 'grbl') void serial.probe('grbl', profile.baudRate)
+    }
+    if (machineKind === 'axidraw' || machineKind === 'grbl') void probeSerial()
     else if (serial.connected && usePlotSession.getState().phase === 'idle') void serial.disconnect()
   }, [machineKind])
   const boundId = printer?.printerId ?? null
@@ -220,7 +227,7 @@ export function Toolbar() {
           </span>
         </Button>
       )}
-      {machineKind === 'axidraw' && <AxidrawPlotCluster />}
+      {(machineKind === 'axidraw' || machineKind === 'grbl') && <SerialPlotCluster />}
       {printer && (
         <Button
           variant="primary"
@@ -239,9 +246,9 @@ export function Toolbar() {
           <span className="hidden sm:inline">{plotting ? 'Sending…' : 'Plot'}</span>
         </Button>
       )}
-      {machineKind === 'prusa' && (
+      {(machineKind === 'prusa' || machineKind === 'grbl') && (
         <Button
-          variant={device ? 'default' : 'primary'}
+          variant={device || machineKind === 'grbl' ? 'default' : 'primary'}
           onClick={onGenerate}
           disabled={busy || profileInvalid}
           aria-label="Generate and download G-code"

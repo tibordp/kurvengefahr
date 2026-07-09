@@ -1,7 +1,7 @@
 // Machine-profile presets. These seed the editable document profile; nothing is locked to
 // the MK4 — bed, feeds, Z heights and pre/postamble are all editable in the UI. A profile's
 // `kind` comes from the preset it was seeded from (there's no kind switcher).
-import type { AxidrawProfile, MachineProfile, PrusaProfile } from '../core/types'
+import type { AxidrawProfile, GrblProfile, MachineProfile, PrusaProfile } from '../core/types'
 
 const DEFAULT_PENS = [{ id: 0, name: 'Pen 1', color: '#1a1a1a' }]
 
@@ -60,7 +60,26 @@ export const AXIDRAW_V3_A3: AxidrawProfile = {
   bed: { width: 430, height: 297 },
 }
 
-export const PROFILE_PRESETS: MachineProfile[] = [PRUSA_MK4, GENERIC_A4, AXIDRAW_V3, AXIDRAW_V3_A3]
+// Servo S values and settle times are placeholders — grbl-servo forks map S to pulse width in
+// wildly different ways; the inspector's pen test is how you dial them in.
+export const GRBL_PLOTTER: GrblProfile = {
+  id: 'grbl-plotter',
+  name: 'GRBL pen plotter',
+  kind: 'grbl',
+  bed: { width: 297, height: 210 },
+  origin: 'bottom-left',
+  baudRate: 115200,
+  feeds: { travel: 4000, draw: 1500 },
+  pen: { mode: 'servo', upS: 750, downS: 250, raiseMs: 300, lowerMs: 300 },
+  homing: false,
+  pens: DEFAULT_PENS,
+  preamble: '',
+  postamble: '',
+  pause: 'M0 ; {message}',
+  units: 'mm',
+}
+
+export const PROFILE_PRESETS: MachineProfile[] = [PRUSA_MK4, GENERIC_A4, AXIDRAW_V3, AXIDRAW_V3_A3, GRBL_PLOTTER]
 
 /** Built-in presets differ from custom profiles only in that they can't be deleted or renamed. */
 export function isBuiltinProfile(id: string): boolean {

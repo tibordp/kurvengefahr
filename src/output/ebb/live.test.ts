@@ -2,12 +2,9 @@
 // Opt-in: set EBB_DEVICE=/dev/cu.usbmodemXXXX — skipped entirely otherwise, so CI never needs
 // hardware. Drives the exact same Ebb/PlotRun classes the app uses, through a Node fs transport
 // instead of Web Serial.
-import { execSync } from 'node:child_process'
-import { constants } from 'node:fs'
-import { open, type FileHandle } from 'node:fs/promises'
 import { describe, expect, it } from 'vitest'
 import { SEG, type PlotPlan } from '../../core/pipeline/planTypes'
-import type { EbbTransport } from './transport'
+import { NodeSerialTransport } from '../serial/nodeTransport'
 import { Ebb } from './protocol'
 import { PlotRun, type SessionHooks } from './session'
 
@@ -15,71 +12,6 @@ const DEVICE = process.env.EBB_DEVICE
 
 /** ~1000 steps/s in LM rate units (steps/s · 2³¹ / 25000). */
 const RATE_1K = 85899346
-
-class NodeSerialTransport implements EbbTransport {
-  private lineCb: (line: string) => void = () => {}
-  private disconnectCb: () => void = () => {}
-  private closed = false
-
-  private constructor(private fh: FileHandle) {}
-
-  static async open(device: string): Promise<NodeSerialTransport> {
-    // Raw mode: no echo / newline translation from the tty layer (USB CDC ignores the baud).
-    execSync(`stty -f ${device} raw`)
-    // Non-blocking: a blocking char-device read can never be cancelled, which would wedge both
-    // FileHandle.close() and process exit. Poll with a short sleep instead.
-    const fh = await open(device, constants.O_RDWR | constants.O_NONBLOCK | constants.O_NOCTTY)
-    const t = new NodeSerialTransport(fh)
-    void t.readLoop()
-    return t
-  }
-
-  private async readLoop(): Promise<void> {
-    const buf = Buffer.alloc(4096)
-    let pending = ''
-    try {
-      while (!this.closed) {
-        let bytesRead = 0
-        try {
-          ;({ bytesRead } = await this.fh.read(buf, 0, buf.length, null))
-        } catch (e) {
-          if ((e as NodeJS.ErrnoException).code === 'EAGAIN') {
-            await new Promise((r) => setTimeout(r, 5))
-            continue
-          }
-          throw e
-        }
-        if (bytesRead === 0) {
-          await new Promise((r) => setTimeout(r, 5))
-          continue
-        }
-        pending += buf.subarray(0, bytesRead).toString('ascii')
-        const parts = pending.split(/[\r\n]+/)
-        pending = parts.pop() ?? ''
-        for (const line of parts) if (line) this.lineCb(line)
-      }
-    } catch {
-      if (!this.closed) this.disconnectCb()
-    }
-  }
-
-  async write(data: string): Promise<void> {
-    await this.fh.write(data, null, 'ascii')
-  }
-
-  onLine(cb: (line: string) => void): void {
-    this.lineCb = cb
-  }
-
-  onDisconnect(cb: () => void): void {
-    this.disconnectCb = cb
-  }
-
-  async close(): Promise<void> {
-    this.closed = true
-    await this.fh.close().catch(() => {})
-  }
-}
 
 interface SegSpec {
   kind: number

@@ -16,20 +16,10 @@
 // the tape expects, continue. Cancel is immediate: ES flushes the machine, QS recovers the true
 // position (step counters were zeroed at home), and a single SM walks the carriage back.
 import { SEG, type PlotPlan } from '../../core/pipeline/planTypes'
+import type { PromptKind, SessionHooks } from '../session'
 import { Ebb, supportsLM } from './protocol'
 
-export type PromptKind = 'fiducial' | 'penSwap'
-
-export interface SessionHooks {
-  /** Segment `i` was acknowledged by the board. */
-  onProgress(i: number): void
-  /** A requested pause has actually landed (machine drained, pen up). */
-  onPaused(): void
-  onResumed(): void
-  /** Operator stop (fiducial align / pen swap). Resolve true to continue, false to stop the plot.
-   *  The machine is drained and the pen is up while this is pending. */
-  prompt(kind: PromptKind, pen: number): Promise<boolean>
-}
+export type { PromptKind, SessionHooks } from '../session'
 
 export interface ServoConfig {
   upPercent: number

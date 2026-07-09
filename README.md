@@ -4,12 +4,12 @@
 
 A browser-based CAM tool for pen plotters. Compose on a virtual bed -- handwriting, text, vector
 shapes, imported SVG and DXF, traced photos, generative patterns -- preview the exact toolpath, and
-plot it: download G-code, or drive an AxiDraw live over USB. Everything runs client-side; nothing
-is uploaded.
+plot it: download G-code, or drive an AxiDraw or GRBL plotter live over USB. Everything runs
+client-side; nothing is uploaded.
 
 **[Live app](https://kurven.ojdip.net)** -- installable PWA, works offline.
 [Machine profiles](docs/machines.md) cover a Prusa MK4 with a spring-loaded pen holder (or any
-G-code machine) and AxiDraw-style plotters.
+G-code machine), AxiDraw-style plotters, and GRBL machines.
 
 ![The showcase document: handwriting, generative patterns, effects, and hatch fills](docs/showcase.png)
 
@@ -40,8 +40,9 @@ G-code machine) and AxiDraw-style plotters.
   weight (mapped to Z on spring-loaded holders), dashed strokes, travel-optimized ordering, a
   registration pause to line up the paper, and a scrubbable preview of the exact toolpath.
 - **Plot it** -- download G-code, send it to a PrusaLink printer with the companion Bridge
-  extension, or drive an AxiDraw live over Web Serial with pause/resume and a moving playhead.
-  Artwork also exports as SVG or PNG.
+  extension, or plot live over Web Serial with pause/resume and a moving playhead -- AxiDraw-style
+  machines and GRBL 1.1 plotters (Z-axis or servo pen, optional homing) alike. Artwork also
+  exports as SVG or PNG.
 - **A real editor** -- autosaved multi-document tabs with cross-tab sync, undo/redo that survives a
   refresh, an elements tree, a command palette, clipboard across tabs, light/dark themes.
 
@@ -52,7 +53,7 @@ userscripts and headless tooling.
 
 Every mark -- handwriting, a shape, an imported path, a traced image -- reduces to the same thing: a
 list of pen-down polylines in millimeters. That representation flows through one pipeline (place on
-the page, clip to the reachable area, optimize stroke order, then emit G-code or plan AxiDraw
+the page, clip to the reachable area, optimize stroke order, then emit G-code or plan machine
 motion), so adding a new input type never touches the machinery downstream.
 
 The app is client-only React, but all the geometry -- the handwriting model, font and text layout,

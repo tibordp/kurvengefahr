@@ -2,7 +2,7 @@
 // development: default replies per command family, scripted overrides, configurable ack delays
 // (to exercise flow control), a latched PRG button, and unplug simulation. Replies are delivered
 // strictly in command order regardless of per-command delays, like the real (serial) wire.
-import type { EbbTransport } from './transport'
+import type { LineTransport } from '../serial/transport'
 
 export interface MockOptions {
   /** Override replies: return the data lines (`OK` is appended automatically, QM excepted), or
@@ -15,7 +15,7 @@ export interface MockOptions {
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
 
-export class MockTransport implements EbbTransport {
+export class MockTransport implements LineTransport {
   /** Every command received, in order (CR-stripped) — assert against this in tests. */
   readonly sent: string[] = []
   private lineCb: (line: string) => void = () => {}

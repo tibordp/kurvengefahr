@@ -186,8 +186,9 @@ export interface Fiducial {
 }
 
 /** Machine family — drives the output dialect/affordances. `prusa` = G-code plotters (download or
- *  PrusaLink); `axidraw` = EBB boards driven live over Web Serial (no G-code at all). */
-export type MachineKind = 'prusa' | 'axidraw'
+ *  PrusaLink); `axidraw` = EBB boards driven live over Web Serial (no G-code at all); `grbl` =
+ *  GRBL 1.1 plotters (G-code download *or* streamed live over Web Serial). */
+export type MachineKind = 'prusa' | 'axidraw' | 'grbl'
 
 /** Binding to a printer the user granted to this app in the Bridge for PrusaLink extension;
  *  the id/name are the extension's, never creds. */
@@ -256,19 +257,52 @@ export interface AxidrawProfile extends MachineProfileBase {
   servo: { upPercent: number; downPercent: number; liftMs: number; dropMs: number }
 }
 
-/** Global, document-level machine description, discriminated by `kind`. Editable in the UI;
- *  presets seed it — a profile's kind comes from the preset it was seeded from. */
-export type MachineProfile = PrusaProfile | AxidrawProfile
+/** GRBL pen on a real Z axis. Same contract as {@link PrusaProfile.penZ}: `downLight`'s presence
+ *  *is* the pressure switch (present ⇒ pressure interpolates `downLight`→`down`). */
+export type GrblZPen = { mode: 'z'; up: number; down: number; downLight?: number }
 
-/** Pressure is supported by a profile when it defines a light-pressure pen-down Z (`penZ.downLight`)
- *  — which only a G-code machine has; an AxiDraw's servo pen is up/down only. The single source of
- *  truth for "is the per-element pressure control live / does emit vary Z". */
-export function pressureEnabled(profile: MachineProfile): boolean {
-  return profile.kind === 'prusa' && profile.penZ.downLight !== undefined
+/** GRBL pen on a servo driven by the spindle-PWM pin — the cheap-plotter norm. `upS`/`downS` are
+ *  raw `M3 S` values (0..$30, GRBL default 1000; semantics vary by servo fork — dial in with the
+ *  pen test). `raiseMs`/`lowerMs` are the physical settle times, emitted as `G4` dwells. */
+export type GrblServoPen = { mode: 'servo'; upS: number; downS: number; raiseMs: number; lowerMs: number }
+
+/** A GRBL 1.1 pen plotter: G-code download or live Web Serial streaming (same rendered lines).
+ *  Pen actuation is a per-profile choice (`pen.mode`): Z axis or spindle-PWM servo. No motion
+ *  planning on our side — GRBL plans its own; we only stream/emit `G0`/`G1` lines. */
+export interface GrblProfile extends MachineProfileBase {
+  kind: 'grbl'
+  device?: WebSerialBinding
+  /** Real UART, must match the board (unlike the EBB's ignored USB-CDC baud). */
+  baudRate: number
+  /** Feed rates, mm/min (G-code convention; travel moves are `G0` rapids, so `travel` only paces
+   *  Z-mode pen drops). */
+  feeds: { travel: number; draw: number }
+  pen: GrblZPen | GrblServoPen
+  /** `$H` at job start (machine has limit switches). Off: wherever the machine sits becomes work
+   *  zero (`G10 L20`) and the job walks back there at the end — the EBB convention. */
+  homing: boolean
+  preamble: string
+  postamble: string
+  /** Operator-pause macro for the *downloaded* file (`M0` support depends on the sender); live
+   *  streaming replaces pauses with in-app prompts. Template: `{message}`. Empty = no pause. */
+  pause: string
 }
 
-/** The pen↔nozzle offset for kinds that have one; an AxiDraw's pen *is* the tool (zero offset).
- *  Keeps the drawable region, park point and status readout kind-agnostic. */
+/** Global, document-level machine description, discriminated by `kind`. Editable in the UI;
+ *  presets seed it — a profile's kind comes from the preset it was seeded from. */
+export type MachineProfile = PrusaProfile | AxidrawProfile | GrblProfile
+
+/** Pressure is supported by a profile when it defines a light-pressure pen-down Z (`downLight`)
+ *  — which needs a real Z axis; servo pens (AxiDraw, GRBL servo mode) are up/down only. The single
+ *  source of truth for "is the per-element pressure control live / does emit vary Z". */
+export function pressureEnabled(profile: MachineProfile): boolean {
+  if (profile.kind === 'prusa') return profile.penZ.downLight !== undefined
+  if (profile.kind === 'grbl') return profile.pen.mode === 'z' && profile.pen.downLight !== undefined
+  return false
+}
+
+/** The pen↔nozzle offset for kinds that have one; on an AxiDraw or GRBL plotter the pen *is* the
+ *  tool (zero offset). Keeps the drawable region, park point and status readout kind-agnostic. */
 export function penOffsetOf(profile: MachineProfile): { x: number; y: number; z: number } {
   return profile.kind === 'prusa' ? profile.penOffset : { x: 0, y: 0, z: 0 }
 }
