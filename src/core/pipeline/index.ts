@@ -15,7 +15,7 @@ import { optimizeGeometry } from './optimize'
 import { emit } from './emit'
 import { planAxidraw, type PlotPlan } from './plan'
 import { planGrblTape, type GrblTape } from './grblTape'
-import { penParkInPage } from './toMachine'
+import { plotStartInPage } from './toMachine'
 import { clipToRegion, drawableRegion } from './clip'
 import { elementLocalGeometry, effectedLocal } from './clipGeometry'
 import { applyDash } from './dash'
@@ -95,7 +95,7 @@ export async function runPipeline(
 ): Promise<PipelineOutput> {
   const plottable = buildPlottableGeometry(elements, profile)
   const penOrder = profile.pens.map((p) => p.id)
-  const optimized = await optimizeGeometry(plottable, penParkInPage(profile), penOrder)
+  const optimized = await optimizeGeometry(plottable, plotStartInPage(profile, fiducial), penOrder)
   if (profile.kind === 'axidraw') {
     return { kind: 'axidraw', plan: await planAxidraw(optimized, profile, fiducial), optimized }
   }

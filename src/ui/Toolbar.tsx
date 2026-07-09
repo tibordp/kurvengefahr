@@ -9,7 +9,7 @@ import { regenerateAll, needsManualRegen } from '../core/generation'
 import { validateProfile } from '../core/profileValidation'
 import { buildPlottableGeometry } from '../core/pipeline'
 import { optimizeGeometry } from '../core/pipeline/optimize'
-import { penParkInPage } from '../core/pipeline/toMachine'
+import { penParkInPage, plotStartInPage } from '../core/pipeline/toMachine'
 import { buildToolpath } from '../core/preview/toolpath'
 import { exportGcode, plotGcode } from '../output/export'
 import { BridgeError } from '../output/plot'
@@ -112,11 +112,12 @@ export function Toolbar() {
     if (elements.length === 0) return
     setPreparing(true)
     try {
-      // Seed both the optimizer and the preview's first travel from the pen's real park
-      // point (machine origin in page space), so the dotted line starts at the right corner.
+      // The preview's first travel starts at the pen's real park point (machine origin in page
+      // space); stroke ordering starts where plotting does — the fiducial when one is set, so
+      // preview and plot agree on the order (same seed as runPipeline).
       const park = penParkInPage(profile)
       const plottable = buildPlottableGeometry(elements, profile)
-      const optimized = await optimizeGeometry(plottable, park, profile.pens.map((p) => p.id))
+      const optimized = await optimizeGeometry(plottable, plotStartInPage(profile, fiducial), profile.pens.map((p) => p.id))
       // Preview is a read-only mode — disarm any drawing tool so the toolbar reflects it and exiting
       // doesn't drop you back into a half-armed tool.
       useTools.getState().setTool('select')
