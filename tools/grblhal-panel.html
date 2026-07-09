@@ -1,0 +1,731 @@
+<!doctype html>
+<!--
+  grblHAL control panel — a single-file Web Serial console for configuring and bench-testing
+  GRBL 1.1 / grblHAL boards (developed against a BlackPill running grblHAL 1.1f).
+
+  Open it straight from disk (file://) or over the dev server (/tools/grblhal-panel.html) in a
+  Web Serial-capable browser. No build step, no network, no dependencies.
+
+  What it does: live status (state, position, pins, buffers, overrides), the full $$ settings
+  table with grblHAL's own per-setting descriptions fetched on demand ($$=n), inline editing,
+  jog pad ($J= with jog-cancel), spindle/servo pen controls, real-time commands, a raw console,
+  settings backup to clipboard, and one-click presets for common bench situations.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>grblHAL control panel</title>
+<style>
+  :root {
+    --bg: #101012;
+    --surface: #18181b;
+    --raised: #202024;
+    --border: #2c2c31;
+    --text: #e7e7ea;
+    --muted: #9b9ba3;
+    --faint: #6b6b74;
+    --accent: #e5484d;
+    --ok: #30a46c;
+    --warn: #f5a623;
+    --run: #4c8dff;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--bg); color: var(--text);
+    font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    display: flex; flex-direction: column;
+  }
+  header {
+    display: flex; align-items: center; gap: 12px; padding: 10px 16px;
+    border-bottom: 1px solid var(--border); background: var(--surface);
+    position: sticky; top: 0; z-index: 5;
+  }
+  header h1 { font-size: 15px; margin: 0; font-weight: 600; letter-spacing: .2px; }
+  header h1 span { color: var(--accent); }
+  .spacer { flex: 1; }
+  button {
+    background: var(--raised); color: var(--text); border: 1px solid var(--border);
+    border-radius: 6px; padding: 5px 11px; font: inherit; font-size: 13px; cursor: pointer;
+  }
+  button:hover:not(:disabled) { border-color: var(--faint); }
+  button:disabled { opacity: .45; cursor: default; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  button.danger { color: #ff8589; border-color: #5c2e30; }
+  button.danger:hover:not(:disabled) { border-color: var(--accent); }
+  button.tiny { padding: 2px 8px; font-size: 12px; }
+  select, input[type=text], input[type=number] {
+    background: var(--raised); color: var(--text); border: 1px solid var(--border);
+    border-radius: 6px; padding: 5px 8px; font: inherit; font-size: 13px;
+  }
+  input:focus, select:focus, button:focus-visible { outline: 1.5px solid var(--accent); outline-offset: 1px; }
+
+  main {
+    flex: 1; display: grid; gap: 12px; padding: 12px 16px 16px;
+    grid-template-columns: 380px 1fr; grid-template-rows: auto 1fr;
+    grid-template-areas: "status settings" "left settings" "console console";
+    min-height: 0;
+  }
+  @media (max-width: 980px) { main { grid-template-columns: 1fr; grid-template-areas: "status" "left" "settings" "console"; } }
+  .card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    padding: 12px 14px; min-width: 0;
+  }
+  .card h2 {
+    margin: 0 0 10px; font-size: 11px; font-weight: 700; letter-spacing: .8px;
+    text-transform: uppercase; color: var(--muted);
+    display: flex; align-items: center; gap: 8px;
+  }
+  .card h2 .spacer { flex: 1; }
+
+  /* ---- status ---- */
+  #statusCard { grid-area: status; }
+  .state-chip {
+    display: inline-flex; align-items: center; gap: 7px; padding: 3px 12px; border-radius: 999px;
+    font-family: var(--mono); font-size: 13px; font-weight: 700; border: 1px solid var(--border);
+    background: var(--raised);
+  }
+  .state-chip::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--faint); }
+  .state-chip[data-state=Idle]::before { background: var(--ok); }
+  .state-chip[data-state=Run]::before, .state-chip[data-state=Jog]::before, .state-chip[data-state=Home]::before { background: var(--run); }
+  .state-chip[data-state=Hold]::before, .state-chip[data-state=Door]::before { background: var(--warn); }
+  .state-chip[data-state=Alarm]::before { background: var(--accent); }
+  .kv { display: grid; grid-template-columns: auto 1fr; gap: 3px 14px; font-family: var(--mono); font-size: 12.5px; margin-top: 10px; }
+  .kv dt { color: var(--faint); }
+  .kv dd { margin: 0; }
+  .pin-badge {
+    display: inline-block; padding: 0 6px; margin-right: 4px; border-radius: 4px;
+    background: #3a2426; color: #ff9b9e; border: 1px solid #5c2e30; font-weight: 700;
+  }
+  #alarmBanner {
+    display: none; margin-top: 10px; padding: 8px 10px; border-radius: 8px;
+    background: #341b1d; border: 1px solid #5c2e30; font-size: 13px;
+  }
+  #alarmBanner.show { display: flex; align-items: center; gap: 10px; }
+
+  /* ---- left column: controls + presets ---- */
+  #leftCol { grid-area: left; display: flex; flex-direction: column; gap: 12px; min-height: 0; overflow-y: auto; }
+  .btn-row { display: flex; flex-wrap: wrap; gap: 6px; }
+  .jog-grid { display: grid; grid-template-columns: repeat(3, 44px) 16px 44px; gap: 5px; align-items: center; margin-top: 8px; }
+  .jog-grid button { height: 36px; padding: 0; font-family: var(--mono); }
+  .field { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 13px; color: var(--muted); }
+  .field input, .field select { width: 90px; }
+  .preset { border: 1px solid var(--border); border-radius: 8px; padding: 9px 11px; margin-top: 8px; background: var(--raised); }
+  .preset:first-of-type { margin-top: 0; }
+  .preset .name { font-weight: 600; font-size: 13px; display: flex; align-items: center; gap: 8px; }
+  .preset .blurb { color: var(--muted); font-size: 12.5px; margin: 3px 0 6px; }
+  .preset code { font-family: var(--mono); font-size: 11.5px; color: var(--faint); display: block; }
+
+  /* ---- settings ---- */
+  #settingsCard { grid-area: settings; display: flex; flex-direction: column; min-height: 260px; }
+  #settingsScroll { flex: 1; overflow-y: auto; margin: 0 -14px -12px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 4px 8px; border-top: 1px solid var(--border); }
+  th { position: sticky; top: 0; background: var(--surface); color: var(--faint); font-size: 11px; text-transform: uppercase; letter-spacing: .6px; border-top: none; z-index: 1; }
+  td:first-child, th:first-child { padding-left: 14px; }
+  td:last-child, th:last-child { padding-right: 14px; }
+  tr.changed td.val input { border-color: var(--warn); }
+  td.num { font-family: var(--mono); color: var(--muted); white-space: nowrap; width: 1%; }
+  td.name { color: var(--muted); }
+  td.val input { width: 110px; font-family: var(--mono); font-size: 12.5px; }
+  tr.desc-row td {
+    font-family: var(--mono); font-size: 12px; color: var(--muted); white-space: pre-wrap;
+    background: var(--raised); border-top: none; padding: 6px 14px 8px 34px;
+  }
+  #settingsFilter { width: 170px; }
+
+  /* ---- console ---- */
+  #consoleCard { grid-area: console; display: flex; flex-direction: column; height: 260px; resize: vertical; overflow: hidden; min-height: 130px; }
+  #log { flex: 1; overflow-y: auto; font-family: var(--mono); font-size: 12px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; }
+  #log .tx { color: #8ec6ff; }
+  #log .rx { color: var(--text); }
+  #log .rx-msg { color: var(--ok); }
+  #log .rx-err { color: #ff8589; }
+  #log .rx-status { color: var(--faint); }
+  #log .meta { color: var(--faint); font-style: italic; }
+  #consoleForm { display: flex; gap: 8px; margin-top: 8px; }
+  #consoleInput { flex: 1; font-family: var(--mono); }
+  .hint { color: var(--faint); font-size: 12px; }
+  #unsupported { margin: 40px auto; max-width: 460px; text-align: center; color: var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <h1>grbl<span>HAL</span> control panel</h1>
+  <span id="firmware" class="hint"></span>
+  <span class="spacer"></span>
+  <label class="hint" for="baud">Baud</label>
+  <select id="baud">
+    <option>9600</option><option>19200</option><option>38400</option>
+    <option>57600</option><option selected>115200</option><option>230400</option>
+  </select>
+  <button id="connectBtn" class="primary">Connect…</button>
+</header>
+
+<div id="unsupported" hidden>
+  <h2>No Web Serial</h2>
+  <p>This browser can’t open serial ports. Use a Chromium-based browser (Chrome, Edge, Arc…).</p>
+</div>
+
+<main id="main" hidden>
+  <section class="card" id="statusCard">
+    <h2>Status
+      <span class="spacer"></span>
+      <span id="stateChip" class="state-chip" data-state="">—</span>
+    </h2>
+    <dl class="kv">
+      <dt>WPos</dt><dd id="wpos">—</dd>
+      <dt>MPos</dt><dd id="mpos">—</dd>
+      <dt>WCO</dt><dd id="wco">—</dd>
+      <dt>Feed / S</dt><dd id="fs">—</dd>
+      <dt>Buffers</dt><dd id="bf">—</dd>
+      <dt>Overrides</dt><dd id="ov">—</dd>
+      <dt>Pins</dt><dd id="pins">—</dd>
+    </dl>
+    <div id="alarmBanner">
+      <span id="alarmText">Machine is in an alarm state.</span>
+      <span class="spacer"></span>
+      <button id="unlockBtn" class="tiny">$X unlock</button>
+    </div>
+  </section>
+
+  <div id="leftCol">
+    <section class="card">
+      <h2>Machine</h2>
+      <div class="btn-row">
+        <button data-send="$X">Unlock</button>
+        <button data-send="$H">Home</button>
+        <button data-rt="!" title="Feed hold (decelerate to a stop)">Hold</button>
+        <button data-rt="~" title="Cycle resume">Resume</button>
+        <button data-rt="&#24;" class="danger" title="Soft reset (Ctrl-X) — kills motion, flushes buffers">Reset</button>
+        <button data-send="G10 L20 P1 X0 Y0 Z0" title="Current position becomes work zero (survives reset)">Zero here</button>
+        <button data-send="G90 G0 X0 Y0" title="Rapid to work X0 Y0">Go to zero</button>
+      </div>
+      <div class="field">
+        <span>Jog step</span>
+        <select id="jogStep"><option>0.1</option><option>1</option><option selected>10</option><option>50</option></select>
+        <span>at</span>
+        <input id="jogFeed" type="number" value="1000" min="1" /> <span>mm/min</span>
+      </div>
+      <div class="jog-grid">
+        <span></span><button data-jog="Y+">Y+</button><span></span><span></span><button data-jog="Z+">Z+</button>
+        <button data-jog="X-">X−</button><button data-rt="&#133;" class="danger" title="Jog cancel (0x85)">✕</button><button data-jog="X+">X+</button><span></span><button data-jog="Z-">Z−</button>
+        <span></span><button data-jog="Y-">Y−</button><span></span><span></span><span></span>
+      </div>
+      <div class="field">
+        <span>Spindle / servo S</span>
+        <input id="sValue" type="number" value="750" min="0" />
+        <button id="m3Btn" class="tiny" title="M3 S<value>">M3</button>
+        <button data-send="M5" class="tiny">M5</button>
+      </div>
+      <div class="field">
+        <span>Pen</span>
+        <button id="penUpBtn" class="tiny" title="M3 with the up S value">Up</button>
+        <input id="penUpS" type="number" value="750" title="pen-up S" />
+        <button id="penDownBtn" class="tiny" title="M3 with the down S value">Down</button>
+        <input id="penDownS" type="number" value="250" title="pen-down S" />
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Presets <span class="spacer"></span><span class="hint">click Apply, watch the console</span></h2>
+      <div id="presets"></div>
+    </section>
+  </div>
+
+  <section class="card" id="settingsCard">
+    <h2>Settings ($$)
+      <span class="spacer"></span>
+      <input id="settingsFilter" type="text" placeholder="filter…" />
+      <button id="refreshBtn" class="tiny">Refresh</button>
+      <button id="describeAllBtn" class="tiny" title="Fetch the board's own description for every setting ($$=n)">Describe all</button>
+      <button id="backupBtn" class="tiny" title="Copy all settings to the clipboard as $n=v lines">Copy backup</button>
+    </h2>
+    <div id="settingsScroll">
+      <table>
+        <thead><tr><th></th><th>#</th><th>Name</th><th>Value</th><th></th></tr></thead>
+        <tbody id="settingsBody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="card" id="consoleCard">
+    <h2>Console
+      <span class="spacer"></span>
+      <label class="hint"><input type="checkbox" id="showStatus" /> show status reports</label>
+      <button class="tiny" data-rt="?">?</button>
+      <button class="tiny" id="clearLogBtn">Clear</button>
+    </h2>
+    <div id="log"></div>
+    <form id="consoleForm">
+      <input id="consoleInput" type="text" placeholder="G-code or $-command… (multi-line paste ok, ↑ for history)" autocomplete="off" />
+      <button class="primary">Send</button>
+    </form>
+  </section>
+</main>
+
+<script>
+'use strict'
+const $ = (id) => document.getElementById(id)
+
+/* ================================ serial transport ================================ */
+
+let port = null
+let writer = null
+let readAbort = null
+let connected = false
+
+async function openPort() {
+  port = await navigator.serial.requestPort()
+  await port.open({ baudRate: Number($('baud').value) })
+  writer = port.writable.getWriter()
+  connected = true
+  readAbort = new AbortController()
+  readLoop(readAbort.signal)
+  port.addEventListener('disconnect', () => teardown('device disconnected'))
+}
+
+async function readLoop(signal) {
+  const decoder = new TextDecoder()
+  let buffer = ''
+  try {
+    while (port.readable && !signal.aborted) {
+      const reader = port.readable.getReader()
+      try {
+        for (;;) {
+          const { value, done } = await reader.read()
+          if (done) break
+          buffer += decoder.decode(value, { stream: true })
+          const parts = buffer.split(/[\r\n]+/)
+          buffer = parts.pop() ?? ''
+          for (const line of parts) if (line) handleLine(line)
+        }
+      } finally {
+        reader.releaseLock()
+      }
+    }
+  } catch {
+    /* fatal read error → disconnect below */
+  }
+  if (!signal.aborted) teardown('read stream ended')
+}
+
+async function writeRaw(text) {
+  if (!writer) throw new Error('not connected')
+  await writer.write(new TextEncoder().encode(text))
+}
+
+async function teardown(reason) {
+  if (!connected) return
+  connected = false
+  logMeta(`— ${reason} —`)
+  clearInterval(pollTimer)
+  for (const c of queue.splice(0)) c.reject(new Error('disconnected'))
+  inflight?.reject(new Error('disconnected'))
+  inflight = null
+  try { readAbort?.abort() } catch {}
+  try { await writer?.close() } catch {}
+  try { await port?.close() } catch {}
+  writer = null
+  port = null
+  setConnectedUI(false)
+}
+
+/* ================================ protocol ================================ */
+// One line-command in flight at a time (this is a config panel, not a streamer): every line the
+// board prints between a command and its ok/error belongs to that command. Unsolicited traffic —
+// <status>, ALARM, banners — is recognized and routed around the pending command.
+
+const queue = []
+let inflight = null
+
+function handleLine(line) {
+  if (line.startsWith('<') && line.endsWith('>')) {
+    handleStatus(line)
+    if ($('showStatus').checked) logLine('rx-status', line)
+    return
+  }
+  if (/^ALARM:/.test(line)) {
+    logLine('rx-err', line)
+    inflight?.reject(new Error(line))
+    inflight = null
+    pump()
+    return
+  }
+  if (/^Grbl(HAL)? /.test(line)) {
+    logLine('rx-msg', line)
+    $('firmware').textContent = line.replace(/\s*\[.*\]$/, '')
+    return
+  }
+  if (line === 'ok') {
+    logLine('rx', 'ok')
+    const c = inflight
+    inflight = null
+    c?.resolve(c.lines)
+    pump()
+    return
+  }
+  const err = line.match(/^error:(\d+)/)
+  if (err) {
+    logLine('rx-err', line + (ERRORS[err[1]] ? `  (${ERRORS[err[1]]})` : ''))
+    const c = inflight
+    inflight = null
+    c?.reject(new Error(line))
+    pump()
+    return
+  }
+  logLine(line.startsWith('[MSG:') ? 'rx-msg' : 'rx', line)
+  if (inflight) inflight.lines.push(line)
+}
+
+function send(line) {
+  return new Promise((resolve, reject) => {
+    queue.push({ line, lines: [], resolve, reject })
+    pump()
+  })
+}
+
+function pump() {
+  if (inflight || queue.length === 0 || !connected) return
+  inflight = queue.shift()
+  logLine('tx', inflight.line)
+  writeRaw(inflight.line + '\n').catch((e) => {
+    const c = inflight
+    inflight = null
+    c?.reject(e)
+  })
+}
+
+function sendRealtime(ch) {
+  // Real-time bytes bypass the RX buffer and produce no ok — never queued.
+  logLine('tx', ch === '\x18' ? '(ctrl-X reset)' : ch === '\x85' ? '(jog cancel)' : ch)
+  writeRaw(ch).catch(() => {})
+}
+
+// The handful of error codes a bench session actually meets (grblHAL shares vanilla's 1-38).
+const ERRORS = {
+  1: 'expected a command letter', 2: 'bad number format', 3: 'invalid $ statement',
+  5: 'homing not enabled ($22)', 8: 'not idle', 9: 'locked out — alarm or jog active',
+  10: 'soft limits need homing', 15: 'jog target exceeds travel', 20: 'unsupported command',
+  22: 'feed rate not set', 79: 'E-stop asserted (grblHAL)',
+}
+
+/* ================================ status panel ================================ */
+
+let pollTimer = 0
+let lastWco = null
+
+function handleStatus(line) {
+  const fields = line.slice(1, -1).split('|')
+  const [state, sub] = fields[0].split(':')
+  const chip = $('stateChip')
+  chip.textContent = sub !== undefined ? `${state}:${sub}` : state
+  chip.dataset.state = state
+  $('alarmBanner').classList.toggle('show', state === 'Alarm')
+  const vec = (s) => s.split(',').map(Number)
+  const fmt = (v) => v.map((n) => n.toFixed(3)).join('  ')
+  let mpos = null, wpos = null
+  for (const f of fields.slice(1)) {
+    if (f.startsWith('MPos:')) mpos = vec(f.slice(5))
+    else if (f.startsWith('WPos:')) wpos = vec(f.slice(5))
+    else if (f.startsWith('WCO:')) lastWco = vec(f.slice(4))
+    else if (f.startsWith('FS:')) $('fs').textContent = f.slice(3).split(',').join(' mm/min   S')
+    else if (f.startsWith('Bf:')) $('bf').textContent = f.slice(3).replace(',', ' planner blocks, ') + ' RX bytes free'
+    else if (f.startsWith('Ov:')) $('ov').textContent = f.slice(3).split(',').map((v) => v + '%').join('  ')
+    else if (f.startsWith('Pn:'))
+      $('pins').innerHTML = [...f.slice(3)].map((p) => `<span class="pin-badge" title="${PIN_NAMES[p] ?? p}">${p}</span>`).join('') || '—'
+  }
+  if (!fields.slice(1).some((f) => f.startsWith('Pn:'))) $('pins').textContent = '—'
+  if (!wpos && mpos && lastWco) wpos = mpos.map((v, i) => v - (lastWco[i] ?? 0))
+  if (!mpos && wpos && lastWco) mpos = wpos.map((v, i) => v + (lastWco[i] ?? 0))
+  if (wpos) $('wpos').textContent = fmt(wpos)
+  if (mpos) $('mpos').textContent = fmt(mpos)
+  if (lastWco) $('wco').textContent = fmt(lastWco)
+}
+
+const PIN_NAMES = {
+  X: 'X limit', Y: 'Y limit', Z: 'Z limit', A: 'A limit', B: 'B limit', C: 'C limit',
+  P: 'Probe', D: 'Safety door', R: 'Reset', F: 'Feed hold', S: 'Cycle start',
+  E: 'E-stop', H: 'Home', L: 'Block delete', T: 'Stop disable', M: 'Motor fault', O: 'Probe overtravel',
+}
+
+/* ================================ settings table ================================ */
+// Values come from $$; names below are the usual vanilla/grblHAL meanings as a quick hint —
+// the authoritative text is the board's own, fetched per setting with $$=n ("?" button).
+
+const SETTING_NAMES = {
+  0: 'Step pulse, µs', 1: 'Step idle delay, ms', 2: 'Step pulse invert mask', 3: 'Direction invert mask',
+  4: 'Step enable invert', 5: 'Limit pins invert', 6: 'Probe pin invert', 9: 'Spindle PWM options',
+  10: 'Status report options', 11: 'Junction deviation, mm', 12: 'Arc tolerance, mm', 13: 'Report in inches',
+  14: 'Control inputs invert', 15: 'Coolant outputs invert', 16: 'Spindle signals invert',
+  17: 'Control pull-up disable', 18: 'Limit pull-up disable', 19: 'Probe pull-up disable',
+  20: 'Soft limits enable', 21: 'Hard limits enable', 22: 'Homing cycle enable', 23: 'Homing direction invert',
+  24: 'Homing feed, mm/min', 25: 'Homing seek, mm/min', 26: 'Homing debounce, ms', 27: 'Homing pull-off, mm',
+  28: 'G73 retract, mm', 29: 'Step pulse delay, µs', 30: 'Spindle max (S=)', 31: 'Spindle min (S=)',
+  32: 'Mode (0 normal, 1 laser, 2 lathe)', 33: 'Spindle PWM frequency, Hz', 34: 'Spindle PWM off value, %',
+  35: 'Spindle PWM min value, %', 36: 'Spindle PWM max value, %', 37: 'Steppers de-energize mask',
+  39: 'Realtime command characters enable', 40: 'Soft-limit jog limiting', 43: 'Homing locate cycles',
+  44: 'Homing cycle 1 axes', 45: 'Homing cycle 2 axes', 46: 'Homing cycle 3 axes',
+  62: 'Sleep enable', 63: 'Feed hold actions', 64: 'Force init alarm', 65: 'Probing options',
+  100: 'X steps/mm', 101: 'Y steps/mm', 102: 'Z steps/mm',
+  110: 'X max rate, mm/min', 111: 'Y max rate, mm/min', 112: 'Z max rate, mm/min',
+  120: 'X acceleration, mm/s²', 121: 'Y acceleration, mm/s²', 122: 'Z acceleration, mm/s²',
+  130: 'X max travel, mm', 131: 'Y max travel, mm', 132: 'Z max travel, mm',
+  341: 'Tool change mode', 384: 'Disable G92 persistence', 392: 'Spindle spin-up delay, s',
+  481: 'Autoreport interval, ms',
+}
+
+let settings = new Map() // n -> value string as loaded
+
+async function refreshSettings() {
+  const lines = await send('$$')
+  settings = new Map()
+  for (const l of lines) {
+    const m = l.match(/^\$(\d+)=(.*)$/)
+    if (m) settings.set(Number(m[1]), m[2])
+  }
+  renderSettings()
+}
+
+function renderSettings() {
+  const body = $('settingsBody')
+  body.innerHTML = ''
+  const filter = $('settingsFilter').value.trim().toLowerCase()
+  for (const [n, v] of settings) {
+    const name = SETTING_NAMES[n] ?? ''
+    if (filter && !(`$${n} ${name} ${v}`.toLowerCase().includes(filter))) continue
+    const tr = document.createElement('tr')
+    tr.dataset.n = n
+    tr.innerHTML = `
+      <td><button class="tiny desc-btn" title="Fetch this setting's description from the board ($$=${n})">?</button></td>
+      <td class="num">$${n}</td>
+      <td class="name">${name}</td>
+      <td class="val"><input type="text" value="${v}" /></td>
+      <td><button class="tiny apply-btn" disabled>Set</button></td>`
+    const input = tr.querySelector('input')
+    const apply = tr.querySelector('.apply-btn')
+    const arm = () => {
+      const changed = input.value !== settings.get(n)
+      apply.disabled = !changed
+      tr.classList.toggle('changed', changed)
+    }
+    input.addEventListener('input', arm)
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !apply.disabled) apply.click() })
+    apply.addEventListener('click', async () => {
+      try {
+        await send(`$${n}=${input.value}`)
+        settings.set(n, input.value)
+        arm()
+      } catch {}
+    })
+    tr.querySelector('.desc-btn').addEventListener('click', () => toggleDescription(tr, n))
+    body.appendChild(tr)
+  }
+}
+
+const descriptions = new Map()
+
+async function fetchDescription(n) {
+  if (!descriptions.has(n)) {
+    const lines = await send(`$$=${n}`)
+    descriptions.set(n, lines.map((l) => l.replace(/^\$\d+:\s*/, '')).join('\n'))
+  }
+  return descriptions.get(n)
+}
+
+async function toggleDescription(tr, n) {
+  const next = tr.nextElementSibling
+  if (next?.classList.contains('desc-row')) {
+    next.remove()
+    return
+  }
+  let text
+  try {
+    text = await fetchDescription(n)
+  } catch {
+    text = '(the board rejected $$=n — descriptions need grblHAL)'
+  }
+  const row = document.createElement('tr')
+  row.className = 'desc-row'
+  row.innerHTML = `<td colspan="5"></td>`
+  row.firstElementChild.textContent = text
+  tr.after(row)
+}
+
+/* ================================ presets ================================ */
+
+const PRESETS = [
+  {
+    name: 'BlackPill floating inputs',
+    blurb: 'Bare board, nothing wired: invert the E-stop input so the machine can unlock ' +
+      '(the fix for error:79 with Pn:…E…). Reset afterwards — the E-stop alarm is latched.',
+    settings: [[14, '71']],
+    then: 'reset',
+  },
+  {
+    name: 'Bench speeds (no motors)',
+    blurb: 'grblHAL ships with a 500 mm/min cap and 10 mm/s² acceleration — everything crawls. ' +
+      'Open it up for desk testing.',
+    settings: [[110, '10000'], [111, '10000'], [112, '10000'], [120, '500'], [121, '500'], [122, '500']],
+  },
+  {
+    name: 'Typical belt pen plotter',
+    blurb: 'GT2 belts + 16× microstepped NEMA17 (80 steps/mm), sane plotting speeds.',
+    settings: [[100, '80'], [101, '80'], [110, '8000'], [111, '8000'], [120, '400'], [121, '400']],
+  },
+  {
+    name: 'Servo pen on spindle PWM',
+    blurb: 'Hobby servo on the spindle pin: 50 Hz PWM, duty limited to the ~0.5–2.5 ms pulse band, ' +
+      'S0–1000 spans the range. Dial the pen with the S buttons above.',
+    settings: [[30, '1000'], [31, '0'], [32, '0'], [33, '50'], [34, '0'], [35, '2.5'], [36, '12.5']],
+  },
+  {
+    name: 'Rich status reports',
+    blurb: 'Everything in the <…> report: positions, pins, overrides, buffers.',
+    settings: [[10, '511']],
+  },
+  {
+    name: 'Cautious defaults (revert)',
+    blurb: 'Back to the grblHAL out-of-the-box values this panel was first pointed at.',
+    settings: [[14, '7'], [110, '500'], [111, '500'], [112, '500'], [120, '10'], [121, '10'], [122, '10']],
+  },
+]
+
+function renderPresets() {
+  const host = $('presets')
+  for (const p of PRESETS) {
+    const div = document.createElement('div')
+    div.className = 'preset'
+    div.innerHTML = `
+      <div class="name">${p.name}<span class="spacer"></span><button class="tiny">Apply</button></div>
+      <div class="blurb">${p.blurb}</div>
+      <code>${p.settings.map(([n, v]) => `$${n}=${v}`).join('  ')}${p.then === 'reset' ? '  + reset' : ''}</code>`
+    div.querySelector('button').addEventListener('click', async () => {
+      for (const [n, v] of p.settings) {
+        try { await send(`$${n}=${v}`) } catch { return }
+      }
+      if (p.then === 'reset') sendRealtime('\x18')
+      setTimeout(() => refreshSettings().catch(() => {}), p.then === 'reset' ? 1500 : 0)
+    })
+    host.appendChild(div)
+  }
+}
+
+/* ================================ console ================================ */
+
+const history = []
+let historyAt = -1
+
+function logLine(cls, text) {
+  const log = $('log')
+  const atBottom = log.scrollTop + log.clientHeight >= log.scrollHeight - 8
+  const div = document.createElement('div')
+  div.className = cls
+  div.textContent = (cls === 'tx' ? '> ' : '') + text
+  log.appendChild(div)
+  while (log.childElementCount > 2000) log.firstElementChild.remove()
+  if (atBottom) log.scrollTop = log.scrollHeight
+}
+const logMeta = (t) => logLine('meta', t)
+
+$('consoleForm').addEventListener('submit', (e) => {
+  e.preventDefault()
+  const input = $('consoleInput')
+  const text = input.value.trim()
+  if (!text) return
+  history.unshift(text)
+  historyAt = -1
+  input.value = ''
+  // Multi-line paste (e.g. restoring a settings backup) queues line by line.
+  for (const line of text.split(/[\r\n]+/)) if (line.trim()) send(line.trim()).catch(() => {})
+})
+$('consoleInput').addEventListener('keydown', (e) => {
+  if (e.key === 'ArrowUp') {
+    historyAt = Math.min(historyAt + 1, history.length - 1)
+    if (history[historyAt]) $('consoleInput').value = history[historyAt]
+    e.preventDefault()
+  } else if (e.key === 'ArrowDown') {
+    historyAt = Math.max(historyAt - 1, -1)
+    $('consoleInput').value = historyAt === -1 ? '' : history[historyAt]
+    e.preventDefault()
+  }
+})
+
+/* ================================ wiring ================================ */
+
+function setConnectedUI(on) {
+  $('connectBtn').textContent = on ? 'Disconnect' : 'Connect…'
+  $('connectBtn').classList.toggle('primary', !on)
+  if (!on) {
+    $('stateChip').textContent = '—'
+    $('stateChip').dataset.state = ''
+    $('firmware').textContent = ''
+  }
+}
+
+$('connectBtn').addEventListener('click', async () => {
+  if (connected) {
+    await teardown('disconnected by user')
+    return
+  }
+  try {
+    await openPort()
+  } catch (e) {
+    if (e.name !== 'NotFoundError') logMeta(`connect failed: ${e.message}`)
+    return
+  }
+  setConnectedUI(true)
+  logMeta('— connected —')
+  pollTimer = setInterval(() => { if (connected) writeRaw('?').catch(() => {}) }, 250)
+  // The DTR toggle on open resets most boards → banner. Give it a beat, then load everything.
+  await new Promise((r) => setTimeout(r, 600))
+  try {
+    await send('$I').then((lines) => lines.length && logMeta(`build: ${lines.join(' · ')}`))
+  } catch {}
+  refreshSettings().catch(() => logMeta('could not read $$ — is this a GRBL board?'))
+})
+
+document.body.addEventListener('click', (e) => {
+  const btn = e.target.closest('button')
+  if (!btn || !connected) return
+  if (btn.dataset.send) send(btn.dataset.send).catch(() => {})
+  else if (btn.dataset.rt !== undefined) sendRealtime(btn.dataset.rt)
+  else if (btn.dataset.jog) {
+    const axis = btn.dataset.jog[0]
+    const dir = btn.dataset.jog[1] === '+' ? '' : '-'
+    send(`$J=G91 G21 ${axis}${dir}${$('jogStep').value} F${$('jogFeed').value}`).catch(() => {})
+  }
+})
+$('m3Btn').addEventListener('click', () => send(`M3 S${$('sValue').value}`).catch(() => {}))
+$('penUpBtn').addEventListener('click', () => send(`M3 S${$('penUpS').value}`).catch(() => {}))
+$('penDownBtn').addEventListener('click', () => send(`M3 S${$('penDownS').value}`).catch(() => {}))
+$('unlockBtn').addEventListener('click', () => send('$X').catch(() => {}))
+$('refreshBtn').addEventListener('click', () => refreshSettings().catch(() => {}))
+$('settingsFilter').addEventListener('input', renderSettings)
+$('clearLogBtn').addEventListener('click', () => ($('log').innerHTML = ''))
+$('backupBtn').addEventListener('click', async () => {
+  const text = [...settings].map(([n, v]) => `$${n}=${v}`).join('\n')
+  await navigator.clipboard.writeText(text)
+  logMeta(`copied ${settings.size} settings to the clipboard — paste into the console to restore`)
+})
+$('describeAllBtn').addEventListener('click', async () => {
+  const btn = $('describeAllBtn')
+  btn.disabled = true
+  let i = 0
+  for (const n of settings.keys()) {
+    btn.textContent = `${++i}/${settings.size}…`
+    try { await fetchDescription(n) } catch { break }
+  }
+  btn.textContent = 'Describe all'
+  btn.disabled = false
+  logMeta('descriptions cached — use the ? buttons (fetched from the board, not hardcoded)')
+})
+
+renderPresets()
+if ('serial' in navigator) $('main').hidden = false
+else $('unsupported').hidden = false
+</script>
+</body>
+</html>
