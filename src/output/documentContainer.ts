@@ -3,24 +3,28 @@
 // (re-minting image ids so blobs never clobber across files) and exporting the active document
 // with its referenced image blobs. Used by the Document menu and the public browser API.
 import { exportDocumentContainer, parseDocumentContainer, type ContainerImage } from './container'
-import { getImageBlob, putImageBlob, referencedImageIds } from '../store/images'
+import { BLOB_PARAM_KEYS, getImageBlob, putImageBlob, referencedImageIds } from '../store/images'
 import { useDocuments } from '../store/documents'
 import { useDoc } from '../store/document'
 import { documentFile, CURRENT_DOC_SCHEMA, type DocSnapshot, type StoredDoc } from '../store/persistence/schema'
 
 export type ImportDocumentResult = { status: 'ok' } | { status: 'unsupported' | 'invalid'; message: string }
 
-/** Rewrite each element's `params.imageId` through `idMap` (import re-mints blob ids). */
+/** Rewrite each element's blob-referencing params (`BLOB_PARAM_KEYS`) through `idMap` (import
+ *  re-mints blob ids). */
 function remapImageIds(snapshot: DocSnapshot, idMap: Map<string, string>): DocSnapshot {
   if (idMap.size === 0) return snapshot
   return {
     ...snapshot,
     elements: snapshot.elements.map((el) => {
-      const p = el.params as { imageId?: unknown }
-      if (p && typeof p.imageId === 'string' && idMap.has(p.imageId)) {
-        return { ...el, params: { ...(el.params as object), imageId: idMap.get(p.imageId)! } }
+      const p = el.params as Record<string, unknown> | null
+      if (!p) return el
+      let patch: Record<string, string> | null = null
+      for (const key of BLOB_PARAM_KEYS) {
+        const v = p[key]
+        if (typeof v === 'string' && idMap.has(v)) (patch ??= {})[key] = idMap.get(v)!
       }
-      return el
+      return patch ? { ...el, params: { ...p, ...patch } } : el
     }),
   }
 }

@@ -1,16 +1,25 @@
-// Image blob store, backed by IndexedDB (images are too big and too binary for localStorage). The
-// document model references images by a string `imageId` inside element params; the bytes live
-// here. This module imports only the `idb` leaf, so it's safe to use from the vectorize Web Worker
-// (which calls `getImageBlob`) as well as the main thread.
+// Content blob store, backed by IndexedDB (blobs are too big and too binary for localStorage). The
+// document model references blobs by a string id inside element params — `imageId` for raster
+// images, `modelId` for STL models; the bytes live here. This module imports only the `idb` leaf,
+// so it's safe to use from the generation Web Workers (which call `getImageBlob`) as well as the
+// main thread.
 //
-// All images are normalised to PNG on import (crisp edges for tracing, alpha preserved) and
+// Images are normalised to PNG on import (crisp edges for tracing, alpha preserved) and
 // downsampled to a fixed pixel budget so a huge upload can't bloat storage or stall vectorization.
+// Models are stored as their raw bytes (the STL is the authoritative input), size-capped.
 
 import type { DocElement } from '../core/types'
 import { IMAGES_STORE, idbDelete, idbGet, idbGetAllKeys, idbPut } from './persistence/idb'
 
 /** Max pixels (w×h) we keep; larger uploads are rescaled proportionally below this. ~4 MP. */
 const MAX_PIXELS = 4_000_000
+
+/** Max STL upload we accept (binary ~50 B/triangle → ~1.3 M triangles). */
+const MAX_MODEL_BYTES = 64 * 1024 * 1024
+
+/** Every element-params key that references a stored blob. GC, undo liveness, `.kgz` bundling and
+ *  id re-minting all pivot on this list — extend it when a new blob-referencing param appears. */
+export const BLOB_PARAM_KEYS = ['imageId', 'modelId'] as const
 
 interface StoredImage {
   id: string
@@ -76,17 +85,29 @@ export async function getImageBlob(imageId: string): Promise<Blob | null> {
   }
 }
 
+/** Store an STL model's raw bytes. Returns a fresh `modelId`; rejects over-budget uploads (the
+ *  caller toasts). No normalization — unlike images, the model bytes are kept verbatim. */
+export async function importModel(file: File | Blob): Promise<{ modelId: string }> {
+  if (file.size > MAX_MODEL_BYTES) throw new Error('model too large')
+  const blob = file.type === 'model/stl' ? file : new Blob([file], { type: 'model/stl' })
+  const modelId = crypto.randomUUID()
+  await idbPut(IMAGES_STORE, { id: modelId, mime: 'model/stl', blob, width: 0, height: 0 } satisfies StoredImage)
+  return { modelId }
+}
+
 /** Store an externally-provided blob under `imageId` (used by container import, which re-mints ids). */
 export async function putImageBlob(imageId: string, blob: Blob): Promise<void> {
   let width = 0
   let height = 0
-  try {
-    const bitmap = await createImageBitmap(blob)
-    width = bitmap.width
-    height = bitmap.height
-    bitmap.close()
-  } catch {
-    /* unknown dims — store anyway; the element keeps its own natural dims in params */
+  if (blob.type.startsWith('image/')) {
+    try {
+      const bitmap = await createImageBitmap(blob)
+      width = bitmap.width
+      height = bitmap.height
+      bitmap.close()
+    } catch {
+      /* unknown dims — store anyway; the element keeps its own natural dims in params */
+    }
   }
   await idbPut(IMAGES_STORE, { id: imageId, mime: blob.type || 'image/png', blob, width, height } satisfies StoredImage)
 }
@@ -107,13 +128,17 @@ export async function listImageIds(): Promise<string[]> {
   }
 }
 
-/** The image ids referenced by a set of elements (via `params.imageId`). Used for export bundling
- *  and orphan GC. Generic over element type so any future image-referencing type is covered. */
+/** The blob ids referenced by a set of elements (via any `BLOB_PARAM_KEYS` param). Used for export
+ *  bundling and orphan GC. Generic over element type so any blob-referencing type is covered. */
 export function referencedImageIds(elements: DocElement[]): string[] {
   const ids = new Set<string>()
   for (const el of elements) {
-    const p = el.params as { imageId?: unknown } | null
-    if (p && typeof p.imageId === 'string' && p.imageId) ids.add(p.imageId)
+    const p = el.params as Record<string, unknown> | null
+    if (!p) continue
+    for (const key of BLOB_PARAM_KEYS) {
+      const v = p[key]
+      if (typeof v === 'string' && v) ids.add(v)
+    }
   }
   return [...ids]
 }

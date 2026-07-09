@@ -35,7 +35,11 @@ import { sanitizeEffects } from '../../effects/registry'
 // doc containing Logo programs as `unsupported` instead of silently dropping those elements.
 // v9: the `grbl` machine kind (library v3 likewise). No migration (additive kind; the sanitizer
 // dispatches on `kind`); the bump fences off older apps that coerce a grbl profile to prusa.
-export const CURRENT_DOC_SCHEMA = 9
+// v10: the `model` element type (STL → wireframe); the blob store / `.kgz` container now also
+// carry STL model blobs (`params.modelId`, `images/<id>.stl`). No migration (purely additive);
+// the bump makes older apps report a doc containing models as `unsupported` instead of dropping
+// them.
+export const CURRENT_DOC_SCHEMA = 10
 export const CURRENT_LIBRARY_SCHEMA = 3
 export const CURRENT_TOOLS_SCHEMA = 1
 
