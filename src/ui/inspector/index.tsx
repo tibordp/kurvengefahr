@@ -83,36 +83,36 @@ export function Inspector() {
         inspectorOpen ? 'translate-x-0' : 'translate-x-full',
       )}
     >
-      <div
-        role="tablist"
-        aria-label="Inspector sections"
-        className="flex shrink-0 items-center gap-1 border-b border-border px-2"
-      >
-        <Tab
-          active={tab === 'elements'}
-          onClick={() => setTab('elements')}
-          id="tab-elements"
-          controls="panel-elements"
-        >
-          Elements
-        </Tab>
-        <Tab
-          active={tab === 'machine'}
-          onClick={() => setTab('machine')}
-          id="tab-machine"
-          controls="panel-machine"
-          alert={machineInvalid}
-        >
-          Machine
-        </Tab>
-        <Tab
-          active={tab === 'preferences'}
-          onClick={() => setTab('preferences')}
-          id="tab-preferences"
-          controls="panel-preferences"
-        >
-          Preferences
-        </Tab>
+      {/* The tablist wraps only the tabs — the drawer's close button is a sibling, not a tab
+          (a tablist may not contain non-tab children; axe flags it when the button is visible). */}
+      <div className="flex shrink-0 items-center border-b border-border px-2">
+        <div role="tablist" aria-label="Inspector sections" className="flex items-center gap-1">
+          <Tab
+            active={tab === 'elements'}
+            onClick={() => setTab('elements')}
+            id="tab-elements"
+            controls="panel-elements"
+          >
+            Elements
+          </Tab>
+          <Tab
+            active={tab === 'machine'}
+            onClick={() => setTab('machine')}
+            id="tab-machine"
+            controls="panel-machine"
+            alert={machineInvalid}
+          >
+            Machine
+          </Tab>
+          <Tab
+            active={tab === 'preferences'}
+            onClick={() => setTab('preferences')}
+            id="tab-preferences"
+            controls="panel-preferences"
+          >
+            Preferences
+          </Tab>
+        </div>
         <span className="flex-1" />
         <IconButton
           className="md:hidden"
