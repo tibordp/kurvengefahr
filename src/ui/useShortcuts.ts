@@ -7,6 +7,7 @@ import { useTools } from '../store/tools'
 import { useUI } from '../store/ui'
 import { usePreview } from '../store/preview'
 import { exportGcode } from '../output/export'
+import { printDocument } from '../output/print'
 import { undo, redo } from '../store/history'
 import { deleteSelectedNodes, clearNodeSelection } from '../canvas/nodeSelection'
 import { useCommandPalette } from '../store/commandPalette'
@@ -45,6 +46,13 @@ export function useShortcuts(): void {
       if ((e.metaKey || e.ctrlKey) && (e.key === 's' || e.key === 'S')) {
         e.preventDefault()
         void exportGcode()
+        return
+      }
+
+      // ⌘/Ctrl+P — print the artwork at true scale (the browser's own print would render the UI).
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'p' || e.key === 'P')) {
+        e.preventDefault()
+        printDocument()
         return
       }
 

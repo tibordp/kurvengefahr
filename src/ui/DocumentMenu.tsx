@@ -2,9 +2,10 @@
 // New / Duplicate / Delete / Import / Export / Open-recent. Deliberately compact — a fresh tab just
 // shows "Untitled" on a blank canvas; nothing here is modal.
 import { useEffect, useState } from 'react'
-import { ChevronDown, FilePlus, Copy, Trash2, Upload, Download, FileText, FolderOpen, Save } from 'lucide-react'
+import { ChevronDown, FilePlus, Copy, Trash2, Upload, Download, FileText, FolderOpen, Printer, Save } from 'lucide-react'
 import { importContentFile } from '../canvas/importImage'
 import { useExportDialog } from '../store/exportDialog'
+import { printDocument } from '../output/print'
 import { toast } from '../store/toast'
 import { confirmDialog } from '../store/dialogs'
 import { useDocuments } from '../store/documents'
@@ -134,6 +135,9 @@ export function DocumentMenu() {
         </MenuItem>
         <MenuItem onClick={() => useExportDialog.getState().set(true)}>
           <Download size={15} /> Export…
+        </MenuItem>
+        <MenuItem onClick={() => printDocument()}>
+          <Printer size={15} /> Print…
         </MenuItem>
         {recent.length > 0 && (
           <>

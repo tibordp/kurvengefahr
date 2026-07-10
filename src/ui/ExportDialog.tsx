@@ -1,11 +1,14 @@
-// Export the design to a portable format. SVG is vector (per-pen layers); PNG is raster at a chosen
-// resolution. Opened from the document menu, mounted once in App.
+// Export the design to a portable format. SVG is vector (per-pen layers); PDF is vector on a
+// bed-sized page; PNG is raster at a chosen resolution. Print… proofs at true physical scale.
+// Opened from the document menu, mounted once in App.
 import { useState } from 'react'
 import { Modal, Button, Field, controlClass } from './primitives'
 import { useExportDialog } from '../store/exportDialog'
 import { exportSvg, exportPng } from '../output/exportVector'
+import { exportPdf } from '../output/exportPdf'
+import { printDocument } from '../output/print'
 
-type Format = 'svg' | 'png'
+type Format = 'svg' | 'pdf' | 'png'
 
 export function ExportDialog() {
   const open = useExportDialog((s) => s.open)
@@ -17,6 +20,7 @@ export function ExportDialog() {
 
   const onExport = () => {
     if (format === 'svg') exportSvg()
+    else if (format === 'pdf') exportPdf()
     else {
       const v = parseFloat(dpmm)
       void exportPng(Number.isFinite(v) && v > 0 ? v : undefined)
@@ -29,6 +33,7 @@ export function ExportDialog() {
       <Field label="Format">
         <select className={controlClass} value={format} onChange={(e) => setFormat(e.target.value as Format)}>
           <option value="svg">SVG — vector, per-pen layers</option>
+          <option value="pdf">PDF — vector, page at bed size</option>
           <option value="png">PNG — raster image</option>
         </select>
       </Field>
@@ -45,7 +50,18 @@ export function ExportDialog() {
       <p className="mt-2 text-xs text-muted">
         Exports the plottable geometry — exactly what the G-code is built from.
       </p>
-      <div className="mt-4 flex justify-end gap-2">
+      <div className="mt-4 flex items-center gap-2">
+        <Button
+          variant="ghost"
+          title="Print at true physical scale (a paper proof before plotting)"
+          onClick={() => {
+            printDocument()
+            close()
+          }}
+        >
+          Print…
+        </Button>
+        <div className="flex-1" />
         <Button variant="ghost" onClick={close}>
           Cancel
         </Button>

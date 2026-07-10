@@ -12,6 +12,7 @@ import { useExportDialog } from '../store/exportDialog'
 import { undo, redo } from '../store/history'
 import { exportGcode } from '../output/export'
 import { importContentFile } from '../canvas/importImage'
+import { printDocument } from '../output/print'
 import { copySelectionToClipboard, cutSelectionToClipboard, pasteFromClipboard } from '../store/clipboard'
 import { TOOLS } from './shortcuts'
 import { controlClass, cx } from './primitives'
@@ -81,6 +82,7 @@ function buildCommands(): Command[] {
   add('new-doc', 'New document', 'File', () => useDocuments.getState().newDocument())
   add('import', 'Import…', 'File', () => void importContentFile())
   add('export', 'Export…', 'File', () => useExportDialog.getState().set(true))
+  add('print', 'Print…', 'File', () => printDocument())
   // G-code is a file artifact only G-code machines have; an AxiDraw plots live over serial.
   if (doc.profile.kind !== 'axidraw') add('gcode', 'Generate G-code', 'File', () => void exportGcode())
 

@@ -1,5 +1,7 @@
 // Export the document as vector SVG or raster PNG — the same plottable geometry the G-code is built
 // from (so it round-trips and lets you eyeball exactly what will plot), in page mm on the bed.
+// The shared helpers (plottable / byPen / pressureVaries) also feed the PDF export and true-scale
+// printing (exportPdf.ts, print.ts).
 import { useDoc } from '../store/document'
 import { useDocuments } from '../store/documents'
 import { buildPlottableGeometry } from '../core/pipeline'
@@ -10,7 +12,7 @@ import { displayPenWidthMm } from '../canvas/penWidth'
 /** Nominal pen-tip width (mm) used for the rendered stroke width — matches the canvas. */
 const PEN_WIDTH_MM = 0.4
 
-interface Plottable {
+export interface Plottable {
   geom: Geometry
   bed: { width: number; height: number }
   penColor: (p: number) => string
@@ -18,18 +20,18 @@ interface Plottable {
   pressureOn: boolean
 }
 
-function plottable(): Plottable {
+export function plottable(): Plottable {
   const { elements, profile } = useDoc.getState()
   const geom = buildPlottableGeometry(elements, profile)
   const penColor = (pen: number) => profile.pens.find((p) => p.id === pen)?.color ?? '#1a1a1a'
   return { geom, bed: profile.bed, penColor, pressureOn: pressureEnabled(profile) }
 }
 
-const docName = () => safeFilename(useDocuments.getState().activeName, 'kurvengefahr')
+export const docName = () => safeFilename(useDocuments.getState().activeName, 'kurvengefahr')
 
 const PRESSURE_EPS = 1e-3
 /** Whether a stroke's pressure varies along its length (needs per-segment width to render honestly). */
-function pressureVaries(s: Stroke): boolean {
+export function pressureVaries(s: Stroke): boolean {
   let min = Infinity
   let max = -Infinity
   for (const p of s.points) {
@@ -41,7 +43,7 @@ function pressureVaries(s: Stroke): boolean {
 }
 
 /** Strokes grouped by pen, in the profile's palette order then any strays. */
-function byPen(geom: Geometry, order: number[]): Map<number, Geometry> {
+export function byPen(geom: Geometry, order: number[]): Map<number, Geometry> {
   const m = new Map<number, Geometry>()
   for (const s of geom) {
     if (s.points.length < 2) continue
@@ -53,8 +55,8 @@ function byPen(geom: Geometry, order: number[]): Map<number, Geometry> {
   return sorted
 }
 
-/** The plottable geometry rendered as an SVG Blob (one layer per pen, page mm on the bed). */
-export function buildSvgBlob(): Blob {
+/** The plottable geometry rendered as SVG markup (one layer per pen, page mm on the bed). */
+export function buildSvgMarkup(): string {
   const { geom, bed, penColor, pressureOn } = plottable()
   const { pens } = useDoc.getState().profile
   const groups = byPen(geom, pens.map((p) => p.id))
@@ -83,11 +85,16 @@ export function buildSvgBlob(): Blob {
     }
     body += `  </g>\n`
   }
-  const svg =
+  return (
     `<svg xmlns="http://www.w3.org/2000/svg" width="${bed.width}mm" height="${bed.height}mm" ` +
     `viewBox="0 0 ${bed.width} ${bed.height}" fill="none" stroke-width="${PEN_WIDTH_MM}" ` +
     `stroke-linecap="round" stroke-linejoin="round">\n${body}</svg>\n`
-  return new Blob([svg], { type: 'image/svg+xml' })
+  )
+}
+
+/** The plottable geometry rendered as an SVG Blob. */
+export function buildSvgBlob(): Blob {
+  return new Blob([buildSvgMarkup()], { type: 'image/svg+xml' })
 }
 
 export function exportSvg(): void {

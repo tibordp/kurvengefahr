@@ -45,7 +45,7 @@ machine), AxiDraw-style EBB plotters, and GRBL machines, with presets for popula
 - **Plot it** -- download G-code, send it to a PrusaLink printer with the companion Bridge
   extension, or plot live over Web Serial with pause/resume and a moving playhead -- AxiDraw-style
   machines and GRBL 1.1 plotters (Z-axis or servo pen, optional homing) alike. Artwork also
-  exports as SVG or PNG.
+  exports as SVG, PNG, or PDF, and prints at true physical scale for a paper proof.
 - **A real editor** -- autosaved multi-document tabs with cross-tab sync, undo/redo that survives a
   refresh, an elements tree, a command palette, clipboard across tabs, light/dark themes.
 
