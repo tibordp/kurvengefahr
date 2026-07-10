@@ -11,7 +11,7 @@ Everything runs client-side; nothing is uploaded.
 [Machine profiles](docs/machines.md) cover Prusa printers with a pen attachment (or any G-code
 machine), AxiDraw-style EBB plotters, and GRBL machines, with presets for popular models.
 
-![The showcase document: handwriting, generative patterns, effects, and hatch fills](docs/showcase.png)
+![The showcase document: handwriting, generative patterns, a wireframe teapot, effects, and hatch fills](docs/showcase.png)
 
 ## Features
 
