@@ -51,7 +51,7 @@ machine), AxiDraw-style EBB plotters, and GRBL machines, with presets for popula
 - **A real editor** -- autosaved multi-document tabs with cross-tab sync, undo/redo that survives a
   refresh, an elements tree, a command palette, clipboard across tabs, light/dark themes.
 
-More detail lives in [docs/](docs/index.md), including the [browser API](docs/browser-api.md) for
+More detail lives in [docs/](docs/), including the [browser API](docs/browser-api.md) for
 userscripts and headless tooling.
 
 ## How it works
