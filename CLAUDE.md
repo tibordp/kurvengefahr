@@ -125,7 +125,7 @@ fingerprints — **any new continuous canvas gesture must wrap in `beginGesture`
   generation tick without changing data; the fingerprint diff turns those into no-ops. Don't
   remove it. Multi-document = one localStorage key per doc + per-tab binding in sessionStorage,
   cross-tab last-write-wins.
-- **Deployment**: push to main → GitHub Actions → Pages at **kurven.ojdip.net** (Vite `base: '/'`,
+- **Deployment**: push to main → GitHub Actions → Pages at **kurvengefahr.org** (Vite `base: '/'`,
   so it does not render at `tibordp.github.io/...`; Pages source must be "GitHub Actions"). PWA:
   shell precached, the ~7 MB handwriting model runtime-cached.
 

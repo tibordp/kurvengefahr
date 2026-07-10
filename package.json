@@ -2,6 +2,7 @@
   "name": "kurvengefahr",
   "private": true,
   "version": "0.0.0",
+  "license": "GPL-2.0-only",
   "type": "module",
   "description": "Browser CAM for a pen-plotter (Prusa MK4 + spring-loaded pen holder)",
   "scripts": {

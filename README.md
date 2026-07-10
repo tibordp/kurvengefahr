@@ -7,7 +7,7 @@ shapes, imported SVG and DXF, traced photos, generative patterns, STL wireframes
 exact toolpath, and plot it: download G-code, or drive an AxiDraw or GRBL plotter live over USB.
 Everything runs client-side; nothing is uploaded.
 
-**[Live app](https://kurven.ojdip.net)** -- installable PWA, works offline.
+**[Live app](https://kurvengefahr.org)** -- installable PWA, works offline.
 [Machine profiles](docs/machines.md) cover Prusa printers with a pen attachment (or any G-code
 machine), AxiDraw-style EBB plotters, and GRBL machines, with presets for popular models.
 
@@ -79,4 +79,9 @@ Requires the Rust `wasm32-unknown-unknown` target and `wasm-pack`. After changin
 with `npm run build:wasm`. The Rust crate has tests (`cargo test`), including a NumPy reference that
 validates the handwriting model.
 
-Push to `main` and GitHub Actions deploys to GitHub Pages at kurven.ojdip.net.
+Push to `main` and GitHub Actions deploys to GitHub Pages at kurvengefahr.org.
+
+## Contributing and license
+
+Bug reports and feature requests are the most valued contribution; code is welcome too -- see
+[CONTRIBUTING.md](CONTRIBUTING.md). Licensed under the [GNU GPL v2.0](LICENSE) (GPL-2.0-only).

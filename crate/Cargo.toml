@@ -3,7 +3,7 @@ name = "kg_core"
 version = "0.1.0"
 edition = "2021"
 description = "Core compute for Kurvengefahr (pen-plotter CAM), compiled to WASM: vector shapes & multi-contour paths, polygon booleans, hatch fills, SVG import, raster stylization, the handwriting RNN, plus clipping and stroke-ordering."
-license = "MIT"
+license = "GPL-2.0-only"
 
 [lib]
 crate-type = ["cdylib", "rlib"]
