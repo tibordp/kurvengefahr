@@ -28,6 +28,8 @@ mod spiral;
 mod tone;
 mod tsp;
 
+pub(crate) use contours::trace_mask;
+
 use serde::Deserialize;
 
 use crate::geom::{Point, Stroke};

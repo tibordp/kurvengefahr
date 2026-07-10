@@ -30,7 +30,9 @@ import type { DocSnapshot } from './persistence/schema'
 import type { Geometry, Point } from '../core/types'
 import { cornerNode, defaultHatch, pathOutlineStrokes, weldContours } from '../elements/shapes'
 import type { Contour, PathNode, PathParams, RectParams, EllipseParams, PolygonParams, Hatch } from '../elements/shapes'
-import { rectGeometry, ellipseGeometry, polygonGeometry, booleanGeometry, simplifyPolyline, type Rings } from '../core/wasm/shapes'
+import { rectGeometry, ellipseGeometry, polygonGeometry, booleanGeometry, floodFillGeometry, simplifyPolyline, type Rings } from '../core/wasm/shapes'
+import { buildPageGeometry } from '../core/pipeline'
+import { PEN_WIDTH_MM } from '../canvas/penWidth'
 
 /** Tessellated local-mm outline of a closed shape (rect/ellipse/polygon), or null for other types. */
 function shapeOutline(el: DocElement): Geometry | null {
@@ -323,6 +325,10 @@ interface DocStore {
   /** Combine selected closed shapes (rect/ellipse/closed path) with a boolean op (0 union,
    *  1 intersect, 2 difference, 3 xor), replacing them with one multi-contour path. One undo step. */
   booleanSelected: (op: number) => void
+  /** Flood fill from a page-space point: every visible stroke bounds the region (the page edge
+   *  walls it in), and the enclosed area becomes a new hatch-filled `path` element (selected).
+   *  Returns false — creating nothing — when the point lands on ink or off the page. */
+  floodFillAt: (at: { x: number; y: number }) => boolean
   /** Combine the selected elements into one multi-contour `path` (a compound path), baking each
    *  element's transform into its nodes so Bézier curves are preserved. Like booleans but open paths
    *  too; touching ends are welded by the optimizer at plot time. */
@@ -385,7 +391,7 @@ interface DocStore {
   notifyGeometry: (id?: string) => void
 }
 
-export const useDoc = create<DocStore>((set) => ({
+export const useDoc = create<DocStore>((set, get) => ({
   elements: [],
   profile: PRUSA_MK4,
   selectedIds: [],
@@ -658,6 +664,32 @@ export const useDoc = create<DocStore>((set) => ({
         selectedIds: [newEl.id],
       }
     }),
+
+  floodFillAt: (at) => {
+    const state = get()
+    const bed = state.profile.bed
+    if (at.x < 0 || at.y < 0 || at.x > bed.width || at.y > bed.height) return false
+    // Everything visible on the canvas bounds the fill — including hatch lines and earlier fills —
+    // at the width the ink renders on screen, so the fill stops exactly where the eye says it should.
+    const boundaries = buildPageGeometry(state.elements)
+    // ~2000 cells across the page, floored so the grid can't get so fine it crawls, capped so a
+    // deliberate hairline gap under 0.2 mm still reads as a gap rather than fusing shut.
+    const res = Math.min(0.2, Math.max(0.05, Math.max(bed.width, bed.height) / 2000))
+    const rings = floodFillGeometry(boundaries, at, PEN_WIDTH_MM, bed.width, bed.height, res)
+    const contours = rings.map((s) => pointsToContour(s.points)).filter((c) => c.closed && c.nodes.length >= 3)
+    if (!contours.length) return false // seed landed on ink
+    const newEl: DocElement = {
+      id: crypto.randomUUID(),
+      type: 'path',
+      transform: { ...IDENTITY_TRANSFORM },
+      // A fill, not an outline: hatch on, stroke off — the region's boundary ink is already drawn
+      // by the elements that bound it, so an outline would just double those lines at plot time.
+      params: { contours, hatch: { ...defaultHatch(), pattern: 'lines', stroke: false } } as PathParams,
+      pen: 0,
+    }
+    set((s) => ({ elements: [...s.elements, newEl], selectedIds: [newEl.id] }))
+    return true
+  },
 
   joinSelected: () =>
     set((state) => {

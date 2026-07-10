@@ -14,18 +14,30 @@ type V = (i32, i32);
 /// = more ink); `simplify_tol` (mm) drives both smoothing and decimation; `min_area` despeckles
 /// loops under that many px².
 pub fn contours(grid: &Grid, p: &Params) -> Vec<Stroke> {
-    let w = grid.w;
-    let h = grid.h;
-    let target_w_mm = grid.tw;
-    let target_h_mm = grid.th;
-    let simplify_tol = p.simplify_tol;
-    let min_area = p.min_area;
     // Binarize: ink where inkness clears the cutoff (threshold 0..255, higher = more ink). The grid
     // already folded in luma/composite/invert.
     let cutoff = 1.0 - p.threshold as f32 / 255.0;
-    let ink: Vec<bool> = (0..w * h).map(|i| grid.ink_at(i) >= cutoff).collect();
+    let ink: Vec<bool> = (0..grid.w * grid.h).map(|i| grid.ink_at(i) >= cutoff).collect();
+    let sx = grid.tw / grid.w as f32;
+    let sy = grid.th / grid.h as f32;
+    trace_mask(&ink, grid.w, grid.h, sx, sy, p.simplify_tol, p.min_area)
+}
+
+/// Trace a binary mask's region boundaries as closed vector loops: directed-edge walk (outer rings +
+/// holes, interior on the right) → elastic smoothing → RDP decimation. Lattice corner `(x, y)` maps
+/// to mm `(x·sx, y·sy)`; `simplify_tol` (mm) drives smoothing + decimation; `min_area` despeckles
+/// loops under that many cells². Shared by outline tracing (ink mask) and flood fill (region mask).
+pub(crate) fn trace_mask(
+    mask: &[bool],
+    w: usize,
+    h: usize,
+    sx: f32,
+    sy: f32,
+    simplify_tol: f32,
+    min_area: f32,
+) -> Vec<Stroke> {
     let is_ink = |x: i32, y: i32| -> bool {
-        x >= 0 && y >= 0 && (x as usize) < w && (y as usize) < h && ink[y as usize * w + x as usize]
+        x >= 0 && y >= 0 && (x as usize) < w && (y as usize) < h && mask[y as usize * w + x as usize]
     };
 
     // Build the directed boundary: each ink cell contributes the clockwise edges of its unit square
@@ -66,10 +78,6 @@ pub fn contours(grid: &Grid, p: &Params) -> Vec<Stroke> {
         starts.entry(e.0).or_default().push(i);
     }
     let mut used = vec![false; edges.len()];
-
-    // Map a lattice corner (0..w, 0..h) into the element's physical box (mm).
-    let sx = target_w_mm / w as f32;
-    let sy = target_h_mm / h as f32;
 
     // Walk closed loops, consuming edges. Each walk follows outgoing edges until it returns to its
     // start vertex; pinch points (a vertex shared by two loops) just resolve to *some* valid set of

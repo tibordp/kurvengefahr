@@ -13,11 +13,12 @@ import {
   hatch,
   concentric,
   boolean,
+  flood_fill,
   import_svg,
   import_dxf,
   GeometryBuffers,
 } from './index'
-import { unflatten } from './serde'
+import { flatten, unflatten } from './serde'
 import type { Geometry, Point } from '../types'
 
 function decode(res: GeometryBuffers): Geometry {
@@ -121,6 +122,23 @@ export interface Rings {
  *  Returns one stroke per result ring (each a closed contour; outer rings and holes both appear). */
 export function booleanGeometry(op: number, subj: Rings, clip: Rings): Geometry {
   return decode(boolean(op, subj.xy, subj.starts, clip.xy, clip.starts))
+}
+
+/** Flood fill from a seed point (page mm): `boundaries` are the strokes that bound the fill (each
+ *  `strokeWidth` mm thick — the display pen width, so the fill stops at the ink the user sees); the
+ *  page rect `[0,0]..[pageW,pageH]` walls it in. Returns the region's boundary as closed rings
+ *  (outer + holes, for even-odd contours); empty if the seed lands on a stroke or off the page.
+ *  `res` is the fill grid's cell size (mm). */
+export function floodFillGeometry(
+  boundaries: Geometry,
+  seed: Point,
+  strokeWidth: number,
+  pageW: number,
+  pageH: number,
+  res: number,
+): Geometry {
+  const flat = flatten(boundaries)
+  return decode(flood_fill(flat.xy, flat.offsets, seed.x, seed.y, strokeWidth, pageW, pageH, res))
 }
 
 export interface SvgImportRing {

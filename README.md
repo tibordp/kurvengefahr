@@ -21,6 +21,8 @@ machine), AxiDraw-style EBB plotters, and GRBL machines, with presets for popula
   typesetting: honest font metrics, kerning, word wrap, and justification.
 - **Shapes and paths** -- rectangles, ellipses, polygons, stars, Béziers, and freehand, with full
   node editing on the canvas; booleans, join, and weld turn several shapes into one editable path.
+- **Flood fill** -- click any enclosed region and every visible stroke acts as its boundary: the
+  area becomes a regular hatch-filled path (holes included) you can edit like any other shape.
 - **Groups, clips, and effects** -- nest elements into containers, clip anything to a shape, and
   stack non-destructive distortions (roughen, smooth, wave, sketch, twist, bulge, taper) on any of
   it. The source stays editable throughout.

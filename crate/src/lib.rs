@@ -8,6 +8,7 @@
 //!   - `tessellate_rect/ellipse/path`, `hatch`, `concentric`, `simplify_polyline`, `split_cubic`
 //!     — vector shapes, multi-contour paths, even-odd hatch fills, and path-edit helpers.
 //!   - `boolean` — polygon booleans (union/intersect/difference/xor) for combining shapes.
+//!   - `flood_fill` — paint-bucket: strokes as boundaries → the enclosed region's closed rings.
 //!   - `import_svg` — parse an SVG (usvg) → occluded multi-contour geometry.
 //!   - `vectorize_image` — raster → strokes (outline/hatch/TSP/flow/spiral/…).
 //!   - `wireframe` / `stl_mesh_preview` — STL → 3D-model wireframe strokes, + the orbit-preview mesh.
@@ -21,6 +22,7 @@ mod clip;
 mod compose;
 mod dxf;
 mod effects;
+mod fill;
 mod generative;
 mod geom;
 mod hatch;
@@ -339,6 +341,25 @@ pub fn boolean(
     clip_starts: &[u32],
 ) -> GeometryBuffers {
     GeometryBuffers::from_strokes(&boolean::combine(op, subj_xy, subj_starts, clip_xy, clip_starts))
+}
+
+/// Flood fill from a seed point (page mm): the given strokes (flat xy + CSR `offsets`, point
+/// units), each `stroke_width` mm thick, act as boundaries; the page rect `[0,0]..[page_w,page_h]`
+/// bounds the fill. Returns the enclosed region's boundary as closed rings (outer + holes) that a
+/// path element adopts as its even-odd contours; empty if the seed lands on a stroke or off the
+/// page. `res` is the fill grid's cell size (mm).
+#[wasm_bindgen]
+pub fn flood_fill(
+    xy: &[f32],
+    offsets: &[u32],
+    seed_x: f32,
+    seed_y: f32,
+    stroke_width: f32,
+    page_w: f32,
+    page_h: f32,
+    res: f32,
+) -> GeometryBuffers {
+    GeometryBuffers::from_strokes(&fill::flood(xy, offsets, seed_x, seed_y, stroke_width, page_w, page_h, res))
 }
 
 /// Import an SVG (raw bytes) into native multi-contour geometry. `params` is JSON

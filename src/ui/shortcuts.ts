@@ -10,6 +10,7 @@ import {
   Circle,
   PenTool,
   Pencil,
+  PaintBucket,
   Sparkles,
   Turtle,
   Crosshair,
@@ -46,6 +47,7 @@ export const TOOL_GROUPS: ToolDef[][] = [
   [
     { tool: 'pen', icon: PenTool, label: 'Pen (Bézier)', key: 'P' },
     { tool: 'freehand', icon: Pencil, label: 'Freehand', key: 'F' },
+    { tool: 'fill', icon: PaintBucket, label: 'Flood fill', key: 'B' },
   ],
   [
     { tool: 'handwriting', icon: Signature, label: 'Handwriting', key: 'T' },

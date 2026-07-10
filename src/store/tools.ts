@@ -15,6 +15,7 @@ export type Tool =
   | 'polygon'
   | 'pen'
   | 'freehand'
+  | 'fill'
   | 'generative'
   | 'logo'
   | 'fiducial'
