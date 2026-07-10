@@ -6,9 +6,21 @@
     <meta name="apple-mobile-web-app-title" content="Kurvengefahr" />
     <meta
       name="description"
-      content="Browser CAM for pen plotters — turn handwriting (and vectors) into G-code."
+      content="Browser CAM for pen plotters — handwriting, text, shapes, generative art, SVG/DXF/STL import; preview the exact toolpath and plot as G-code or live over USB."
     />
     <title>Kurvengefahr — pen-plotter CAM</title>
+    <!-- Social unfurls (og:image must be an absolute URL; the file lives in public/). -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://kurvengefahr.org/" />
+    <meta property="og:title" content="Kurvengefahr — pen-plotter CAM" />
+    <meta
+      property="og:description"
+      content="Browser CAM for pen plotters — handwriting, text, shapes, generative art, SVG/DXF/STL import; preview the exact toolpath and plot as G-code or live over USB."
+    />
+    <meta property="og:image" content="https://kurvengefahr.org/og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
     <!-- Apply the saved theme before first paint so dark mode never flashes light.
          Mirrors store/theme.ts (key + resolution); that store is the source of truth at runtime. -->
     <script>

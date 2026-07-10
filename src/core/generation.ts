@@ -162,38 +162,52 @@ function scheduleAutoRegen(id: string): void {
 // Four worker-backed types, each with its own WASM instance: handwriting (carries the ~7 MB
 // model), raster vectorization, 3D-model wireframing, and Logo interpretation. All speak the same
 // message protocol, so one `handleMessage` serves them; only the worker handle differs by type.
-let hwWorker: Worker | null = null
-let vecWorker: Worker | null = null
-let modelWorker: Worker | null = null
-let logoWorker: Worker | null = null
+type WorkerKind = 'handwriting' | 'raster' | 'model' | 'logo'
+const workers = new Map<WorkerKind, Worker>()
+
+const workerKindFor = (type: string): WorkerKind =>
+  type === 'raster' || type === 'model' || type === 'logo' ? type : 'handwriting'
+
+// Each `new Worker(new URL(...))` stays a static literal so the bundler can see the entry.
+function spawnWorker(kind: WorkerKind): Worker {
+  switch (kind) {
+    case 'raster':
+      return new Worker(new URL('./wasm/vectorizeWorker.ts', import.meta.url), { type: 'module' })
+    case 'model':
+      return new Worker(new URL('./wasm/modelWorker.ts', import.meta.url), { type: 'module' })
+    case 'logo':
+      return new Worker(new URL('./wasm/logoWorker.ts', import.meta.url), { type: 'module' })
+    case 'handwriting':
+      return new Worker(new URL('./wasm/genWorker.ts', import.meta.url), { type: 'module' })
+  }
+}
 
 function workerFor(type: string): Worker {
-  if (type === 'raster') {
-    if (!vecWorker) {
-      vecWorker = new Worker(new URL('./wasm/vectorizeWorker.ts', import.meta.url), { type: 'module' })
-      vecWorker.onmessage = (e: MessageEvent<WorkerOut>) => handleMessage(e.data)
-    }
-    return vecWorker
+  const kind = workerKindFor(type)
+  let worker = workers.get(kind)
+  if (!worker) {
+    worker = spawnWorker(kind)
+    worker.onmessage = (e: MessageEvent<WorkerOut>) => handleMessage(e.data)
+    // A hard crash (top-level throw, failed module/WASM fetch) never sends a structured 'error'
+    // message — without these handlers its elements would spin forever. Fail the worker's jobs
+    // (the usual error banner + Retry) and discard the handle so the next generate starts fresh.
+    worker.onerror = (e) => failWorker(kind, e.message || 'the generation worker crashed')
+    worker.onmessageerror = () => failWorker(kind, 'the generation worker sent an unreadable message')
+    workers.set(kind, worker)
   }
-  if (type === 'model') {
-    if (!modelWorker) {
-      modelWorker = new Worker(new URL('./wasm/modelWorker.ts', import.meta.url), { type: 'module' })
-      modelWorker.onmessage = (e: MessageEvent<WorkerOut>) => handleMessage(e.data)
-    }
-    return modelWorker
+  return worker
+}
+
+/** Tear down a crashed worker and surface the failure on every job routed to it. */
+function failWorker(kind: WorkerKind, message: string): void {
+  workers.get(kind)?.terminate()
+  workers.delete(kind)
+  for (const [id, job] of inflight) {
+    if (workerKindFor(job.type) !== kind) continue
+    inflight.delete(id)
+    failed.set(id, job.hash)
+    setStatus(id, { phase: 'error', message })
   }
-  if (type === 'logo') {
-    if (!logoWorker) {
-      logoWorker = new Worker(new URL('./wasm/logoWorker.ts', import.meta.url), { type: 'module' })
-      logoWorker.onmessage = (e: MessageEvent<WorkerOut>) => handleMessage(e.data)
-    }
-    return logoWorker
-  }
-  if (!hwWorker) {
-    hwWorker = new Worker(new URL('./wasm/genWorker.ts', import.meta.url), { type: 'module' })
-    hwWorker.onmessage = (e: MessageEvent<WorkerOut>) => handleMessage(e.data)
-  }
-  return hwWorker
 }
 
 function handleMessage(msg: WorkerOut) {

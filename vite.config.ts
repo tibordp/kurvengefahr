@@ -17,7 +17,8 @@ export default defineConfig({
       manifest: {
         name: 'Kurvengefahr',
         short_name: 'Kurvengefahr',
-        description: 'Browser CAM for pen plotters — turn handwriting (and vectors) into G-code.',
+        description:
+          'Browser CAM for pen plotters — handwriting, text, shapes, generative art, SVG/DXF/STL import; preview the exact toolpath and plot as G-code or live over USB.',
         theme_color: '#ffffff',
         background_color: '#f4f4f5',
         display: 'standalone',

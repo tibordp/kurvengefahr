@@ -18,3 +18,11 @@ node docs/screenshot.mjs docs/showcase.kgz   # rewrites docs/showcase.png
 
 Any `.kgz` works -- the script imports it, waits for generation to settle, fits the view, and
 saves a PNG (see the header of `screenshot.mjs` for options).
+
+The social-preview card (`public/og.png`, referenced from `index.html`) is a 1200x630 crop of the
+showcase screenshot -- refresh it after regenerating:
+
+```bash
+sips --resampleWidth 1200 docs/showcase.png --out public/og.png
+sips --cropToHeightWidth 630 1200 public/og.png
+```
