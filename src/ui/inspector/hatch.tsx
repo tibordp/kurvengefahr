@@ -1,6 +1,6 @@
 // Fill (hatch) controls shared by all closed shapes.
 import { SectionTitle, Field, controlClass } from '../primitives'
-import { Num } from './controls'
+import { Num, SliderNum } from './controls'
 import type { Hatch, HatchPattern } from '../../elements/shapes'
 
 /** The three valid stroke/fill combinations (never both off → no marks). */
@@ -50,8 +50,9 @@ export function HatchControls({ hatch, onChange }: { hatch: Hatch; onChange: (h:
               <option value="maze">Maze</option>
             </select>
           </Field>
-          <Num label="Density (mm)" value={hatch.spacing} step={0.5}
-            onChange={(v) => set({ spacing: Math.max(0.3, v) })} />
+          {/* min matches sanitizeHatch's floor; the max is soft — type a larger spacing freely. */}
+          <SliderNum label="Density (mm)" min={0.3} max={10} step={0.1} value={hatch.spacing}
+            onChange={(v) => set({ spacing: v })} />
           {(hatch.pattern === 'lines' || hatch.pattern === 'cross') && (
             <Num label="Angle (°)" value={hatch.angle} step={5} onChange={(v) => set({ angle: v })} />
           )}

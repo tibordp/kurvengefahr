@@ -565,7 +565,9 @@ export function LogoInspector({ id, params }: { id: string; params: LogoParams }
         Logo program
       </SectionTitle>
       <GenerationNote id={id} reserveIdle={false} />
-      <div className="flex gap-2">
+      {/* mb matches Field's, and collapses under a following SectionTitle's mt-5 (block flow), so
+          the buttons sit right whether params/seed knobs follow or Global optimize comes next. */}
+      <div className="mb-1.5 flex gap-2">
         <Button
           className="min-w-0 flex-1"
           title="Open the code editor in the panel under the canvas (or double-click the element)"
