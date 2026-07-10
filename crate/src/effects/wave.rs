@@ -45,10 +45,19 @@ pub fn apply(strokes: &[Stroke], s: &EffectSpec) -> Vec<Stroke> {
                 .iter()
                 .map(|p| {
                     let d = disp(p.x, p.y);
-                    Point { x: p.x + px * d, y: p.y + py * d, pressure: p.pressure }
+                    Point {
+                        x: p.x + px * d,
+                        y: p.y + py * d,
+                        pressure: p.pressure,
+                    }
                 })
                 .collect();
-            Stroke { points: out, pen: stroke.pen, reversible: stroke.reversible, group: stroke.group }
+            Stroke {
+                points: out,
+                pen: stroke.pen,
+                reversible: stroke.reversible,
+                group: stroke.group,
+            }
         })
         .collect()
 }

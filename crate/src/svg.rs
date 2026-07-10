@@ -33,7 +33,11 @@ struct Params {
 }
 impl Default for Params {
     fn default() -> Self {
-        Self { occlude: true, target_size: 200.0, px_to_mm: 0.0 }
+        Self {
+            occlude: true,
+            target_size: 200.0,
+            px_to_mm: 0.0,
+        }
     }
 }
 
@@ -91,7 +95,10 @@ fn flatten_quad(p0: P, p1: P, p2: P, depth: u8, out: &mut Ring) {
 fn flatten(path: &usvg::Path, scale: f32) -> Vec<(Ring, bool)> {
     let t = path.abs_transform();
     let map = |p: usvg::tiny_skia_path::Point| -> P {
-        [(p.x * t.sx + p.y * t.kx + t.tx) * scale, (p.x * t.ky + p.y * t.sy + t.ty) * scale]
+        [
+            (p.x * t.sx + p.y * t.kx + t.tx) * scale,
+            (p.x * t.ky + p.y * t.sy + t.ty) * scale,
+        ]
     };
     let mut out: Vec<(Ring, bool)> = Vec::new();
     let mut cur: Ring = Vec::new();
@@ -164,7 +171,11 @@ fn collect(group: &usvg::Group, scale: f32, shapes: &mut Vec<Shape>) {
                     (rgb, darkness(rgb, f.opacity().get()))
                 });
                 let stroke = p.stroke().map(|s| paint_rgb(s.paint()));
-                shapes.push(Shape { subpaths, fill, stroke });
+                shapes.push(Shape {
+                    subpaths,
+                    fill,
+                    stroke,
+                });
             }
             _ => {} // Image / Text (no text feature) are ignored
         }
@@ -172,7 +183,10 @@ fn collect(group: &usvg::Group, scale: f32, shapes: &mut Vec<Shape>) {
 }
 
 fn boolean(subj: &Contours, clip: &Contours, rule: OverlayRule) -> Contours {
-    subj.overlay(clip, rule, FillRule::NonZero).into_iter().flatten().collect()
+    subj.overlay(clip, rule, FillRule::NonZero)
+        .into_iter()
+        .flatten()
+        .collect()
 }
 
 /// CSR output: rings grouped per output shape, each shape carrying its source colour/darkness/kind.
@@ -301,16 +315,26 @@ mod tests {
         let r = import(SVG, "{\"occlude\":false,\"target_size\":100}");
         assert_eq!(r.inner.colors.len(), 2, "two filled rects → two shapes");
         assert!(r.inner.kind.iter().all(|&k| k == 0), "both are fills");
-        assert!(r.inner.darkness.iter().all(|&d| d > 0.99), "black ⇒ darkness ~1");
+        assert!(
+            r.inner.darkness.iter().all(|&d| d > 0.99),
+            "black ⇒ darkness ~1"
+        );
     }
 
     #[test]
     fn occlusion_clips_the_lower_shape() {
         let full = import(SVG, "{\"occlude\":false,\"target_size\":100}");
         let occ = import(SVG, "{\"occlude\":true,\"target_size\":100}");
-        assert_eq!(occ.inner.colors.len(), 2, "both shapes survive (lower just shrinks)");
+        assert_eq!(
+            occ.inner.colors.len(),
+            2,
+            "both shapes survive (lower just shrinks)"
+        );
         // The lower square loses its covered corner → an L with more vertices than the plain rects.
-        assert!(occ.inner.xy.len() > full.inner.xy.len(), "occluded lower shape has more vertices");
+        assert!(
+            occ.inner.xy.len() > full.inner.xy.len(),
+            "occluded lower shape has more vertices"
+        );
     }
 
     #[test]

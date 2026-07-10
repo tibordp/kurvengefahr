@@ -51,7 +51,11 @@ impl Mesh {
         } else {
             let d = [hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]];
             (
-                [(lo[0] + hi[0]) / 2.0, (lo[1] + hi[1]) / 2.0, (lo[2] + hi[2]) / 2.0],
+                [
+                    (lo[0] + hi[0]) / 2.0,
+                    (lo[1] + hi[1]) / 2.0,
+                    (lo[2] + hi[2]) / 2.0,
+                ],
                 ((d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt() / 2.0).max(1e-6),
             )
         };
@@ -59,7 +63,11 @@ impl Mesh {
         let normals = tris
             .iter()
             .map(|t| {
-                let (a, b, c) = (verts[t[0] as usize], verts[t[1] as usize], verts[t[2] as usize]);
+                let (a, b, c) = (
+                    verts[t[0] as usize],
+                    verts[t[1] as usize],
+                    verts[t[2] as usize],
+                );
                 let u = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
                 let v = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
                 let n = [
@@ -76,7 +84,13 @@ impl Mesh {
             })
             .collect();
 
-        Mesh { verts, tris, normals, center, radius }
+        Mesh {
+            verts,
+            tris,
+            normals,
+            center,
+            radius,
+        }
     }
 }
 
@@ -94,7 +108,12 @@ pub fn edges(mesh: &Mesh) -> Vec<Edge> {
     for (f, t) in mesh.tris.iter().enumerate() {
         for (a, b) in [(t[0], t[1]), (t[1], t[2]), (t[2], t[0])] {
             let key = (a.min(b), a.max(b));
-            let e = map.entry(key).or_insert(Edge { a: key.0, b: key.1, faces: [0; 2], nfaces: 0 });
+            let e = map.entry(key).or_insert(Edge {
+                a: key.0,
+                b: key.1,
+                faces: [0; 2],
+                nfaces: 0,
+            });
             if e.nfaces < 2 {
                 e.faces[e.nfaces as usize] = f as u32;
             }
@@ -120,7 +139,14 @@ pub(super) mod tests {
             ]
         };
         let mut soup = Vec::new();
-        for quad in [[0, 1, 3, 2], [4, 6, 7, 5], [0, 4, 5, 1], [2, 3, 7, 6], [0, 2, 6, 4], [1, 5, 7, 3]] {
+        for quad in [
+            [0, 1, 3, 2],
+            [4, 6, 7, 5],
+            [0, 4, 5, 1],
+            [2, 3, 7, 6],
+            [0, 2, 6, 4],
+            [1, 5, 7, 3],
+        ] {
             for t in [[0, 1, 2], [0, 2, 3]] {
                 for i in t {
                     soup.extend_from_slice(&v(quad[i]));
@@ -148,8 +174,10 @@ pub(super) mod tests {
         let creases = edges(&mesh)
             .iter()
             .filter(|e| {
-                let (n1, n2) =
-                    (mesh.normals[e.faces[0] as usize], mesh.normals[e.faces[1] as usize]);
+                let (n1, n2) = (
+                    mesh.normals[e.faces[0] as usize],
+                    mesh.normals[e.faces[1] as usize],
+                );
                 n1[0] * n2[0] + n1[1] * n2[1] + n1[2] * n2[2] < cos30
             })
             .count();

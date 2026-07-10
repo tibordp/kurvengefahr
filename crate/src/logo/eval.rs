@@ -125,13 +125,20 @@ pub fn run(
 
 fn turtle_err(e: TurtleErr, span: Span) -> LogoError {
     match e {
-        TurtleErr::TooManyPoints(n) => LogoError::limit(&format!("too many points (over {})", n), span),
-        TurtleErr::TooManyStrokes(n) => LogoError::limit(&format!("too many strokes (over {})", n), span),
+        TurtleErr::TooManyPoints(n) => {
+            LogoError::limit(&format!("too many points (over {})", n), span)
+        }
+        TurtleErr::TooManyStrokes(n) => {
+            LogoError::limit(&format!("too many strokes (over {})", n), span)
+        }
     }
 }
 
 fn unconsumed(v: &Value, span: Span) -> Sig {
-    Sig::Err(LogoError::runtime(&format!("you don't say what to do with {}", display(v)), span))
+    Sig::Err(LogoError::runtime(
+        &format!("you don't say what to do with {}", display(v)),
+        span,
+    ))
 }
 
 impl Interp {
@@ -168,7 +175,11 @@ impl Interp {
     fn eval(&mut self, e: &Expr, tail: bool) -> R<Option<Value>> {
         self.steps += 1;
         if self.steps > self.limits.max_steps {
-            return Err(LogoError::limit(&format!("too many steps (over {})", self.limits.max_steps), e.span).into());
+            return Err(LogoError::limit(
+                &format!("too many steps (over {})", self.limits.max_steps),
+                e.span,
+            )
+            .into());
         }
         match &e.kind {
             ExprKind::Num(n) => Ok(Some(Value::Num(*n))),
@@ -193,7 +204,11 @@ impl Interp {
                     }
                     self.builtin(*b, name, vals, e.span, tail)
                 } else {
-                    let idx = *self.program.proc_index.get(name).expect("parser resolved user procs");
+                    let idx = *self
+                        .program
+                        .proc_index
+                        .get(name)
+                        .expect("parser resolved user procs");
                     let mut vals = Vec::with_capacity(args.len());
                     for a in args {
                         vals.push(self.eval_val(a)?);
@@ -325,20 +340,28 @@ impl Interp {
     fn block_body(&mut self, v: &Value, span: Span) -> R<Rc<Vec<Expr>>> {
         let l = match v {
             Value::List(l) => l,
-            _ => return Err(LogoError::runtime(&format!("expected a list, got {}", display(v)), span).into()),
+            _ => {
+                return Err(LogoError::runtime(
+                    &format!("expected a list, got {}", display(v)),
+                    span,
+                )
+                .into())
+            }
         };
         if let Some(packed) = l.lit {
             if let Some(hit) = self.code_cache.get(&packed) {
                 return Ok(hit.clone());
             }
             let range = parse::unpack_range(packed);
-            let body = parse::parse_range(&self.program.tokens, range, &self.program.arities).map_err(Sig::Err)?;
+            let body = parse::parse_range(&self.program.tokens, range, &self.program.arities)
+                .map_err(Sig::Err)?;
             let rc = Rc::new(body);
             self.code_cache.insert(packed, rc.clone());
             Ok(rc)
         } else {
             let toks = synth_tokens(&l.items, span);
-            let body = parse::parse_range(&toks, (0, toks.len()), &self.program.arities).map_err(Sig::Err)?;
+            let body = parse::parse_range(&toks, (0, toks.len()), &self.program.arities)
+                .map_err(Sig::Err)?;
             Ok(Rc::new(body))
         }
     }
@@ -346,18 +369,33 @@ impl Interp {
     // ── helpers ─────────────────────────────────────────────────────────────────────────────────
 
     fn num(&self, v: &Value, who: &str, span: Span) -> R<f64> {
-        v.as_num()
-            .ok_or_else(|| LogoError::runtime(&format!("{} doesn't like {} as input", who, display(v)), span).into())
+        v.as_num().ok_or_else(|| {
+            LogoError::runtime(
+                &format!("{} doesn't like {} as input", who, display(v)),
+                span,
+            )
+            .into()
+        })
     }
 
     fn boolean(&self, v: &Value, who: &str, span: Span) -> R<bool> {
-        v.as_bool()
-            .ok_or_else(|| LogoError::runtime(&format!("{} needs true or false, got {}", who, display(v)), span).into())
+        v.as_bool().ok_or_else(|| {
+            LogoError::runtime(
+                &format!("{} needs true or false, got {}", who, display(v)),
+                span,
+            )
+            .into()
+        })
     }
 
     fn word(&self, v: &Value, who: &str, span: Span) -> R<Rc<str>> {
-        v.as_word()
-            .ok_or_else(|| LogoError::runtime(&format!("{} doesn't like {} as input", who, display(v)), span).into())
+        v.as_word().ok_or_else(|| {
+            LogoError::runtime(
+                &format!("{} doesn't like {} as input", who, display(v)),
+                span,
+            )
+            .into()
+        })
     }
 
     /// A two-number position list `[x y]`.
@@ -369,7 +407,11 @@ impl Interp {
                 }
             }
         }
-        Err(LogoError::runtime(&format!("{} needs a position list [x y], got {}", who, display(v)), span).into())
+        Err(LogoError::runtime(
+            &format!("{} needs a position list [x y], got {}", who, display(v)),
+            span,
+        )
+        .into())
     }
 
     fn tt(&mut self, r: Result<(), TurtleErr>, span: Span) -> R<()> {
@@ -378,7 +420,14 @@ impl Interp {
 
     // ── builtin dispatch ────────────────────────────────────────────────────────────────────────
 
-    fn builtin(&mut self, b: B, name: &str, mut args: Vec<Value>, span: Span, tail: bool) -> R<Option<Value>> {
+    fn builtin(
+        &mut self,
+        b: B,
+        name: &str,
+        mut args: Vec<Value>,
+        span: Span,
+        tail: bool,
+    ) -> R<Option<Value>> {
         use Value::*;
         let val = |v: Value| Ok(Some(v));
         let none: R<Option<Value>> = Ok(None);
@@ -463,7 +512,10 @@ impl Interp {
                 let (x, y) = self.pos_list(&args[0], name, span)?;
                 val(Num(self.turtle.towards(x, y)))
             }
-            B::Pos => val(Value::list(vec![Num(self.turtle.xcor()), Num(self.turtle.ycor())])),
+            B::Pos => val(Value::list(vec![
+                Num(self.turtle.xcor()),
+                Num(self.turtle.ycor()),
+            ])),
             // ── pen ─────────────────────────────────────────────────────────────────────────────
             B::SetPressure => {
                 let p = self.num(&args[0], name, span)?;
@@ -474,7 +526,11 @@ impl Interp {
             B::SetPen => {
                 let n = self.num(&args[0], name, span)?;
                 if !(0.0..=255.0).contains(&n) {
-                    return Err(LogoError::runtime(&format!("there is no pen {}", display(&args[0])), span).into());
+                    return Err(LogoError::runtime(
+                        &format!("there is no pen {}", display(&args[0])),
+                        span,
+                    )
+                    .into());
                 }
                 let r = self.turtle.set_pen(n as u16);
                 self.tt(r, span)?;
@@ -503,7 +559,9 @@ impl Interp {
             }
             B::RepCount => match self.repcounts.last() {
                 Some(&c) => val(Num(c as f64)),
-                None => Err(LogoError::runtime("repcount can only be used inside repeat", span).into()),
+                None => {
+                    Err(LogoError::runtime("repcount can only be used inside repeat", span).into())
+                }
             },
             B::If => {
                 let c = self.boolean(&args[0], name, span)?;
@@ -529,7 +587,13 @@ impl Interp {
                 loop {
                     let cv = match self.run_value_block(&cond, false)? {
                         Some(v) => v,
-                        None => return Err(LogoError::runtime("the while condition didn't output a value", span).into()),
+                        None => {
+                            return Err(LogoError::runtime(
+                                "the while condition didn't output a value",
+                                span,
+                            )
+                            .into())
+                        }
                     };
                     if !self.boolean(&cv, name, span)? {
                         break;
@@ -542,7 +606,10 @@ impl Interp {
                 let (var, nums) = self.for_control(&args[0], span)?;
                 let body = self.block_body(&args[1], span)?;
                 let (start, limit) = (nums[0], nums[1]);
-                let step = nums.get(2).copied().unwrap_or(if start <= limit { 1.0 } else { -1.0 });
+                let step = nums
+                    .get(2)
+                    .copied()
+                    .unwrap_or(if start <= limit { 1.0 } else { -1.0 });
                 if step == 0.0 {
                     return Err(LogoError::runtime("for needs a nonzero step", span).into());
                 }
@@ -590,7 +657,13 @@ impl Interp {
                     self.templates.pop();
                     match r? {
                         Some(v) => out.push(v),
-                        None => return Err(LogoError::runtime("the map template didn't output a value", span).into()),
+                        None => {
+                            return Err(LogoError::runtime(
+                                "the map template didn't output a value",
+                                span,
+                            )
+                            .into())
+                        }
                     }
                 }
                 if was_word {
@@ -618,7 +691,13 @@ impl Interp {
                                 out.push(item);
                             }
                         }
-                        None => return Err(LogoError::runtime("the filter template didn't output a value", span).into()),
+                        None => {
+                            return Err(LogoError::runtime(
+                                "the filter template didn't output a value",
+                                span,
+                            )
+                            .into())
+                        }
                     }
                 }
                 if was_word {
@@ -633,19 +712,31 @@ impl Interp {
             }
             B::Output => {
                 if self.frames.is_empty() {
-                    return Err(LogoError::runtime("output can only be used inside a procedure", span).into());
+                    return Err(LogoError::runtime(
+                        "output can only be used inside a procedure",
+                        span,
+                    )
+                    .into());
                 }
                 Err(Sig::Output(args.pop().unwrap()))
             }
             B::Stop => {
                 if self.frames.is_empty() {
-                    return Err(LogoError::runtime("stop can only be used inside a procedure", span).into());
+                    return Err(LogoError::runtime(
+                        "stop can only be used inside a procedure",
+                        span,
+                    )
+                    .into());
                 }
                 Err(Sig::Stop)
             }
             B::Question => match self.templates.last() {
                 Some(v) => val(v.clone()),
-                None => Err(LogoError::runtime("? can only be used inside map / filter / foreach templates", span).into()),
+                None => Err(LogoError::runtime(
+                    "? can only be used inside map / filter / foreach templates",
+                    span,
+                )
+                .into()),
             },
             // ── variables ───────────────────────────────────────────────────────────────────────
             B::Make => {
@@ -656,17 +747,25 @@ impl Interp {
             }
             B::Local => {
                 if self.frames.is_empty() {
-                    return Err(LogoError::runtime("local can only be used inside a procedure", span).into());
+                    return Err(LogoError::runtime(
+                        "local can only be used inside a procedure",
+                        span,
+                    )
+                    .into());
                 }
                 let names: Vec<Rc<str>> = match &args[0] {
                     List(l) => {
                         let mut ns = Vec::with_capacity(l.items.len());
                         for it in &l.items {
-                            ns.push(Rc::from(self.word(it, name, span)?.to_ascii_lowercase().as_str()));
+                            ns.push(Rc::from(
+                                self.word(it, name, span)?.to_ascii_lowercase().as_str(),
+                            ));
                         }
                         ns
                     }
-                    v => vec![Rc::from(self.word(v, name, span)?.to_ascii_lowercase().as_str())],
+                    v => vec![Rc::from(
+                        self.word(v, name, span)?.to_ascii_lowercase().as_str(),
+                    )],
                 };
                 let frame = self.frames.last_mut().unwrap();
                 for n in names {
@@ -676,9 +775,17 @@ impl Interp {
             }
             B::LocalMake => {
                 if self.frames.is_empty() {
-                    return Err(LogoError::runtime("localmake can only be used inside a procedure", span).into());
+                    return Err(LogoError::runtime(
+                        "localmake can only be used inside a procedure",
+                        span,
+                    )
+                    .into());
                 }
-                let n: Rc<str> = Rc::from(self.word(&args[0], name, span)?.to_ascii_lowercase().as_str());
+                let n: Rc<str> = Rc::from(
+                    self.word(&args[0], name, span)?
+                        .to_ascii_lowercase()
+                        .as_str(),
+                );
                 let v = args.pop().unwrap();
                 self.frames.last_mut().unwrap().vars.insert(n, Some(v));
                 none
@@ -701,7 +808,10 @@ impl Interp {
                         }
                         v => {
                             return Err(LogoError::runtime(
-                                &format!("param's range must be [min max] or [min max step], got {}", display(v)),
+                                &format!(
+                                    "param's range must be [min max] or [min max step], got {}",
+                                    display(v)
+                                ),
                                 span,
                             )
                             .into())
@@ -787,7 +897,11 @@ impl Interp {
                 let b = self.num(&args[1], name, span)?;
                 let r = a.powf(b);
                 if !r.is_finite() {
-                    return Err(LogoError::runtime(&format!("power {} {} isn't a number", a, b), span).into());
+                    return Err(LogoError::runtime(
+                        &format!("power {} {} isn't a number", a, b),
+                        span,
+                    )
+                    .into());
                 }
                 val(Num(r))
             }
@@ -846,21 +960,41 @@ impl Interp {
                         }
                         val(Value::list(items))
                     }
-                    v => Err(LogoError::runtime(&format!("{} needs a list, got {}", name, display(v)), span).into()),
+                    v => Err(LogoError::runtime(
+                        &format!("{} needs a list, got {}", name, display(v)),
+                        span,
+                    )
+                    .into()),
                 }
             }
             B::First | B::Last => {
                 let first = matches!(b, B::First);
                 match &args[0] {
-                    List(l) => match if first { l.items.first() } else { l.items.last() } {
+                    List(l) => match if first {
+                        l.items.first()
+                    } else {
+                        l.items.last()
+                    } {
                         Some(v) => val(v.clone()),
-                        None => Err(LogoError::runtime(&format!("{} doesn't like an empty list", name), span).into()),
+                        None => Err(LogoError::runtime(
+                            &format!("{} doesn't like an empty list", name),
+                            span,
+                        )
+                        .into()),
                     },
                     v => {
                         let w = self.word(v, name, span)?;
-                        match if first { w.chars().next() } else { w.chars().last() } {
+                        match if first {
+                            w.chars().next()
+                        } else {
+                            w.chars().last()
+                        } {
                             Some(c) => val(Word(Rc::from(c.to_string().as_str()))),
-                            None => Err(LogoError::runtime(&format!("{} doesn't like an empty word", name), span).into()),
+                            None => Err(LogoError::runtime(
+                                &format!("{} doesn't like an empty word", name),
+                                span,
+                            )
+                            .into()),
                         }
                     }
                 }
@@ -870,15 +1004,27 @@ impl Interp {
                 match &args[0] {
                     List(l) => {
                         if l.items.is_empty() {
-                            return Err(LogoError::runtime(&format!("{} doesn't like an empty list", name), span).into());
+                            return Err(LogoError::runtime(
+                                &format!("{} doesn't like an empty list", name),
+                                span,
+                            )
+                            .into());
                         }
-                        let items = if butfirst { l.items[1..].to_vec() } else { l.items[..l.items.len() - 1].to_vec() };
+                        let items = if butfirst {
+                            l.items[1..].to_vec()
+                        } else {
+                            l.items[..l.items.len() - 1].to_vec()
+                        };
                         val(Value::list(items))
                     }
                     v => {
                         let w = self.word(v, name, span)?;
                         if w.is_empty() {
-                            return Err(LogoError::runtime(&format!("{} doesn't like an empty word", name), span).into());
+                            return Err(LogoError::runtime(
+                                &format!("{} doesn't like an empty word", name),
+                                span,
+                            )
+                            .into());
                         }
                         let s: String = if butfirst {
                             w.chars().skip(1).collect()
@@ -894,19 +1040,31 @@ impl Interp {
                 let n = self.num(&args[0], name, span)?;
                 let i = n as i64;
                 if i < 1 {
-                    return Err(LogoError::runtime(&format!("item {} is out of range", display(&args[0])), span).into());
+                    return Err(LogoError::runtime(
+                        &format!("item {} is out of range", display(&args[0])),
+                        span,
+                    )
+                    .into());
                 }
                 let i = (i - 1) as usize;
                 match &args[1] {
                     List(l) => match l.items.get(i) {
                         Some(v) => val(v.clone()),
-                        None => Err(LogoError::runtime(&format!("item {} is out of range", i + 1), span).into()),
+                        None => Err(LogoError::runtime(
+                            &format!("item {} is out of range", i + 1),
+                            span,
+                        )
+                        .into()),
                     },
                     v => {
                         let w = self.word(v, name, span)?;
                         match w.chars().nth(i) {
                             Some(c) => val(Word(Rc::from(c.to_string().as_str()))),
-                            None => Err(LogoError::runtime(&format!("item {} is out of range", i + 1), span).into()),
+                            None => Err(LogoError::runtime(
+                                &format!("item {} is out of range", i + 1),
+                                span,
+                            )
+                            .into()),
                         }
                     }
                 }
@@ -924,7 +1082,9 @@ impl Interp {
                 _ => val(Bool(false)),
             },
             B::ListP => val(Bool(matches!(&args[0], List(_)))),
-            B::NumberP => val(Bool(!matches!(&args[0], List(_) | Bool(_)) && args[0].as_num().is_some())),
+            B::NumberP => val(Bool(
+                !matches!(&args[0], List(_) | Bool(_)) && args[0].as_num().is_some(),
+            )),
             B::WordP => val(Bool(matches!(&args[0], Word(_) | Num(_)))),
             B::MemberP => match &args[1] {
                 List(l) => val(Bool(l.items.iter().any(|it| it.logo_eq(&args[0])))),
@@ -950,7 +1110,11 @@ impl Interp {
             B::Random => {
                 let n = self.num(&args[0], name, span)?.floor();
                 if n < 1.0 || n > u32::MAX as f64 {
-                    return Err(LogoError::runtime(&format!("random doesn't like {} as input", display(&args[0])), span).into());
+                    return Err(LogoError::runtime(
+                        &format!("random doesn't like {} as input", display(&args[0])),
+                        span,
+                    )
+                    .into());
                 }
                 val(Num((self.rng.next() % n as u32) as f64))
             }
@@ -963,10 +1127,14 @@ impl Interp {
                     let w = self.word(v, name, span)?;
                     let n = w.chars().count();
                     if n == 0 {
-                        return Err(LogoError::runtime("pick doesn't like an empty input", span).into());
+                        return Err(
+                            LogoError::runtime("pick doesn't like an empty input", span).into()
+                        );
                     }
                     let i = self.rng.next() as usize % n;
-                    val(Word(Rc::from(w.chars().nth(i).unwrap().to_string().as_str())))
+                    val(Word(Rc::from(
+                        w.chars().nth(i).unwrap().to_string().as_str(),
+                    )))
                 }
             },
             B::ReRandom => {
@@ -979,16 +1147,32 @@ impl Interp {
         }
     }
 
-    fn math1(&mut self, name: &str, args: &[Value], span: Span, f: impl Fn(f64) -> f64) -> R<Option<Value>> {
+    fn math1(
+        &mut self,
+        name: &str,
+        args: &[Value],
+        span: Span,
+        f: impl Fn(f64) -> f64,
+    ) -> R<Option<Value>> {
         let a = self.num(&args[0], name, span)?;
         let r = f(a);
         if !r.is_finite() {
-            return Err(LogoError::runtime(&format!("{} {} isn't a number", name, display(&args[0])), span).into());
+            return Err(LogoError::runtime(
+                &format!("{} {} isn't a number", name, display(&args[0])),
+                span,
+            )
+            .into());
         }
         Ok(Some(Value::Num(r)))
     }
 
-    fn fold_num(&mut self, name: &str, args: &[Value], span: Span, f: impl Fn(f64, f64) -> f64) -> R<Option<Value>> {
+    fn fold_num(
+        &mut self,
+        name: &str,
+        args: &[Value],
+        span: Span,
+        f: impl Fn(f64, f64) -> f64,
+    ) -> R<Option<Value>> {
         let mut acc = self.num(&args[0], name, span)?;
         for a in &args[1..] {
             acc = f(acc, self.num(a, name, span)?);
@@ -1012,21 +1196,44 @@ impl Interp {
     fn for_control(&mut self, v: &Value, span: Span) -> R<(Rc<str>, Vec<f64>)> {
         let l = match v {
             Value::List(l) => l,
-            _ => return Err(LogoError::runtime(&format!("for needs a control list, got {}", display(v)), span).into()),
+            _ => {
+                return Err(LogoError::runtime(
+                    &format!("for needs a control list, got {}", display(v)),
+                    span,
+                )
+                .into())
+            }
         };
         if let Some(packed) = l.lit {
             let (start, end) = parse::unpack_range(packed);
             if start >= end {
-                return Err(LogoError::runtime("for needs a control list like [i 1 10]", span).into());
+                return Err(
+                    LogoError::runtime("for needs a control list like [i 1 10]", span).into(),
+                );
             }
             let var: Rc<str> = match &self.program.tokens[start].tok {
                 Tok::Ident(n) => Rc::from(n.as_str()),
                 Tok::Word(n) => Rc::from(n.to_ascii_lowercase().as_str()),
-                _ => return Err(LogoError::runtime("the first item of for's control list must be the variable name", self.program.tokens[start].span).into()),
+                _ => {
+                    return Err(LogoError::runtime(
+                        "the first item of for's control list must be the variable name",
+                        self.program.tokens[start].span,
+                    )
+                    .into())
+                }
             };
-            let exprs = parse::parse_range(&self.program.tokens, (start + 1, end), &self.program.arities).map_err(Sig::Err)?;
+            let exprs = parse::parse_range(
+                &self.program.tokens,
+                (start + 1, end),
+                &self.program.arities,
+            )
+            .map_err(Sig::Err)?;
             if exprs.len() < 2 || exprs.len() > 3 {
-                return Err(LogoError::runtime("for's control list needs [name start end] or [name start end step]", span).into());
+                return Err(LogoError::runtime(
+                    "for's control list needs [name start end] or [name start end step]",
+                    span,
+                )
+                .into());
             }
             let mut nums = Vec::with_capacity(exprs.len());
             for e in &exprs {
@@ -1036,7 +1243,11 @@ impl Interp {
             Ok((var, nums))
         } else {
             if l.items.len() < 3 || l.items.len() > 4 {
-                return Err(LogoError::runtime("for's control list needs [name start end] or [name start end step]", span).into());
+                return Err(LogoError::runtime(
+                    "for's control list needs [name start end] or [name start end step]",
+                    span,
+                )
+                .into());
             }
             let var = self.word(&l.items[0], "for", span)?.to_ascii_lowercase();
             let mut nums = Vec::new();
@@ -1053,7 +1264,9 @@ impl Interp {
             Value::List(l) => Ok(l.items.clone()),
             v => {
                 let w = self.word(v, who, span)?;
-                Ok(w.chars().map(|c| Value::Word(Rc::from(c.to_string().as_str()))).collect())
+                Ok(w.chars()
+                    .map(|c| Value::Word(Rc::from(c.to_string().as_str())))
+                    .collect())
             }
         }
     }

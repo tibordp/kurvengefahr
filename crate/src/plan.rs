@@ -104,7 +104,9 @@ fn segment_duration(l: f64, v_in: f64, v_out: f64, vmax: f64, a: f64) -> f64 {
     if d_acc + d_dec <= l {
         (vmax - v_in) / a + (l - d_acc - d_dec) / vmax + (vmax - v_out) / a
     } else {
-        let vp = ((2.0 * a * l + v_in * v_in + v_out * v_out) / 2.0).sqrt().max(v_in.max(v_out));
+        let vp = ((2.0 * a * l + v_in * v_in + v_out * v_out) / 2.0)
+            .sqrt()
+            .max(v_in.max(v_out));
         (vp - v_in) / a + (vp - v_out) / a
     }
 }
@@ -214,8 +216,11 @@ impl<'a> Planner<'a> {
     /// Plan one polyline (starting at the current position) at path speed limit `vmax`, starting
     /// and ending at rest, and emit its motion phases.
     fn plan_polyline(&mut self, pts: &[[f64; 2]], vmax: f64, counts_dist: bool) {
-        let (a, deviation, max_block) =
-            (self.p.acceleration, self.p.cornering, self.p.max_block_seconds);
+        let (a, deviation, max_block) = (
+            self.p.acceleration,
+            self.p.cornering,
+            self.p.max_block_seconds,
+        );
 
         // Cleaned vertex/segment lists (near-zero segments collapsed). Long segments are
         // subdivided so the forced-rest pre-pass below always has a vertex within the pause
@@ -297,13 +302,21 @@ impl<'a> Planner<'a> {
             let d_dec = ((vmax * vmax - v_out * v_out) / (2.0 * a)).max(0.0);
             // (length, v at phase start, v at phase end)
             let phases: [(f64, f64, f64); 3] = if d_acc + d_dec <= l {
-                [(d_acc, v_in, vmax), (l - d_acc - d_dec, vmax, vmax), (d_dec, vmax, v_out)]
+                [
+                    (d_acc, v_in, vmax),
+                    (l - d_acc - d_dec, vmax, vmax),
+                    (d_dec, vmax, v_out),
+                ]
             } else {
                 let vp = ((2.0 * a * l + v_in * v_in + v_out * v_out) / 2.0)
                     .sqrt()
                     .max(v_in.max(v_out));
                 let up = ((vp * vp - v_in * v_in) / (2.0 * a)).max(0.0);
-                [(up, v_in, vp), ((l - up).max(0.0), vp, v_out), (0.0, v_out, v_out)]
+                [
+                    (up, v_in, vp),
+                    ((l - up).max(0.0), vp, v_out),
+                    (0.0, v_out, v_out),
+                ]
             };
             let live: Vec<&(f64, f64, f64)> = phases.iter().filter(|p| p.0 > EPS_LEN).collect();
             let mut along = 0.0;
@@ -313,7 +326,10 @@ impl<'a> Planner<'a> {
                 let target = if k == live.len() - 1 {
                     verts[i + 1]
                 } else {
-                    [verts[i][0] + dirs[i][0] * along, verts[i][1] + dirs[i][1] * along]
+                    [
+                        verts[i][0] + dirs[i][0] * along,
+                        verts[i][1] + dirs[i][1] * along,
+                    ]
                 };
                 if pvi + pvo <= 1e-9 {
                     continue;
@@ -322,14 +338,23 @@ impl<'a> Planner<'a> {
             }
             // A fully-degenerate segment (all phases sub-EPS) still has to land on the vertex.
             if live.is_empty() {
-                self.push_motion(verts[i + 1], v_in.max(v_out).max(1e-3), v_out, EPS_TIME, counts_dist);
+                self.push_motion(
+                    verts[i + 1],
+                    v_in.max(v_out).max(1e-3),
+                    v_out,
+                    EPS_TIME,
+                    counts_dist,
+                );
             }
         }
     }
 }
 
 fn motor_pos(steps_per_mm: f64, mm: [f64; 2]) -> [f64; 2] {
-    [(mm[0] + mm[1]) * steps_per_mm, (mm[0] - mm[1]) * steps_per_mm]
+    [
+        (mm[0] + mm[1]) * steps_per_mm,
+        (mm[0] - mm[1]) * steps_per_mm,
+    ]
 }
 
 /// Plan the whole job. Input strokes are already optimized (pens contiguous, palette order). The
@@ -359,7 +384,11 @@ pub fn plan(strokes: &[Stroke], p: &PlanParams) -> Vec<Segment> {
         let from = pl.pos;
         pl.plan_polyline(&[from, head], p.travel_speed, true);
         pl.push_event(KIND_PEN_DOWN, p.drop_ms, pl.pen);
-        let pts: Vec<[f64; 2]> = s.points.iter().map(|pt| [pt.x as f64, pt.y as f64]).collect();
+        let pts: Vec<[f64; 2]> = s
+            .points
+            .iter()
+            .map(|pt| [pt.x as f64, pt.y as f64])
+            .collect();
         pl.plan_polyline(&pts, p.draw_speed, true);
         pl.push_event(KIND_PEN_UP, p.lift_ms, pl.pen);
     }
@@ -528,7 +557,11 @@ mod tests {
         Stroke {
             points: pts
                 .iter()
-                .map(|p| Point { x: p[0] as f32, y: p[1] as f32, pressure: 1.0 })
+                .map(|p| Point {
+                    x: p[0] as f32,
+                    y: p[1] as f32,
+                    pressure: 1.0,
+                })
                 .collect(),
             pen,
             reversible: true,
@@ -558,10 +591,18 @@ mod tests {
         let segs = plan(&[stroke(0, &[[0.0, 10.0], [100.0, 10.0]])], &p);
         // Draw phases sit between the pen_down and the following pen_up on the tape.
         let di = segs.iter().position(|s| s.kind == KIND_PEN_DOWN).unwrap();
-        let ui = segs.iter().skip(di).position(|s| s.kind == KIND_PEN_UP).unwrap() + di;
+        let ui = segs
+            .iter()
+            .skip(di)
+            .position(|s| s.kind == KIND_PEN_UP)
+            .unwrap()
+            + di;
         let draw: Vec<&Segment> = segs[di + 1..ui].iter().collect();
         let draw_ms: f64 = draw.iter().map(|s| s.duration_ms).sum();
-        assert!((draw_ms - 4025.0).abs() < 5.0, "draw time {draw_ms} ms, expected ≈4025");
+        assert!(
+            (draw_ms - 4025.0).abs() < 5.0,
+            "draw time {draw_ms} ms, expected ≈4025"
+        );
         assert_eq!(draw.len(), 3, "accel + cruise + decel");
         // Cruise phase: constant velocity → delta 0, rate = 25 mm/s · 80 steps/mm · 2³¹/25000
         // on motor axis 1 (pure +X: both axes see the same speed).
@@ -596,13 +637,16 @@ mod tests {
         let mut pts = Vec::new();
         for i in 0..500 {
             let t = i as f64 * 0.7391;
-            pts.push([10.0 + t.sin() * 30.0 + i as f64 * 0.13, 20.0 + (t * 1.618).cos() * 25.0]);
+            pts.push([
+                10.0 + t.sin() * 30.0 + i as f64 * 0.13,
+                20.0 + (t * 1.618).cos() * 25.0,
+            ]);
         }
         let p = params();
         let segs = plan(&[stroke(0, &pts)], &p);
         assert_quantization(&segs, &p, p.start); // tape ends back home
-        // Velocity continuity: each motion segment's entry rate matches its geometry (spot check
-        // that no rate exceeds vmax on an axis: |v_axis| ≤ vmax·√2·spmm).
+                                                 // Velocity continuity: each motion segment's entry rate matches its geometry (spot check
+                                                 // that no rate exceeds vmax on an axis: |v_axis| ≤ vmax·√2·spmm).
         let max_rate = (p.travel_speed * 2.0f64.sqrt() * p.steps_per_mm * RATE_PER_STEP_HZ) as i32;
         for s in &segs {
             assert!(s.rate[0] <= max_rate + 1 && s.rate[1] <= max_rate + 1);
@@ -615,7 +659,10 @@ mod tests {
         let mut p = params();
         p.fiducial = Some([50.0, 50.0]);
         let segs = plan(
-            &[stroke(0, &[[10.0, 10.0], [20.0, 10.0]]), stroke(1, &[[30.0, 10.0], [40.0, 10.0]])],
+            &[
+                stroke(0, &[[10.0, 10.0], [20.0, 10.0]]),
+                stroke(1, &[[30.0, 10.0], [40.0, 10.0]]),
+            ],
             &p,
         );
         // Collapse runs of motion segments to read the tape's event structure.
@@ -655,7 +702,10 @@ mod tests {
             + d([20.0, 10.0], [30.0, 10.0])
             + 10.0;
         let total = segs.last().unwrap().dist;
-        assert!((total - expected).abs() < 1e-3, "dist total {total} vs {expected}");
+        assert!(
+            (total - expected).abs() < 1e-3,
+            "dist total {total} vs {expected}"
+        );
         assert_quantization(&segs, &p, p.start);
     }
 
@@ -666,10 +716,15 @@ mod tests {
         // within ~2× the budget (clamping slows blocks slightly, never lengthens them unboundedly).
         let p = params();
         let segs = plan(&[stroke(0, &[[0.0, 0.0], [2000.0, 0.0]])], &p);
-        let draws: Vec<&Segment> =
-            segs.iter().filter(|s| s.kind == KIND_MOTION && s.dist > 1.0).collect();
+        let draws: Vec<&Segment> = segs
+            .iter()
+            .filter(|s| s.kind == KIND_MOTION && s.dist > 1.0)
+            .collect();
         let starts = draws.iter().filter(|s| s.block_start).count();
-        assert!(starts > 10, "expected many forced rest points, got {starts}");
+        assert!(
+            starts > 10,
+            "expected many forced rest points, got {starts}"
+        );
         let mut block_ms = 0.0f64;
         let mut worst = 0.0f64;
         for s in &draws {

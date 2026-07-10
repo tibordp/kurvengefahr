@@ -6,12 +6,18 @@ use crate::geom::Point;
 pub type P = (f32, f32);
 
 pub fn pt(x: f32, y: f32) -> Point {
-    Point { x, y, pressure: 1.0 }
+    Point {
+        x,
+        y,
+        pressure: 1.0,
+    }
 }
 
 /// Flat `[x0,y0,…]` → one ring's vertices, dropping a trailing point that duplicates the first.
 pub fn parse_poly(xy: &[f32]) -> Vec<P> {
-    let mut v: Vec<P> = (0..xy.len() / 2).map(|i| (xy[2 * i], xy[2 * i + 1])).collect();
+    let mut v: Vec<P> = (0..xy.len() / 2)
+        .map(|i| (xy[2 * i], xy[2 * i + 1]))
+        .collect();
     if v.len() >= 2 {
         let f = v[0];
         let l = *v.last().unwrap();
@@ -80,7 +86,7 @@ pub fn crossings(rings: &[Vec<P>], a: P, b: P) -> Vec<f32> {
                 let (wx, wy) = (c.0 - a.0, c.1 - a.1);
                 let t = (wx * sy - wy * sx) / denom;
                 let u = (wx * ry - wy * rx) / denom;
-                if t > 1e-6 && t < 1.0 - 1e-6 && u >= -1e-6 && u <= 1.0 + 1e-6 {
+                if t > 1e-6 && t < 1.0 - 1e-6 && (-1e-6..=1.0 + 1e-6).contains(&u) {
                     ts.push(t);
                 }
             }

@@ -14,14 +14,25 @@ fn circumcenter(a: &delaunator::Point, b: &delaunator::Point, c: &delaunator::Po
     if d.abs() < 1e-12 {
         return ((a.x + b.x + c.x) / 3.0, (a.y + b.y + c.y) / 3.0);
     }
-    let (a2, b2, c2) = (a.x * a.x + a.y * a.y, b.x * b.x + b.y * b.y, c.x * c.x + c.y * c.y);
+    let (a2, b2, c2) = (
+        a.x * a.x + a.y * a.y,
+        b.x * b.x + b.y * b.y,
+        c.x * c.x + c.y * c.y,
+    );
     let ux = (a2 * (b.y - c.y) + b2 * (c.y - a.y) + c2 * (a.y - b.y)) / d;
     let uy = (a2 * (c.x - b.x) + b2 * (a.x - c.x) + c2 * (b.x - a.x)) / d;
     (ux, uy)
 }
 
 /// Liang–Barsky clip of a segment to `[0,w]×[0,h]`; None if it misses the box.
-fn clip_box(x0: f64, y0: f64, x1: f64, y1: f64, w: f64, h: f64) -> Option<((f64, f64), (f64, f64))> {
+fn clip_box(
+    x0: f64,
+    y0: f64,
+    x1: f64,
+    y1: f64,
+    w: f64,
+    h: f64,
+) -> Option<((f64, f64), (f64, f64))> {
     let (dx, dy) = (x1 - x0, y1 - y0);
     let p = [-dx, dx, -dy, dy];
     let q = [x0, w - x0, y0, h - y0];
@@ -55,7 +66,13 @@ pub fn voronoi(grid: &Grid, p: &Params) -> Vec<Stroke> {
     if pts.len() < 3 {
         return vec![];
     }
-    let mut dpts: Vec<delaunator::Point> = pts.iter().map(|&(x, y)| delaunator::Point { x: x as f64, y: y as f64 }).collect();
+    let mut dpts: Vec<delaunator::Point> = pts
+        .iter()
+        .map(|&(x, y)| delaunator::Point {
+            x: x as f64,
+            y: y as f64,
+        })
+        .collect();
 
     // One inkness-weighted Lloyd pass: move each site to the ink-weighted centroid of its cell, so
     // dense areas stay dense but the cells even out from noisy slivers into a clean mosaic. (One pass
@@ -72,8 +89,15 @@ pub fn voronoi(grid: &Grid, p: &Params) -> Vec<Stroke> {
         return vec![];
     }
     let nt = tri.triangles.len() / 3;
-    let cc: Vec<(f64, f64)> =
-        (0..nt).map(|t| circumcenter(&dpts[tri.triangles[3 * t]], &dpts[tri.triangles[3 * t + 1]], &dpts[tri.triangles[3 * t + 2]])).collect();
+    let cc: Vec<(f64, f64)> = (0..nt)
+        .map(|t| {
+            circumcenter(
+                &dpts[tri.triangles[3 * t]],
+                &dpts[tri.triangles[3 * t + 1]],
+                &dpts[tri.triangles[3 * t + 2]],
+            )
+        })
+        .collect();
     let (w, h) = (grid.tw as f64, grid.th as f64);
     // The full Voronoi diagram, clipped to the image box (the hull cells clip to long radial walls —
     // a deliberate part of the look). Edges share circumcenter vertices, so the optimizer chains them.
@@ -99,7 +123,11 @@ pub fn voronoi(grid: &Grid, p: &Params) -> Vec<Stroke> {
 /// Approximated by binning a grid of sample points to their nearest site (found via the Delaunay
 /// neighbourhood through the current triangulation's nearest vertex by walking the hull is overkill,
 /// so we bucket sites into a coarse grid and test the local 3×3).
-fn lloyd_step(grid: &Grid, sites: &[delaunator::Point], _tri: &delaunator::Triangulation) -> Vec<delaunator::Point> {
+fn lloyd_step(
+    grid: &Grid,
+    sites: &[delaunator::Point],
+    _tri: &delaunator::Triangulation,
+) -> Vec<delaunator::Point> {
     let (w, h) = (grid.tw, grid.th);
     let n = sites.len();
     // Coarse bucket grid over the sites for nearest-site queries.
@@ -115,7 +143,7 @@ fn lloyd_step(grid: &Grid, sites: &[delaunator::Point], _tri: &delaunator::Trian
         buckets[bidx(s.x as f32, s.y as f32)].push(i);
     }
     let mut sum = vec![(0.0f32, 0.0f32, 0.0f32); n]; // weighted (x, y, weight)
-    // Sample the image on a fine grid; assign each to its nearest site, weight by inkness.
+                                                     // Sample the image on a fine grid; assign each to its nearest site, weight by inkness.
     let step = (cell * 0.5).max(0.75);
     let mut sy = step * 0.5;
     while sy < h {
@@ -150,7 +178,10 @@ fn lloyd_step(grid: &Grid, sites: &[delaunator::Point], _tri: &delaunator::Trian
         .enumerate()
         .map(|(i, s)| {
             if sum[i].2 > 1e-6 {
-                delaunator::Point { x: (sum[i].0 / sum[i].2) as f64, y: (sum[i].1 / sum[i].2) as f64 }
+                delaunator::Point {
+                    x: (sum[i].0 / sum[i].2) as f64,
+                    y: (sum[i].1 / sum[i].2) as f64,
+                }
             } else {
                 delaunator::Point { x: s.x, y: s.y }
             }

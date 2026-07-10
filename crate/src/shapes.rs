@@ -8,11 +8,20 @@ use crate::geom::{Point, Stroke};
 const DEFAULT_TOL: f32 = crate::tess::PATH_FLATTEN_TOL;
 
 fn pt(x: f32, y: f32) -> Point {
-    Point { x, y, pressure: 1.0 }
+    Point {
+        x,
+        y,
+        pressure: 1.0,
+    }
 }
 
 fn stroke(points: Vec<Point>) -> Stroke {
-    Stroke { points, pen: 0, reversible: true, group: 0 }
+    Stroke {
+        points,
+        pen: 0,
+        reversible: true,
+        group: 0,
+    }
 }
 
 /// Axis-aligned rectangle from (0,0) to (w,h) as a closed polyline. `r` rounds the corners with
@@ -20,10 +29,18 @@ fn stroke(points: Vec<Point>) -> Stroke {
 pub fn rect(w: f32, h: f32, r: f32) -> Vec<Stroke> {
     let r = r.max(0.0).min(w.min(h) * 0.5);
     if r <= 1e-3 {
-        return vec![stroke(vec![pt(0.0, 0.0), pt(w, 0.0), pt(w, h), pt(0.0, h), pt(0.0, 0.0)])]
+        return vec![stroke(vec![
+            pt(0.0, 0.0),
+            pt(w, 0.0),
+            pt(w, h),
+            pt(0.0, h),
+            pt(0.0, 0.0),
+        ])];
     }
     use std::f32::consts::{FRAC_PI_2, PI};
-    let nseg = (FRAC_PI_2 / (2.0 * DEFAULT_TOL / r).sqrt()).ceil().clamp(2.0, 64.0) as usize;
+    let nseg = (FRAC_PI_2 / (2.0 * DEFAULT_TOL / r).sqrt())
+        .ceil()
+        .clamp(2.0, 64.0) as usize;
     let mut pts: Vec<Point> = Vec::new();
     let mut arc = |cx: f32, cy: f32, a0: f32, a1: f32| {
         for i in 0..=nseg {
@@ -173,11 +190,16 @@ pub fn split_cubic(a: P, a_hout: P, b_hin: P, b: P, t: f32) -> [f32; 10] {
     let r1 = lerp(q1, q2);
     let s = lerp(r0, r1);
     [
-        s.0, s.1, // new anchor
-        q0.0 - p0.0, q0.1 - p0.1, // start node's new hout
-        r0.0 - s.0, r0.1 - s.1, // inserted node's hin
-        r1.0 - s.0, r1.1 - s.1, // inserted node's hout
-        q2.0 - p3.0, q2.1 - p3.1, // end node's new hin
+        s.0,
+        s.1, // new anchor
+        q0.0 - p0.0,
+        q0.1 - p0.1, // start node's new hout
+        r0.0 - s.0,
+        r0.1 - s.1, // inserted node's hin
+        r1.0 - s.0,
+        r1.1 - s.1, // inserted node's hout
+        q2.0 - p3.0,
+        q2.1 - p3.1, // end node's new hin
     ]
 }
 
@@ -203,45 +225,6 @@ pub fn simplify(xy: &[f32], tol: f32) -> Vec<f32> {
     out
 }
 
-#[cfg(test)]
-mod split_tests {
-    use super::*;
-
-    fn eval(p0: P, p1: P, p2: P, p3: P, t: f32) -> P {
-        let mt = 1.0 - t;
-        let (a, b, c, d) = (mt * mt * mt, 3.0 * mt * mt * t, 3.0 * mt * t * t, t * t * t);
-        (a * p0.0 + b * p1.0 + c * p2.0 + d * p3.0, a * p0.1 + b * p1.1 + c * p2.1 + d * p3.1)
-    }
-
-    #[test]
-    fn polygon_and_star_vertex_counts_and_closure() {
-        // Hexagon: 6 vertices + a repeated closing point; closed loop; radius honoured.
-        let hex = &polygon(20.0, 20.0, 6, false, 0.5)[0].points;
-        assert_eq!(hex.len(), 7, "6 sides + closing vertex");
-        assert!((hex[0].x - hex[hex.len() - 1].x).abs() < 1e-4 && (hex[0].y - hex[hex.len() - 1].y).abs() < 1e-4);
-        assert!(hex.iter().all(|p| p.x.hypot(p.y) <= 20.0 + 1e-3), "within the circumradius");
-        // 5-point star: 10 vertices + closing; the inner vertices sit at inner_ratio·radius.
-        let star = &polygon(20.0, 20.0, 5, true, 0.5)[0].points;
-        assert_eq!(star.len(), 11, "5 points → 10 vertices + closing");
-        let inner = star[1].x.hypot(star[1].y); // index 1 is an inner vertex
-        assert!((inner - 10.0).abs() < 1e-3, "inner radius = 0.5·20 (got {inner})");
-        // sides < 3 is clamped up.
-        assert_eq!(polygon(10.0, 10.0, 1, false, 0.5)[0].points.len(), 4, "clamped to a triangle");
-    }
-
-    #[test]
-    fn split_anchor_lies_on_the_curve() {
-        // Symmetric arch; the t=0.5 split point must equal the curve evaluated at 0.5.
-        let (a, a_hout, b_hin, b) = ((0.0, 0.0), (0.0, 2.0), (0.0, 2.0), (4.0, 0.0));
-        let r = split_cubic(a, a_hout, b_hin, b, 0.5);
-        let p1 = (a.0 + a_hout.0, a.1 + a_hout.1);
-        let p2 = (b.0 + b_hin.0, b.1 + b_hin.1);
-        let e = eval(a, p1, p2, b, 0.5);
-        assert!((r[0] - e.0).abs() < 1e-4 && (r[1] - e.1).abs() < 1e-4, "split anchor off-curve: {r:?} vs {e:?}");
-        assert!((r[0] - 2.0).abs() < 1e-4 && (r[1] - 1.5).abs() < 1e-4);
-    }
-}
-
 fn rdp(pts: &[P], lo: usize, hi: usize, tol: f32, keep: &mut [bool]) {
     if hi <= lo + 1 {
         return;
@@ -259,5 +242,63 @@ fn rdp(pts: &[P], lo: usize, hi: usize, tol: f32, keep: &mut [bool]) {
         keep[idx] = true;
         rdp(pts, lo, idx, tol, keep);
         rdp(pts, idx, hi, tol, keep);
+    }
+}
+
+#[cfg(test)]
+mod split_tests {
+    use super::*;
+
+    fn eval(p0: P, p1: P, p2: P, p3: P, t: f32) -> P {
+        let mt = 1.0 - t;
+        let (a, b, c, d) = (mt * mt * mt, 3.0 * mt * mt * t, 3.0 * mt * t * t, t * t * t);
+        (
+            a * p0.0 + b * p1.0 + c * p2.0 + d * p3.0,
+            a * p0.1 + b * p1.1 + c * p2.1 + d * p3.1,
+        )
+    }
+
+    #[test]
+    fn polygon_and_star_vertex_counts_and_closure() {
+        // Hexagon: 6 vertices + a repeated closing point; closed loop; radius honoured.
+        let hex = &polygon(20.0, 20.0, 6, false, 0.5)[0].points;
+        assert_eq!(hex.len(), 7, "6 sides + closing vertex");
+        assert!(
+            (hex[0].x - hex[hex.len() - 1].x).abs() < 1e-4
+                && (hex[0].y - hex[hex.len() - 1].y).abs() < 1e-4
+        );
+        assert!(
+            hex.iter().all(|p| p.x.hypot(p.y) <= 20.0 + 1e-3),
+            "within the circumradius"
+        );
+        // 5-point star: 10 vertices + closing; the inner vertices sit at inner_ratio·radius.
+        let star = &polygon(20.0, 20.0, 5, true, 0.5)[0].points;
+        assert_eq!(star.len(), 11, "5 points → 10 vertices + closing");
+        let inner = star[1].x.hypot(star[1].y); // index 1 is an inner vertex
+        assert!(
+            (inner - 10.0).abs() < 1e-3,
+            "inner radius = 0.5·20 (got {inner})"
+        );
+        // sides < 3 is clamped up.
+        assert_eq!(
+            polygon(10.0, 10.0, 1, false, 0.5)[0].points.len(),
+            4,
+            "clamped to a triangle"
+        );
+    }
+
+    #[test]
+    fn split_anchor_lies_on_the_curve() {
+        // Symmetric arch; the t=0.5 split point must equal the curve evaluated at 0.5.
+        let (a, a_hout, b_hin, b) = ((0.0, 0.0), (0.0, 2.0), (0.0, 2.0), (4.0, 0.0));
+        let r = split_cubic(a, a_hout, b_hin, b, 0.5);
+        let p1 = (a.0 + a_hout.0, a.1 + a_hout.1);
+        let p2 = (b.0 + b_hin.0, b.1 + b_hin.1);
+        let e = eval(a, p1, p2, b, 0.5);
+        assert!(
+            (r[0] - e.0).abs() < 1e-4 && (r[1] - e.1).abs() < 1e-4,
+            "split anchor off-curve: {r:?} vs {e:?}"
+        );
+        assert!((r[0] - 2.0).abs() < 1e-4 && (r[1] - 1.5).abs() < 1e-4);
     }
 }

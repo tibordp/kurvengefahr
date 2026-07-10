@@ -30,7 +30,11 @@ fn dot(a: V3, b: V3) -> f32 {
     a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
 }
 fn cross(a: V3, b: V3) -> V3 {
-    [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]
+    [
+        a[1] * b[2] - a[2] * b[1],
+        a[2] * b[0] - a[0] * b[2],
+        a[0] * b[1] - a[1] * b[0],
+    ]
 }
 fn norm(a: V3) -> V3 {
     let l = dot(a, a).sqrt().max(1e-12);
@@ -60,7 +64,11 @@ impl Camera {
         let pitch = p.pitch.clamp(-85.0, 85.0).to_radians();
         let d = p.distance.clamp(1.3, 20.0) * mesh.radius;
         // Eye direction (from center toward the eye); yaw 0 / pitch 0 looks at the -Y face.
-        let e: V3 = [yaw.sin() * pitch.cos(), -yaw.cos() * pitch.cos(), pitch.sin()];
+        let e: V3 = [
+            yaw.sin() * pitch.cos(),
+            -yaw.cos() * pitch.cos(),
+            pitch.sin(),
+        ];
         let eye: V3 = [
             mesh.center[0] + d * e[0],
             mesh.center[1] + d * e[1],
@@ -92,13 +100,23 @@ impl Camera {
         let rel = sub(v, self.eye);
         let z = dot(rel, self.fwd);
         let (sx, sy) = if self.ortho {
-            (dot(rel, self.right) / self.half_h, dot(rel, self.up) / self.half_h)
+            (
+                dot(rel, self.right) / self.half_h,
+                dot(rel, self.up) / self.half_h,
+            )
         } else {
-            (dot(rel, self.right) / (z * self.tanf), dot(rel, self.up) / (z * self.tanf))
+            (
+                dot(rel, self.right) / (z * self.tanf),
+                dot(rel, self.up) / (z * self.tanf),
+            )
         };
         let ndc_x = sx / self.aspect + 2.0 * self.pan_x;
         let ndc_y = sy - 2.0 * self.pan_y;
-        [(ndc_x * 0.5 + 0.5) * self.tw, (0.5 - ndc_y * 0.5) * self.th, z]
+        [
+            (ndc_x * 0.5 + 0.5) * self.tw,
+            (0.5 - ndc_y * 0.5) * self.th,
+            z,
+        ]
     }
 
     /// Whether a face points toward the eye (for silhouette classification). `at` is any point
@@ -226,8 +244,9 @@ pub fn edge_strokes(
     morph_filter(&mut vis, true, 2);
 
     let mut run = None::<usize>;
-    for i in 0..=n + 1 {
-        match (run, i <= n && vis[i]) {
+    // One trailing `false` sentinel so a run reaching the last sample still flushes.
+    for (i, on) in vis.iter().copied().chain([false]).enumerate() {
+        match (run, on) {
             (None, true) => run = Some(i),
             (Some(s), false) => {
                 let seg = |j: usize| {
@@ -267,12 +286,7 @@ fn push_clipped(out: &mut Vec<Stroke>, a: [f32; 2], b: [f32; 2], tw: f32, th: f3
     let (dx, dy) = (b[0] - a[0], b[1] - a[1]);
     let mut t0 = 0.0f32;
     let mut t1 = 1.0f32;
-    for (p, q) in [
-        (-dx, a[0]),
-        (dx, tw - a[0]),
-        (-dy, a[1]),
-        (dy, th - a[1]),
-    ] {
+    for (p, q) in [(-dx, a[0]), (dx, tw - a[0]), (-dy, a[1]), (dy, th - a[1])] {
         if p.abs() < 1e-12 {
             if q < 0.0 {
                 return;
@@ -289,10 +303,19 @@ fn push_clipped(out: &mut Vec<Stroke>, a: [f32; 2], b: [f32; 2], tw: f32, th: f3
     if t0 >= t1 {
         return;
     }
-    let pt = |t: f32| Point { x: a[0] + dx * t, y: a[1] + dy * t, pressure: 1.0 };
+    let pt = |t: f32| Point {
+        x: a[0] + dx * t,
+        y: a[1] + dy * t,
+        pressure: 1.0,
+    };
     let (p0, p1) = (pt(t0), pt(t1));
     if (p1.x - p0.x).abs() < 1e-3 && (p1.y - p0.y).abs() < 1e-3 {
         return;
     }
-    out.push(Stroke { points: vec![p0, p1], pen: 0, reversible: true, group: 0 });
+    out.push(Stroke {
+        points: vec![p0, p1],
+        pen: 0,
+        reversible: true,
+        group: 0,
+    });
 }

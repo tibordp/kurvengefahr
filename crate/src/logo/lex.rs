@@ -9,8 +9,8 @@
 //! error rather than a silent subtraction). The parser treats a unary-hinted minus after a
 //! complete operand as the *start of the next statement/argument*, never as subtraction.
 
-use super::LogoError;
 use super::value::Value;
+use super::LogoError;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Span {
@@ -20,11 +20,17 @@ pub struct Span {
 
 impl Span {
     pub fn new(start: usize, end: usize) -> Self {
-        Span { start: start as u32, end: end as u32 }
+        Span {
+            start: start as u32,
+            end: end as u32,
+        }
     }
     /// The smallest span covering both.
     pub fn merge(a: Span, b: Span) -> Span {
-        Span { start: a.start.min(b.start), end: a.end.max(b.end) }
+        Span {
+            start: a.start.min(b.start),
+            end: a.end.max(b.end),
+        }
     }
 }
 
@@ -67,7 +73,11 @@ pub struct Token {
 }
 
 fn is_word_char(c: char) -> bool {
-    !c.is_whitespace() && !matches!(c, '(' | ')' | '[' | ']' | '+' | '-' | '*' | '/' | '=' | '<' | '>' | ';' | '"' | ':')
+    !c.is_whitespace()
+        && !matches!(
+            c,
+            '(' | ')' | '[' | ']' | '+' | '-' | '*' | '/' | '=' | '<' | '>' | ';' | '"' | ':'
+        )
 }
 
 pub fn lex(src: &str) -> Result<Vec<Token>, LogoError> {
@@ -156,9 +166,13 @@ pub fn lex(src: &str) -> Result<Vec<Token>, LogoError> {
             '-' => {
                 // Unary-hinted iff not glued to a preceding operand and glued to what follows.
                 let prev_operandish = matches!(prev_significant, Some(p) if p == b')' || p == b']' || is_word_char(p as char) || p == b'"');
-                let next_glued = bytes.get(i + 1).is_some_and(|&n| !(n as char).is_whitespace() && n != b';');
+                let next_glued = bytes
+                    .get(i + 1)
+                    .is_some_and(|&n| !(n as char).is_whitespace() && n != b';');
                 i += 1;
-                Tok::Minus { unary: !prev_operandish && next_glued }
+                Tok::Minus {
+                    unary: !prev_operandish && next_glued,
+                }
             }
             '"' => {
                 i += 1;
@@ -175,11 +189,16 @@ pub fn lex(src: &str) -> Result<Vec<Token>, LogoError> {
                     i += src[i..].chars().next().unwrap().len_utf8();
                 }
                 if ws == i {
-                    return Err(LogoError::parse("expected a variable name after :", Span::new(start, i)));
+                    return Err(LogoError::parse(
+                        "expected a variable name after :",
+                        Span::new(start, i),
+                    ));
                 }
                 Tok::Var(src[ws..i].to_ascii_lowercase())
             }
-            _ if c.is_ascii_digit() || (c == '.' && bytes.get(i + 1).is_some_and(|n| n.is_ascii_digit())) => {
+            _ if c.is_ascii_digit()
+                || (c == '.' && bytes.get(i + 1).is_some_and(|n| n.is_ascii_digit())) =>
+            {
                 let ws = i;
                 while i < bytes.len() && (bytes[i].is_ascii_digit() || bytes[i] == b'.') {
                     i += 1;
@@ -187,9 +206,11 @@ pub fn lex(src: &str) -> Result<Vec<Token>, LogoError> {
                 // Optional exponent: e / E, optional sign, digits.
                 if i < bytes.len()
                     && (bytes[i] == b'e' || bytes[i] == b'E')
-                    && bytes
-                        .get(i + 1)
-                        .is_some_and(|&n| n.is_ascii_digit() || ((n == b'+' || n == b'-') && bytes.get(i + 2).is_some_and(|d| d.is_ascii_digit())))
+                    && bytes.get(i + 1).is_some_and(|&n| {
+                        n.is_ascii_digit()
+                            || ((n == b'+' || n == b'-')
+                                && bytes.get(i + 2).is_some_and(|d| d.is_ascii_digit()))
+                    })
                 {
                     i += 2;
                     while i < bytes.len() && bytes[i].is_ascii_digit() {
@@ -199,7 +220,12 @@ pub fn lex(src: &str) -> Result<Vec<Token>, LogoError> {
                 let text = &src[ws..i];
                 match text.parse::<f64>() {
                     Ok(n) => Tok::Num(n),
-                    Err(_) => return Err(LogoError::parse(&format!("{} isn't a number", text), Span::new(ws, i))),
+                    Err(_) => {
+                        return Err(LogoError::parse(
+                            &format!("{} isn't a number", text),
+                            Span::new(ws, i),
+                        ))
+                    }
                 }
             }
             _ if is_word_char(c) => {
@@ -210,11 +236,18 @@ pub fn lex(src: &str) -> Result<Vec<Token>, LogoError> {
                 Tok::Ident(src[ws..i].to_ascii_lowercase())
             }
             _ => {
-                return Err(LogoError::parse(&format!("unexpected character '{}'", c), Span::new(i, i + c.len_utf8())));
+                return Err(LogoError::parse(
+                    &format!("unexpected character '{}'", c),
+                    Span::new(i, i + c.len_utf8()),
+                ));
             }
         };
         prev_significant = Some(bytes[i.saturating_sub(1)]);
-        tokens.push(Token { tok, span: Span::new(start, i), line });
+        tokens.push(Token {
+            tok,
+            span: Span::new(start, i),
+            line,
+        });
     }
     Ok(tokens)
 }

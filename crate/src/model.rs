@@ -9,6 +9,9 @@
 
 use crate::geom::Point;
 
+/// A sampled pen trajectory: `(dx, dy, pen-up)` offsets in model units.
+type Traj = Vec<(f32, f32, bool)>;
+
 /// 73-char alphabet (mirrors `drawing.alphabet` upstream and `tools/convert_weights.py`).
 /// Index 0 is NUL (used as the sequence terminator). Uppercase Q/X/Z are absent — `compose.rs`
 /// substitutes them before synthesis.
@@ -85,11 +88,17 @@ struct Golden {
 
 impl Golden {
     fn parse(bytes: &[u8]) -> Golden {
-        assert!(bytes.len() >= 8 && &bytes[0..4] == b"KGG1", "bad golden.bin");
+        assert!(
+            bytes.len() >= 8 && &bytes[0..4] == b"KGG1",
+            "bad golden.bin"
+        );
         let u32_at = |o: usize| u32::from_le_bytes(bytes[o..o + 4].try_into().unwrap()) as usize;
         let nchars = u32_at(4);
         let mut pos = 8;
-        let char_idx: Vec<usize> = bytes[pos..pos + nchars].iter().map(|&b| b as usize).collect();
+        let char_idx: Vec<usize> = bytes[pos..pos + nchars]
+            .iter()
+            .map(|&b| b as usize)
+            .collect();
         pos += nchars;
         let nstrokes = u32_at(pos);
         pos += 4;
@@ -239,7 +248,14 @@ impl Model {
     /// One LSTM cell step (TF `LSTMCell` semantics: gate order i,j,f,o; forget_bias = 1.0; no
     /// peepholes/projection). `input` is the layer input; the kernel's first `input.len()` rows
     /// apply to it and the next `h` rows to `h_prev`.
-    fn lstm(&self, kernel: &[f32], bias: &[f32], input: &[f32], h_prev: &[f32], c_prev: &[f32]) -> (Vec<f32>, Vec<f32>) {
+    fn lstm(
+        &self,
+        kernel: &[f32],
+        bias: &[f32],
+        input: &[f32],
+        h_prev: &[f32],
+        c_prev: &[f32],
+    ) -> (Vec<f32>, Vec<f32>) {
         let hsz = self.h;
         let cols = 4 * hsz;
         let mut z = bias.to_vec();
@@ -253,8 +269,7 @@ impl Model {
             }
         }
         let off = input.len();
-        for r in 0..hsz {
-            let xr = h_prev[r];
+        for (r, &xr) in h_prev.iter().enumerate() {
             if xr == 0.0 {
                 continue;
             }
@@ -306,9 +321,9 @@ impl Model {
             let beta = ap[k + kk].max(0.01);
             let kappa = st.kappa[kk] + ap[2 * k + kk] / 25.0;
             st.kappa[kk] = kappa;
-            for uu in 0..u {
+            for (uu, phi_u) in phi.iter_mut().enumerate() {
                 let d = kappa - uu as f32;
-                phi[uu] += alpha * (-(d * d) / beta).exp();
+                *phi_u += alpha * (-(d * d) / beta).exp();
             }
         }
         // w = Σ_u phi[u] · onehot(idx[u])  (onehot is sparse → scatter-add)
@@ -358,8 +373,8 @@ impl Model {
         let uc = rng.next_f32();
         let mut acc = 0.0;
         let mut sel = m - 1;
-        for i in 0..m {
-            acc += pis[i];
+        for (i, &pi) in pis.iter().enumerate() {
+            acc += pi;
             if uc <= acc {
                 sel = i;
                 break;
@@ -390,12 +405,15 @@ impl Model {
     pub fn generate_word(&self, word: &str, seed: u32, bias: f32) -> LineInk {
         let word_idx = encode_indices(word); // word + NUL terminator
         if word_idx.len() <= 1 {
-            return LineInk { strokes: Vec::new(), width: 0.0 };
+            return LineInk {
+                strokes: Vec::new(),
+                width: 0.0,
+            };
         }
         let (full_idx, word_start) = self.word_attention(&word_idx);
         let word_chars = word_idx.len() - 1;
 
-        let mut best: Option<(f32, Vec<(f32, f32, bool)>)> = None;
+        let mut best: Option<(f32, Traj)> = None;
         for attempt in 0..WORD_ATTEMPTS {
             let aseed = seed.wrapping_add(attempt.wrapping_mul(0x85EB_CA6B));
             let raw = self.sample_word(&full_idx, word_start, word_chars, aseed, bias);
@@ -403,7 +421,7 @@ impl Model {
             if score >= MIN_REL_DWELL {
                 return finish_word(&raw.traj);
             }
-            if best.as_ref().map_or(true, |(s, _)| score > *s) {
+            if best.as_ref().is_none_or(|(s, _)| score > *s) {
                 best = Some((score, raw.traj));
             }
         }
@@ -434,7 +452,14 @@ impl Model {
     /// word body — so after it fires we keep sampling for a short trail window and extend the cut
     /// over any stroke that completes inside the word's ink box, discarding ink that wanders off
     /// (the start of an imagined next word).
-    fn sample_word(&self, full_idx: &[usize], word_start: usize, word_chars: usize, seed: u32, bias: f32) -> Sampled {
+    fn sample_word(
+        &self,
+        full_idx: &[usize],
+        word_start: usize,
+        word_chars: usize,
+        seed: u32,
+        bias: f32,
+    ) -> Sampled {
         let mut st = self.golden_state.clone();
         let mut rng = Mulberry32::new(seed.wrapping_mul(0x9E37_79B1).wrapping_add(0x6D2B_79F5));
         let mut gmm = self.mdn(&st.h3); // first offset comes from the primed state
@@ -443,7 +468,7 @@ impl Model {
         let max_steps = (40 * word_chars).clamp(1, MAX_STROKE_LEN);
         let mut cx = 0.0f32;
         let mut cy = 0.0f32;
-        let mut traj: Vec<(f32, f32, bool)> = Vec::new();
+        let mut traj: Traj = Vec::new();
         let mut dwell = vec![0.0f32; word_chars];
         // Set once the stop condition fires: accepted end of the word + its ink box.
         let mut cut: Option<(usize, [f32; 4])> = None; // (traj len, [min_x, max_x, min_y, max_y])
@@ -482,7 +507,8 @@ impl Model {
                         // terminal t-bar) or a mark well inside the word (an i-dot). Anything
                         // else is the model starting an imagined next word.
                         let s = ink_box(&traj[*end..]);
-                        let bar = s[1] - s[0] >= TRAIL_BAR_SPAN && s[0] <= bx[1] - TRAIL_BAR_OVERLAP;
+                        let bar =
+                            s[1] - s[0] >= TRAIL_BAR_SPAN && s[0] <= bx[1] - TRAIL_BAR_OVERLAP;
                         let dot = s[0] <= bx[1] - TRAIL_DOT_OVERLAP;
                         if s[2] < TRAIL_MIN_Y || !(bar || dot) {
                             break;
@@ -495,7 +521,7 @@ impl Model {
                 }
             }
 
-            gmm = self.forward_step(&[x.0, x.1, if x.2 { 1.0 } else { 0.0 }], &mut st, &full_idx);
+            gmm = self.forward_step(&[x.0, x.1, if x.2 { 1.0 } else { 0.0 }], &mut st, full_idx);
             x = self.sample(&gmm, bias, &mut rng);
             // Attention dwell per word character: how much window mass each received in total. A
             // skipped/garbled letter shows up as a near-zero slot (see `rel_dwell_score`).
@@ -515,13 +541,18 @@ impl Model {
 
 /// One sampling attempt's raw output: the trajectory and per-word-char attention dwell.
 struct Sampled {
-    traj: Vec<(f32, f32, bool)>,
+    traj: Traj,
     dwell: Vec<f32>,
 }
 
 /// Bounding box of a trajectory's points as `[min_x, max_x, min_y, max_y]` (model units).
 fn ink_box(traj: &[(f32, f32, bool)]) -> [f32; 4] {
-    let mut b = [f32::INFINITY, f32::NEG_INFINITY, f32::INFINITY, f32::NEG_INFINITY];
+    let mut b = [
+        f32::INFINITY,
+        f32::NEG_INFINITY,
+        f32::INFINITY,
+        f32::NEG_INFINITY,
+    ];
     for &(x, y, _) in traj {
         b[0] = b[0].min(x);
         b[1] = b[1].max(x);
@@ -553,7 +584,11 @@ fn width_score(traj: &[(f32, f32, bool)], word_chars: usize) -> f32 {
     }
     let b = ink_box(traj);
     let width_em = (b[1] - b[0]) / UNITS_PER_EM;
-    if width_em >= 0.15 * word_chars as f32 { 1.0 } else { 0.0 }
+    if width_em >= 0.15 * word_chars as f32 {
+        1.0
+    } else {
+        0.0
+    }
 }
 
 // ---- post-processing: scale to em, split into strokes ----
@@ -563,7 +598,10 @@ fn width_score(traj: &[(f32, f32, bool)], word_chars: usize) -> f32 {
 /// (ascenders positive), the same convention `typeset` expects — it applies the page (+y down) flip.
 fn finish_word(raw: &[(f32, f32, bool)]) -> LineInk {
     if raw.is_empty() {
-        return LineInk { strokes: Vec::new(), width: 0.0 };
+        return LineInk {
+            strokes: Vec::new(),
+            width: 0.0,
+        };
     }
     // No deslant: words are short (a slope fit would be noisy and tilt them inconsistently), and
     // golden priming keeps their baseline consistent. Just scale to em and shift x so the word
@@ -579,7 +617,11 @@ fn finish_word(raw: &[(f32, f32, bool)]) -> LineInk {
     for &(x, y, eos) in raw {
         let em_x = (x - min_x) / UNITS_PER_EM;
         max_em_x = max_em_x.max(em_x);
-        cur.push(Point { x: em_x, y: y / UNITS_PER_EM, pressure: 1.0 });
+        cur.push(Point {
+            x: em_x,
+            y: y / UNITS_PER_EM,
+            pressure: 1.0,
+        });
         if eos {
             if cur.len() >= 2 {
                 strokes.push(std::mem::take(&mut cur));
@@ -591,7 +633,10 @@ fn finish_word(raw: &[(f32, f32, bool)]) -> LineInk {
     if cur.len() >= 2 {
         strokes.push(cur);
     }
-    LineInk { strokes, width: max_em_x }
+    LineInk {
+        strokes,
+        width: max_em_x,
+    }
 }
 
 /// Map text to alphabet indices, plus the trailing NUL terminator the attention window stops on.
@@ -735,15 +780,38 @@ mod tests {
 
         let mut st = State::new(model.a, model.h, model.k);
         for (s, inp) in steps.iter().zip(inputs) {
-            let x: Vec<f32> = inp.as_array().unwrap().iter().map(|v| v.as_f64().unwrap() as f32).collect();
+            let x: Vec<f32> = inp
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|v| v.as_f64().unwrap() as f32)
+                .collect();
             let gmm = model.forward_step(&x, &mut st, &idx);
 
-            let ref_gmm: Vec<f32> = s["gmm"].as_array().unwrap().iter().map(|v| v.as_f64().unwrap() as f32).collect();
-            let max_d = gmm.iter().zip(&ref_gmm).map(|(a, b)| (a - b).abs()).fold(0.0f32, f32::max);
+            let ref_gmm: Vec<f32> = s["gmm"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|v| v.as_f64().unwrap() as f32)
+                .collect();
+            let max_d = gmm
+                .iter()
+                .zip(&ref_gmm)
+                .map(|(a, b)| (a - b).abs())
+                .fold(0.0f32, f32::max);
             assert!(max_d < 2e-2, "gmm mismatch, max |Δ| = {max_d}");
 
-            let ref_w: Vec<f32> = s["w"].as_array().unwrap().iter().map(|v| v.as_f64().unwrap() as f32).collect();
-            let wd = st.w.iter().zip(&ref_w).map(|(a, b)| (a - b).abs()).fold(0.0f32, f32::max);
+            let ref_w: Vec<f32> = s["w"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|v| v.as_f64().unwrap() as f32)
+                .collect();
+            let wd =
+                st.w.iter()
+                    .zip(&ref_w)
+                    .map(|(a, b)| (a - b).abs())
+                    .fold(0.0f32, f32::max);
             assert!(wd < 1e-3, "window mismatch, max |Δ| = {wd}");
         }
     }
@@ -759,10 +827,28 @@ mod tests {
         let blob = std::fs::read("../public/models/kg_model.f16.bin").expect("blob");
         let model = Model::load(&blob).unwrap();
         let words = [
-            "hello", "world", "running", "the", "through", // English (in-distribution)
-            "consectetur", "lobortis", "porttitor", "adipiscing", "vulputate", // Latin (OOD)
-            "dolor", "odio", "sit", "ut", "et", "ante", "amet", // short + t-final
-            "my", "name", "man", "brothers", "children", // weak-ending suspects
+            "hello",
+            "world",
+            "running",
+            "the",
+            "through", // English (in-distribution)
+            "consectetur",
+            "lobortis",
+            "porttitor",
+            "adipiscing",
+            "vulputate", // Latin (OOD)
+            "dolor",
+            "odio",
+            "sit",
+            "ut",
+            "et",
+            "ante",
+            "amet", // short + t-final
+            "my",
+            "name",
+            "man",
+            "brothers",
+            "children", // weak-ending suspects
         ];
         let bias = 1.8f32;
         let mut svg = String::from("<svg xmlns='http://www.w3.org/2000/svg' width='1400' height='2600' style='background:#fff'>\n");
@@ -774,7 +860,10 @@ mod tests {
                 let s = model.sample_word(&full_idx, word_start, word_idx.len() - 1, seed, bias);
                 let score = rel_dwell_score(&s.dwell).min(width_score(&s.traj, word_idx.len() - 1));
                 let dw: Vec<String> = s.dwell.iter().map(|d| format!("{d:.1}")).collect();
-                println!("{word:>12} seed {seed}: score {score:.3}  dwell [{}]", dw.join(" "));
+                println!(
+                    "{word:>12} seed {seed}: score {score:.3}  dwell [{}]",
+                    dw.join(" ")
+                );
 
                 // Render the FINAL (rejection-sampled) ink for the eyeball grid.
                 let ink = model.generate_word(word, seed, bias);
@@ -784,9 +873,19 @@ mod tests {
                     let d: Vec<String> = stroke
                         .iter()
                         .enumerate()
-                        .map(|(i, p)| format!("{}{:.1},{:.1}", if i == 0 { "M" } else { "L" }, ox + p.x * em, oy - p.y * em))
+                        .map(|(i, p)| {
+                            format!(
+                                "{}{:.1},{:.1}",
+                                if i == 0 { "M" } else { "L" },
+                                ox + p.x * em,
+                                oy - p.y * em
+                            )
+                        })
                         .collect();
-                    svg.push_str(&format!("<path d='{}' fill='none' stroke='#111' stroke-width='1.3'/>\n", d.join(" ")));
+                    svg.push_str(&format!(
+                        "<path d='{}' fill='none' stroke='#111' stroke-width='1.3'/>\n",
+                        d.join(" ")
+                    ));
                 }
             }
         }
@@ -846,7 +945,10 @@ mod tests {
         let (full_idx, word_start) = model.word_attention(&word_idx);
         let a0 = model.sample_word(&full_idx, word_start, word_idx.len() - 1, seed, bias);
         let a0_score = rel_dwell_score(&a0.dwell).min(width_score(&a0.traj, word_idx.len() - 1));
-        assert!(a0_score < MIN_REL_DWELL, "fixture stale: attempt 0 now passes ({a0_score:.3})");
+        assert!(
+            a0_score < MIN_REL_DWELL,
+            "fixture stale: attempt 0 now passes ({a0_score:.3})"
+        );
 
         let chosen = model.generate_word(word, seed, bias);
         let rejected = finish_word(&a0.traj);

@@ -170,7 +170,15 @@ impl Grid {
                 }
             })
             .collect();
-        Grid { w, h, ink, tw, th, sx: tw / w as f32, sy: th / h as f32 }
+        Grid {
+            w,
+            h,
+            ink,
+            tw,
+            th,
+            sx: tw / w as f32,
+            sy: th / h as f32,
+        }
     }
 
     /// Inkness at a row-major pixel index (no bounds adjust; caller guarantees `i < w*h`).
@@ -235,11 +243,20 @@ impl Rng {
 
 /// Convenience constructor for a free, forward-only stroke from mm points.
 fn stroke(points: Vec<Point>) -> Stroke {
-    Stroke { points, pen: 0, reversible: true, group: 0 }
+    Stroke {
+        points,
+        pen: 0,
+        reversible: true,
+        group: 0,
+    }
 }
 
 fn pt(x: f32, y: f32) -> Point {
-    Point { x, y, pressure: 1.0 }
+    Point {
+        x,
+        y,
+        pressure: 1.0,
+    }
 }
 
 #[cfg(test)]
@@ -278,13 +295,22 @@ mod tests {
     #[test]
     fn every_method_produces_in_bounds_strokes() {
         for method in [
-            "contours", "contourmap", "hatch", "pressurehatch", "scanlines", "tsp", "flowfield",
+            "contours",
+            "contourmap",
+            "hatch",
+            "pressurehatch",
+            "scanlines",
+            "tsp",
+            "flowfield",
             "spiral",
         ] {
             let out = run(method);
             assert!(!out.is_empty(), "method {method} produced no strokes");
             for s in &out {
-                assert!(s.points.len() >= 2, "method {method} has a degenerate stroke");
+                assert!(
+                    s.points.len() >= 2,
+                    "method {method} has a degenerate stroke"
+                );
                 for p in &s.points {
                     // Allow a small margin (smoothing leashes / wiggle can stray slightly).
                     assert!(
@@ -316,6 +342,9 @@ mod tests {
         };
         let normal = r#"{"method":"tsp","targetWidthMm":60,"targetHeightMm":60,"seed":3,"detail":0.6,"invert":false}"#;
         let inv = r#"{"method":"tsp","targetWidthMm":60,"targetHeightMm":60,"seed":3,"detail":0.6,"invert":true}"#;
-        assert!(mean_r(normal) < mean_r(inv), "invert should push the path outward");
+        assert!(
+            mean_r(normal) < mean_r(inv),
+            "invert should push the path outward"
+        );
     }
 }

@@ -127,35 +127,6 @@ pub fn clip(strokes: &[Stroke], r: &Rect) -> Vec<Stroke> {
     out
 }
 
-#[cfg(test)]
-mod poly_tests {
-    use super::*;
-    fn p(x: f32, y: f32) -> Point {
-        Point { x, y, pressure: 1.0 }
-    }
-
-    #[test]
-    fn clips_to_square_preserving_metadata() {
-        let s = Stroke { points: vec![p(-5.0, 5.0), p(15.0, 5.0)], pen: 3, reversible: false, group: 7 };
-        let square: Vec<P> = vec![(0.0, 0.0), (10.0, 0.0), (10.0, 10.0), (0.0, 10.0)];
-        let out = clip_to_polygon(&[s], &[square]);
-        assert_eq!(out.len(), 1, "one inside span");
-        let c = &out[0];
-        assert_eq!((c.pen, c.group, c.reversible), (3, 7, false), "metadata preserved");
-        let (lo, hi) = (c.points[0].x, c.points.last().unwrap().x);
-        assert!((lo - 0.0).abs() < 1e-3 && (hi - 10.0).abs() < 1e-3, "clipped to the square edges: {lo}..{hi}");
-    }
-
-    #[test]
-    fn even_odd_hole_splits_the_stroke() {
-        let outer: Vec<P> = vec![(0.0, 0.0), (10.0, 0.0), (10.0, 10.0), (0.0, 10.0)];
-        let hole: Vec<P> = vec![(3.0, 3.0), (7.0, 3.0), (7.0, 7.0), (3.0, 7.0)];
-        let s = Stroke { points: vec![p(-1.0, 5.0), p(11.0, 5.0)], pen: 0, reversible: true, group: 0 };
-        let out = clip_to_polygon(&[s], &[outer, hole]);
-        assert_eq!(out.len(), 2, "the even-odd hole cuts the stroke into two spans");
-    }
-}
-
 /// Clip strokes to the even-odd interior of `rings` (an arbitrary mask polygon) — the polygon
 /// counterpart of `clip` for clip-to-shape. Each stroke is split into the sub-polylines lying inside,
 /// preserving pen/reversible/group (so a clipped locked chain stays a chain).
@@ -174,13 +145,23 @@ fn clip_stroke_poly(s: &Stroke, rings: &[Vec<P>], out: &mut Vec<Stroke>) {
     let pts = &s.points;
     if pts.len() < 2 {
         if pts.len() == 1 && inside_multi(rings, pts[0].x, pts[0].y) {
-            out.push(Stroke { points: pts.clone(), pen: s.pen, reversible: s.reversible, group: s.group });
+            out.push(Stroke {
+                points: pts.clone(),
+                pen: s.pen,
+                reversible: s.reversible,
+                group: s.group,
+            });
         }
         return;
     }
     let flush = |run: &mut Vec<Point>, out: &mut Vec<Stroke>| {
         if run.len() >= 2 {
-            out.push(Stroke { points: std::mem::take(run), pen: s.pen, reversible: s.reversible, group: s.group });
+            out.push(Stroke {
+                points: std::mem::take(run),
+                pen: s.pen,
+                reversible: s.reversible,
+                group: s.group,
+            });
         } else {
             run.clear();
         }
@@ -200,7 +181,9 @@ fn clip_stroke_poly(s: &Stroke, rings: &[Vec<P>], out: &mut Vec<Stroke>) {
             if inside_multi(rings, mid.x, mid.y) {
                 let p0 = lerp(a, b, t0);
                 let p1 = lerp(a, b, t1);
-                let joins = run.last().is_some_and(|q| (q.x - p0.x).abs() < 1e-6 && (q.y - p0.y).abs() < 1e-6);
+                let joins = run
+                    .last()
+                    .is_some_and(|q| (q.x - p0.x).abs() < 1e-6 && (q.y - p0.y).abs() < 1e-6);
                 if !joins {
                     run.push(p0);
                 }
@@ -211,4 +194,58 @@ fn clip_stroke_poly(s: &Stroke, rings: &[Vec<P>], out: &mut Vec<Stroke>) {
         }
     }
     flush(&mut run, out);
+}
+
+#[cfg(test)]
+mod poly_tests {
+    use super::*;
+    fn p(x: f32, y: f32) -> Point {
+        Point {
+            x,
+            y,
+            pressure: 1.0,
+        }
+    }
+
+    #[test]
+    fn clips_to_square_preserving_metadata() {
+        let s = Stroke {
+            points: vec![p(-5.0, 5.0), p(15.0, 5.0)],
+            pen: 3,
+            reversible: false,
+            group: 7,
+        };
+        let square: Vec<P> = vec![(0.0, 0.0), (10.0, 0.0), (10.0, 10.0), (0.0, 10.0)];
+        let out = clip_to_polygon(&[s], &[square]);
+        assert_eq!(out.len(), 1, "one inside span");
+        let c = &out[0];
+        assert_eq!(
+            (c.pen, c.group, c.reversible),
+            (3, 7, false),
+            "metadata preserved"
+        );
+        let (lo, hi) = (c.points[0].x, c.points.last().unwrap().x);
+        assert!(
+            (lo - 0.0).abs() < 1e-3 && (hi - 10.0).abs() < 1e-3,
+            "clipped to the square edges: {lo}..{hi}"
+        );
+    }
+
+    #[test]
+    fn even_odd_hole_splits_the_stroke() {
+        let outer: Vec<P> = vec![(0.0, 0.0), (10.0, 0.0), (10.0, 10.0), (0.0, 10.0)];
+        let hole: Vec<P> = vec![(3.0, 3.0), (7.0, 3.0), (7.0, 7.0), (3.0, 7.0)];
+        let s = Stroke {
+            points: vec![p(-1.0, 5.0), p(11.0, 5.0)],
+            pen: 0,
+            reversible: true,
+            group: 0,
+        };
+        let out = clip_to_polygon(&[s], &[outer, hole]);
+        assert_eq!(
+            out.len(),
+            2,
+            "the even-odd hole cuts the stroke into two spans"
+        );
+    }
 }

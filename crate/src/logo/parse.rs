@@ -114,21 +114,39 @@ pub fn parse_program(tokens: Vec<Token>) -> Result<Program, LogoError> {
                     let to_line = tokens[i].line;
                     i += 1;
                     let (name, name_span) = match tokens.get(i) {
-                        Some(Token { tok: Tok::Ident(n), span, line }) if *line == to_line => {
-                            (Rc::<str>::from(n.as_str()), *span)
+                        Some(Token {
+                            tok: Tok::Ident(n),
+                            span,
+                            line,
+                        }) if *line == to_line => (Rc::<str>::from(n.as_str()), *span),
+                        _ => {
+                            return Err(LogoError::parse(
+                                "to needs a procedure name on the same line",
+                                tokens[i - 1].span,
+                            ))
                         }
-                        _ => return Err(LogoError::parse("to needs a procedure name on the same line", tokens[i - 1].span)),
                     };
                     if builtins::lookup(&name).is_some() {
-                        return Err(LogoError::parse(&format!("{} is a built-in and can't be redefined", name), name_span));
+                        return Err(LogoError::parse(
+                            &format!("{} is a built-in and can't be redefined", name),
+                            name_span,
+                        ));
                     }
                     if proc_index.contains_key(&name) {
-                        return Err(LogoError::parse(&format!("{} is already defined", name), name_span));
+                        return Err(LogoError::parse(
+                            &format!("{} is already defined", name),
+                            name_span,
+                        ));
                     }
                     i += 1;
                     // Parameters: :vars on the header line.
                     let mut params = Vec::new();
-                    while let Some(Token { tok: Tok::Var(v), line, .. }) = tokens.get(i) {
+                    while let Some(Token {
+                        tok: Tok::Var(v),
+                        line,
+                        ..
+                    }) = tokens.get(i)
+                    {
                         if *line != to_line {
                             break;
                         }
@@ -143,18 +161,29 @@ pub fn parse_program(tokens: Vec<Token>) -> Result<Program, LogoError> {
                             Some(Tok::LBracket) => d += 1,
                             Some(Tok::RBracket) => d -= 1,
                             Some(Tok::Ident(id)) if d == 0 && id == "to" => {
-                                return Err(LogoError::parse("to inside a procedure — did you forget end?", tokens[i].span));
+                                return Err(LogoError::parse(
+                                    "to inside a procedure — did you forget end?",
+                                    tokens[i].span,
+                                ));
                             }
                             Some(Tok::Ident(id)) if d == 0 && id == "end" => break,
                             None => {
-                                return Err(LogoError::parse(&format!("to {} has no end", name), name_span));
+                                return Err(LogoError::parse(
+                                    &format!("to {} has no end", name),
+                                    name_span,
+                                ));
                             }
                             _ => {}
                         }
                         i += 1;
                     }
                     proc_index.insert(name.clone(), headers.len());
-                    headers.push(Header { name, params, name_span, body: (body_start, i) });
+                    headers.push(Header {
+                        name,
+                        params,
+                        name_span,
+                        body: (body_start, i),
+                    });
                     i += 1; // past `end`
                     top_start = i;
                 }
@@ -169,22 +198,46 @@ pub fn parse_program(tokens: Vec<Token>) -> Result<Program, LogoError> {
         top_ranges.push((top_start, tokens.len()));
     }
 
-    let arities: HashMap<Rc<str>, u8> = headers.iter().map(|h| (h.name.clone(), h.params.len() as u8)).collect();
+    let arities: HashMap<Rc<str>, u8> = headers
+        .iter()
+        .map(|h| (h.name.clone(), h.params.len() as u8))
+        .collect();
 
     // ── pass 2: parse bodies with the full arity table ──────────────────────────────────────────
     let mut body = Vec::new();
     for &(a, b) in &top_ranges {
-        let mut p = Parser { toks: &tokens, pos: a, end: b, arities: &arities };
+        let mut p = Parser {
+            toks: &tokens,
+            pos: a,
+            end: b,
+            arities: &arities,
+        };
         body.extend(p.parse_stmts()?);
     }
     let mut procs = Vec::with_capacity(headers.len());
     for h in headers {
-        let mut p = Parser { toks: &tokens, pos: h.body.0, end: h.body.1, arities: &arities };
+        let mut p = Parser {
+            toks: &tokens,
+            pos: h.body.0,
+            end: h.body.1,
+            arities: &arities,
+        };
         let pbody = p.parse_stmts()?;
-        procs.push(ProcDef { name: h.name, params: h.params, body: pbody, name_span: h.name_span });
+        procs.push(ProcDef {
+            name: h.name,
+            params: h.params,
+            body: pbody,
+            name_span: h.name_span,
+        });
     }
 
-    Ok(Program { tokens, body, procs, proc_index, arities })
+    Ok(Program {
+        tokens,
+        body,
+        procs,
+        proc_index,
+        arities,
+    })
 }
 
 /// Parse a slice of an existing token stream as instructions — used both by pass 2 above and by
@@ -194,7 +247,12 @@ pub fn parse_range(
     range: (usize, usize),
     arities: &HashMap<Rc<str>, u8>,
 ) -> Result<Vec<Expr>, LogoError> {
-    let mut p = Parser { toks: tokens, pos: range.0, end: range.1, arities };
+    let mut p = Parser {
+        toks: tokens,
+        pos: range.0,
+        end: range.1,
+        arities,
+    };
     p.parse_stmts()
 }
 
@@ -227,8 +285,12 @@ impl<'a> Parser<'a> {
         let mut out = Vec::new();
         while self.pos < self.end {
             match &self.toks[self.pos].tok {
-                Tok::RBracket => return Err(LogoError::parse("] without [", self.toks[self.pos].span)),
-                Tok::RParen => return Err(LogoError::parse(") without (", self.toks[self.pos].span)),
+                Tok::RBracket => {
+                    return Err(LogoError::parse("] without [", self.toks[self.pos].span))
+                }
+                Tok::RParen => {
+                    return Err(LogoError::parse(") without (", self.toks[self.pos].span))
+                }
                 _ => out.push(self.parse_expr()?),
             }
         }
@@ -252,7 +314,14 @@ impl<'a> Parser<'a> {
             self.pos += 1;
             let r = self.parse_additive()?;
             let span = Span::merge(node.span, r.span);
-            node = Expr { kind: ExprKind::Infix { op, l: Box::new(node), r: Box::new(r) }, span };
+            node = Expr {
+                kind: ExprKind::Infix {
+                    op,
+                    l: Box::new(node),
+                    r: Box::new(r),
+                },
+                span,
+            };
         }
         Ok(node)
     }
@@ -269,7 +338,14 @@ impl<'a> Parser<'a> {
             self.pos += 1;
             let r = self.parse_multiplicative()?;
             let span = Span::merge(node.span, r.span);
-            node = Expr { kind: ExprKind::Infix { op, l: Box::new(node), r: Box::new(r) }, span };
+            node = Expr {
+                kind: ExprKind::Infix {
+                    op,
+                    l: Box::new(node),
+                    r: Box::new(r),
+                },
+                span,
+            };
         }
         Ok(node)
     }
@@ -285,19 +361,34 @@ impl<'a> Parser<'a> {
             self.pos += 1;
             let r = self.parse_unary()?;
             let span = Span::merge(node.span, r.span);
-            node = Expr { kind: ExprKind::Infix { op, l: Box::new(node), r: Box::new(r) }, span };
+            node = Expr {
+                kind: ExprKind::Infix {
+                    op,
+                    l: Box::new(node),
+                    r: Box::new(r),
+                },
+                span,
+            };
         }
         Ok(node)
     }
 
     fn parse_unary(&mut self) -> Result<Expr, LogoError> {
-        if let Some(Token { tok: Tok::Minus { .. }, span, .. }) = self.peek() {
+        if let Some(Token {
+            tok: Tok::Minus { .. },
+            span,
+            ..
+        }) = self.peek()
+        {
             // In operand position any minus negates (`3 - -2`, `fd -10`).
             let start = *span;
             self.pos += 1;
             let operand = self.parse_unary()?;
             let span = Span::merge(start, operand.span);
-            return Ok(Expr { kind: ExprKind::Neg(Box::new(operand)), span });
+            return Ok(Expr {
+                kind: ExprKind::Neg(Box::new(operand)),
+                span,
+            });
         }
         self.parse_primary()
     }
@@ -311,19 +402,31 @@ impl<'a> Parser<'a> {
         match &tok.tok {
             Tok::Num(n) => {
                 self.pos += 1;
-                Ok(Expr { kind: ExprKind::Num(*n), span })
+                Ok(Expr {
+                    kind: ExprKind::Num(*n),
+                    span,
+                })
             }
             Tok::Word(w) => {
                 self.pos += 1;
-                Ok(Expr { kind: ExprKind::Word(Rc::from(w.as_str())), span })
+                Ok(Expr {
+                    kind: ExprKind::Word(Rc::from(w.as_str())),
+                    span,
+                })
             }
             Tok::Var(v) => {
                 self.pos += 1;
-                Ok(Expr { kind: ExprKind::Var(Rc::from(v.as_str())), span })
+                Ok(Expr {
+                    kind: ExprKind::Var(Rc::from(v.as_str())),
+                    span,
+                })
             }
             Tok::Lit(v) => {
                 self.pos += 1;
-                Ok(Expr { kind: ExprKind::Lit(v.clone()), span })
+                Ok(Expr {
+                    kind: ExprKind::Lit(v.clone()),
+                    span,
+                })
             }
             Tok::LBracket => self.parse_list_literal(),
             Tok::LParen => self.parse_paren(),
@@ -334,41 +437,76 @@ impl<'a> Parser<'a> {
             }
             Tok::RBracket => Err(LogoError::parse("] without [", span)),
             Tok::RParen => Err(LogoError::parse(") without (", span)),
-            Tok::Plus | Tok::Star | Tok::Slash | Tok::Eq | Tok::Lt | Tok::Gt | Tok::Le | Tok::Ge | Tok::Ne => {
-                Err(LogoError::parse("expected a value before this operator", span))
-            }
+            Tok::Plus
+            | Tok::Star
+            | Tok::Slash
+            | Tok::Eq
+            | Tok::Lt
+            | Tok::Gt
+            | Tok::Le
+            | Tok::Ge
+            | Tok::Ne => Err(LogoError::parse(
+                "expected a value before this operator",
+                span,
+            )),
             Tok::Minus { .. } => unreachable!("minus handled by parse_unary"),
         }
     }
 
     /// A call to `name` (already consumed, at `name_span`). `explicit` = Some(arg count) when
     /// inside a `( name … )` form — the args are pre-parsed by the caller.
-    fn parse_call(&mut self, name: &str, name_span: Span, explicit: Option<Vec<Expr>>) -> Result<Expr, LogoError> {
+    fn parse_call(
+        &mut self,
+        name: &str,
+        name_span: Span,
+        explicit: Option<Vec<Expr>>,
+    ) -> Result<Expr, LogoError> {
         let (b, arity, vararg) = if let Some(def) = builtins::lookup(name) {
             if matches!(def.id, B::True) {
-                return Ok(Expr { kind: ExprKind::Lit(Value::Bool(true)), span: name_span });
+                return Ok(Expr {
+                    kind: ExprKind::Lit(Value::Bool(true)),
+                    span: name_span,
+                });
             }
             if matches!(def.id, B::False) {
-                return Ok(Expr { kind: ExprKind::Lit(Value::Bool(false)), span: name_span });
+                return Ok(Expr {
+                    kind: ExprKind::Lit(Value::Bool(false)),
+                    span: name_span,
+                });
             }
             (Some(def.id), def.arity as usize, def.vararg)
         } else if let Some(&a) = self.arities.get(name) {
             (None, a as usize, false)
         } else if name == "to" || name == "end" {
-            return Err(LogoError::parse(&format!("{} can only appear at the top level", name), name_span));
+            return Err(LogoError::parse(
+                &format!("{} can only appear at the top level", name),
+                name_span,
+            ));
         } else {
-            return Err(LogoError::parse(&format!("I don't know how to {}", name), name_span));
+            return Err(LogoError::parse(
+                &format!("I don't know how to {}", name),
+                name_span,
+            ));
         };
 
         let args = match explicit {
             Some(args) => {
                 if vararg {
                     if args.is_empty() {
-                        return Err(LogoError::parse(&format!("{} needs at least one input", name), name_span));
+                        return Err(LogoError::parse(
+                            &format!("{} needs at least one input", name),
+                            name_span,
+                        ));
                     }
                 } else if args.len() != arity {
                     return Err(LogoError::parse(
-                        &format!("{} takes {} input{}, not {}", name, arity, if arity == 1 { "" } else { "s" }, args.len()),
+                        &format!(
+                            "{} takes {} input{}, not {}",
+                            name,
+                            arity,
+                            if arity == 1 { "" } else { "s" },
+                            args.len()
+                        ),
                         name_span,
                     ));
                 }
@@ -378,14 +516,20 @@ impl<'a> Parser<'a> {
                 let mut args = Vec::with_capacity(arity);
                 for _ in 0..arity {
                     if self.peek().is_none() {
-                        return Err(LogoError::parse(&format!("not enough inputs to {}", name), name_span));
+                        return Err(LogoError::parse(
+                            &format!("not enough inputs to {}", name),
+                            name_span,
+                        ));
                     }
                     args.push(self.parse_expr()?);
                 }
                 // `param "size 40 [10 80]` — the range list is an optional trailing input. A bare
                 // list can never legally start a statement, so the greedy grab is unambiguous.
                 if matches!(b, Some(B::Param)) {
-                    if let Some(Token { tok: Tok::LBracket, .. }) = self.peek() {
+                    if let Some(Token {
+                        tok: Tok::LBracket, ..
+                    }) = self.peek()
+                    {
                         args.push(self.parse_list_literal()?);
                     }
                 }
@@ -393,8 +537,17 @@ impl<'a> Parser<'a> {
             }
         };
 
-        let span = args.last().map_or(name_span, |a| Span::merge(name_span, a.span));
-        Ok(Expr { kind: ExprKind::Call { b, name: Rc::from(name), args }, span })
+        let span = args
+            .last()
+            .map_or(name_span, |a| Span::merge(name_span, a.span));
+        Ok(Expr {
+            kind: ExprKind::Call {
+                b,
+                name: Rc::from(name),
+                args,
+            },
+            span,
+        })
     }
 
     /// `( … )`: either the explicit-arity call form `(sum 1 2 3)` or a grouped expression.
@@ -402,8 +555,14 @@ impl<'a> Parser<'a> {
         let open = self.toks[self.pos].span;
         self.pos += 1;
         // `( ident … )` where ident is a known callee → explicit-arity call.
-        if let Some(Token { tok: Tok::Ident(name), span, .. }) = self.peek() {
-            let callable = builtins::lookup(name).is_some() || self.arities.contains_key(name.as_str());
+        if let Some(Token {
+            tok: Tok::Ident(name),
+            span,
+            ..
+        }) = self.peek()
+        {
+            let callable =
+                builtins::lookup(name).is_some() || self.arities.contains_key(name.as_str());
             if callable {
                 let name = name.clone();
                 let name_span = *span;
@@ -412,7 +571,9 @@ impl<'a> Parser<'a> {
                 loop {
                     match self.peek() {
                         None => return Err(LogoError::parse("( without )", open)),
-                        Some(Token { tok: Tok::RParen, .. }) => {
+                        Some(Token {
+                            tok: Tok::RParen, ..
+                        }) => {
                             self.pos += 1;
                             break;
                         }
@@ -424,7 +585,9 @@ impl<'a> Parser<'a> {
         }
         let inner = self.parse_expr()?;
         match self.peek() {
-            Some(Token { tok: Tok::RParen, .. }) => {
+            Some(Token {
+                tok: Tok::RParen, ..
+            }) => {
                 self.pos += 1;
                 Ok(inner)
             }
@@ -439,7 +602,10 @@ impl<'a> Parser<'a> {
         self.pos += 1;
         let value = self.parse_list_items(open)?;
         let close = self.toks[self.pos - 1].span; // parse_list_items consumed the `]`
-        Ok(Expr { kind: ExprKind::Lit(value), span: Span::merge(open, close) })
+        Ok(Expr {
+            kind: ExprKind::Lit(value),
+            span: Span::merge(open, close),
+        })
     }
 
     /// Collect items until the matching `]` (consumed). Returns the list value; its `lit` range
@@ -456,7 +622,10 @@ impl<'a> Parser<'a> {
                 Tok::RBracket => {
                     let content_end = self.pos;
                     self.pos += 1;
-                    let lv = ListVal { items, lit: Some(pack_range(content_start, content_end)) };
+                    let lv = ListVal {
+                        items,
+                        lit: Some(pack_range(content_start, content_end)),
+                    };
                     return Ok(Value::List(Rc::new(lv)));
                 }
                 Tok::LBracket => {
@@ -484,7 +653,13 @@ impl<'a> Parser<'a> {
                 }
                 Tok::Minus { unary: true } => {
                     // `[-5 3]` reads as the number -5.
-                    if let Some(Token { tok: Tok::Num(n), .. }) = self.toks.get(self.pos + 1).filter(|_| self.pos + 1 < self.end) {
+                    if let Some(Token {
+                        tok: Tok::Num(n), ..
+                    }) = self
+                        .toks
+                        .get(self.pos + 1)
+                        .filter(|_| self.pos + 1 < self.end)
+                    {
                         items.push(Value::Num(-n));
                         self.pos += 2;
                     } else {

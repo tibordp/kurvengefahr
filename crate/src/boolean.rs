@@ -55,13 +55,22 @@ pub fn combine(
     for shape in &shapes {
         for contour in shape {
             if contour.len() < 3 {
-                continue
+                continue;
             }
             let points = contour
                 .iter()
-                .map(|p| Point { x: p[0], y: p[1], pressure: 1.0 })
+                .map(|p| Point {
+                    x: p[0],
+                    y: p[1],
+                    pressure: 1.0,
+                })
                 .collect();
-            out.push(Stroke { points, pen: 0, reversible: true, group: 0 });
+            out.push(Stroke {
+                points,
+                pen: 0,
+                reversible: true,
+                group: 0,
+            });
         }
     }
     out
@@ -81,7 +90,11 @@ mod tests {
         let (sx, ss) = ring(&[(0.0, 0.0), (10.0, 0.0), (10.0, 10.0), (0.0, 10.0)]);
         let (cx, cs) = ring(&[(5.0, 5.0), (15.0, 5.0), (15.0, 15.0), (5.0, 15.0)]);
         let out = combine(0, &sx, &ss, &cx, &cs);
-        assert_eq!(out.len(), 1, "union of overlapping squares is a single contour");
+        assert_eq!(
+            out.len(),
+            1,
+            "union of overlapping squares is a single contour"
+        );
     }
 
     #[test]
@@ -90,16 +103,36 @@ mod tests {
         let (sx, ss) = ring(&[(0.0, 0.0), (20.0, 0.0), (20.0, 20.0), (0.0, 20.0)]);
         let (cx, cs) = ring(&[(5.0, 5.0), (15.0, 5.0), (15.0, 15.0), (5.0, 15.0)]);
         let out = combine(2, &sx, &ss, &cx, &cs);
-        assert_eq!(out.len(), 2, "difference with an interior clip yields outer + hole");
+        assert_eq!(
+            out.len(),
+            2,
+            "difference with an interior clip yields outer + hole"
+        );
     }
 
     #[test]
     fn strips_duplicate_closing_vertex() {
         // Rings that close explicitly (last == first), as our tessellated outlines do.
-        let (sx, ss) = ring(&[(0.0, 0.0), (10.0, 0.0), (10.0, 10.0), (0.0, 10.0), (0.0, 0.0)]);
-        let (cx, cs) = ring(&[(5.0, 5.0), (15.0, 5.0), (15.0, 15.0), (5.0, 15.0), (5.0, 5.0)]);
+        let (sx, ss) = ring(&[
+            (0.0, 0.0),
+            (10.0, 0.0),
+            (10.0, 10.0),
+            (0.0, 10.0),
+            (0.0, 0.0),
+        ]);
+        let (cx, cs) = ring(&[
+            (5.0, 5.0),
+            (15.0, 5.0),
+            (15.0, 15.0),
+            (5.0, 15.0),
+            (5.0, 5.0),
+        ]);
         let out = combine(0, &sx, &ss, &cx, &cs);
-        assert_eq!(out.len(), 1, "closed-with-duplicate rings still union cleanly");
+        assert_eq!(
+            out.len(),
+            1,
+            "closed-with-duplicate rings still union cleanly"
+        );
     }
 
     #[test]

@@ -75,7 +75,11 @@ pub fn generate(bytes: &[u8], params: &str) -> Result<Vec<Stroke>, String> {
         return Ok(vec![]);
     }
     let cam = Camera::new(&p, &mesh);
-    let zbuf = if p.occluded { Some(view::zbuffer(&mesh, &cam)) } else { None };
+    let zbuf = if p.occluded {
+        Some(view::zbuffer(&mesh, &cam))
+    } else {
+        None
+    };
     // Visibility bias: an edge lies exactly on its faces, so it must beat the z-buffer by a
     // model-scale margin; see `view` for the silhouette-safe reference depth.
     let bias = mesh.radius * 0.01;
@@ -90,7 +94,11 @@ pub fn generate(bytes: &[u8], params: &str) -> Result<Vec<Stroke>, String> {
             let n1 = mesh.normals[e.faces[0] as usize];
             let n2 = mesh.normals[e.faces[1] as usize];
             let crease = n1[0] * n2[0] + n1[1] * n2[1] + n1[2] * n2[2] < cos_crease;
-            let mid = [(va[0] + vb[0]) / 2.0, (va[1] + vb[1]) / 2.0, (va[2] + vb[2]) / 2.0];
+            let mid = [
+                (va[0] + vb[0]) / 2.0,
+                (va[1] + vb[1]) / 2.0,
+                (va[2] + vb[2]) / 2.0,
+            ];
             crease || (cam.facing(n1, mid) != cam.facing(n2, mid))
         };
         if draw {
@@ -110,7 +118,10 @@ fn dedupe(strokes: &mut Vec<Stroke>) {
     strokes.retain(|s| {
         let q = |v: f32| (v * 20.0).round() as i32;
         let a = (q(s.points[0].x), q(s.points[0].y));
-        let b = (q(s.points[s.points.len() - 1].x), q(s.points[s.points.len() - 1].y));
+        let b = (
+            q(s.points[s.points.len() - 1].x),
+            q(s.points[s.points.len() - 1].y),
+        );
         seen.insert(if a <= b { (a, b) } else { (b, a) })
     });
 }
@@ -183,7 +194,10 @@ mod tests {
             let len0 = total_len(&strokes[..1]);
             for s in &strokes {
                 let l = total_len(std::slice::from_ref(s));
-                assert!((l - len0).abs() < 0.1, "{proj}: square sides should match: {l} vs {len0}");
+                assert!(
+                    (l - len0).abs() < 0.1,
+                    "{proj}: square sides should match: {l} vs {len0}"
+                );
             }
         }
     }
@@ -193,7 +207,10 @@ mod tests {
         let transparent = generate(&cube_stl(), r#"{"occluded": false}"#).unwrap();
         let occluded = generate(&cube_stl(), r#"{"occluded": true}"#).unwrap();
         let (lt, lo) = (total_len(&transparent), total_len(&occluded));
-        assert!(lo < lt - 5.0, "hidden lines should remove noticeable ink: {lo} vs {lt}");
+        assert!(
+            lo < lt - 5.0,
+            "hidden lines should remove noticeable ink: {lo} vs {lt}"
+        );
         assert!(lo > lt * 0.3, "most silhouette ink survives: {lo} vs {lt}");
     }
 
@@ -208,12 +225,17 @@ mod tests {
             .map(|s| {
                 let (a, b) = (&s.points[0], &s.points[1]);
                 // Undirected angle from the vertical axis (stroke direction is arbitrary).
-                let ang = (b.x - a.x).atan2(b.y - a.y).rem_euclid(std::f32::consts::PI);
+                let ang = (b.x - a.x)
+                    .atan2(b.y - a.y)
+                    .rem_euclid(std::f32::consts::PI);
                 ang.min(std::f32::consts::PI - ang)
             })
             .filter(|d| *d < 0.3)
             .collect();
-        assert!(dirs.len() >= 4, "expected the 4 near-vertical cube edges: {dirs:?}");
+        assert!(
+            dirs.len() >= 4,
+            "expected the 4 near-vertical cube edges: {dirs:?}"
+        );
         let d0 = dirs[0];
         assert!(
             dirs.iter().filter(|d| (**d - d0).abs() < 1e-4).count() >= 4,
@@ -242,6 +264,9 @@ mod tests {
         let kept = pos.len() / 9;
         assert!((3..=4).contains(&kept), "stride decimation kept {kept}");
         assert!((radius - 3.0f32.sqrt()).abs() < 1e-5);
-        assert!(pos.iter().all(|v| v.abs() <= 1.0 + 1e-5), "positions should be centered");
+        assert!(
+            pos.iter().all(|v| v.abs() <= 1.0 + 1e-5),
+            "positions should be centered"
+        );
     }
 }

@@ -18,10 +18,10 @@ fn map_char(c: char) -> Option<char> {
         'Z' => 'z',
         // Typographic punctuation → ASCII equivalents.
         '\u{2018}' | '\u{2019}' | '\u{2032}' | '`' => '\'', // ‘ ’ ′ `
-        '\u{201C}' | '\u{201D}' | '\u{2033}' => '"',         // “ ” ″
-        '\u{2013}' | '\u{2014}' | '\u{2212}' => '-',         // – — −
-        '\u{2026}' => '.',                                   // …
-        '\u{00A0}' => ' ',                                   // nbsp
+        '\u{201C}' | '\u{201D}' | '\u{2033}' => '"',        // “ ” ″
+        '\u{2013}' | '\u{2014}' | '\u{2212}' => '-',        // – — −
+        '\u{2026}' => '.',                                  // …
+        '\u{00A0}' => ' ',                                  // nbsp
         // Common Latin-1 accents → base letter.
         'á' | 'à' | 'â' | 'ä' | 'ã' | 'å' => 'a',
         'é' | 'è' | 'ê' | 'ë' => 'e',
@@ -67,7 +67,13 @@ pub fn substitute(text: &str) -> (String, String) {
     }
     let note = subs
         .iter()
-        .map(|&(o, r)| if r == '∅' { format!("{o}→(dropped)") } else { format!("{o}→{r}") })
+        .map(|&(o, r)| {
+            if r == '∅' {
+                format!("{o}→(dropped)")
+            } else {
+                format!("{o}→{r}")
+            }
+        })
         .collect::<Vec<_>>()
         .join(", ");
     (out, note)

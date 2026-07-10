@@ -30,10 +30,19 @@ pub fn apply(strokes: &[Stroke], s: &EffectSpec) -> Vec<Stroke> {
                     let falloff = (1.0 - r / radius).clamp(0.0, 1.0);
                     let a = max_angle * falloff;
                     let (sa, ca) = a.sin_cos();
-                    Point { x: cx + dx * ca - dy * sa, y: cy + dx * sa + dy * ca, pressure: p.pressure }
+                    Point {
+                        x: cx + dx * ca - dy * sa,
+                        y: cy + dx * sa + dy * ca,
+                        pressure: p.pressure,
+                    }
                 })
                 .collect();
-            Stroke { points: out, pen: stroke.pen, reversible: stroke.reversible, group: stroke.group }
+            Stroke {
+                points: out,
+                pen: stroke.pen,
+                reversible: stroke.reversible,
+                group: stroke.group,
+            }
         })
         .collect()
 }

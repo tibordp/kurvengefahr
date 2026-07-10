@@ -70,7 +70,12 @@ fn analyze_impl(source: &str) -> Analysis {
     let diag = |e: &LogoError, severity: &'static str, src: &str| {
         let from = utf16_offset(src, e.span.start as usize);
         let to = utf16_offset(src, e.span.end as usize).max(from);
-        Diagnostic { from, to, severity, message: e.message.clone() }
+        Diagnostic {
+            from,
+            to,
+            severity,
+            message: e.message.clone(),
+        }
     };
 
     let tokens = match lex::lex(source) {
@@ -114,14 +119,21 @@ fn analyze_impl(source: &str) -> Analysis {
 fn warn(out: &mut Analysis, source: &str, span: Span, message: &str) {
     let from = utf16_offset(source, span.start as usize);
     let to = utf16_offset(source, span.end as usize).max(from);
-    out.diagnostics.push(Diagnostic { from, to, severity: "warning", message: message.to_string() });
+    out.diagnostics.push(Diagnostic {
+        from,
+        to,
+        severity: "warning",
+        message: message.to_string(),
+    });
 }
 
 /// Walk a statement list for `param`/`make` declarations. `top_level` gates whether `param`
 /// produces a knob (inside a procedure it only warns).
 fn collect_globals(body: &[Expr], source: &str, top_level: bool, out: &mut Analysis) {
     for stmt in body {
-        let ExprKind::Call { b, args, .. } = &stmt.kind else { continue };
+        let ExprKind::Call { b, args, .. } = &stmt.kind else {
+            continue;
+        };
         match b {
             Some(B::Param) => {
                 if !top_level {
@@ -133,32 +145,59 @@ fn collect_globals(body: &[Expr], source: &str, top_level: bool, out: &mut Analy
                     continue;
                 };
                 let Some(default) = args.get(1).and_then(literal_num) else {
-                    warn(out, source, stmt.span, "param needs a literal number default to appear in the inspector");
+                    warn(
+                        out,
+                        source,
+                        stmt.span,
+                        "param needs a literal number default to appear in the inspector",
+                    );
                     continue;
                 };
                 let range = args.get(2).and_then(literal_range);
                 if args.len() > 2 && range.is_none() {
-                    warn(out, source, stmt.span, "param's range must be literal numbers, like [10 80] or [10 80 5]");
+                    warn(
+                        out,
+                        source,
+                        stmt.span,
+                        "param's range must be literal numbers, like [10 80] or [10 80 5]",
+                    );
                 }
                 if let Some(prev) = out.params.iter().position(|p| p.name == name) {
-                    warn(out, source, stmt.span, &format!("param \"{} is declared twice — the last declaration wins", name));
+                    warn(
+                        out,
+                        source,
+                        stmt.span,
+                        &format!(
+                            "param \"{} is declared twice — the last declaration wins",
+                            name
+                        ),
+                    );
                     out.params.remove(prev);
                 }
                 let (min, max, step) = match range {
-                    Some((lo, hi, step)) => (Some(lo.min(hi)), Some(lo.max(hi)), step.filter(|&s| s > 0.0)),
+                    Some((lo, hi, step)) => (
+                        Some(lo.min(hi)),
+                        Some(lo.max(hi)),
+                        step.filter(|&s| s > 0.0),
+                    ),
                     None => (None, None, None),
                 };
                 if !out.globals.contains(&name) {
                     out.globals.push(name.clone());
                 }
-                out.params.push(ParamDecl { name, kind: "number", default, min, max, step });
+                out.params.push(ParamDecl {
+                    name,
+                    kind: "number",
+                    default,
+                    min,
+                    max,
+                    step,
+                });
             }
-            Some(B::Make) | Some(B::LocalMake) => {
-                if top_level && matches!(b, Some(B::Make)) {
-                    if let Some(name) = literal_word(&args[0]) {
-                        if !out.globals.contains(&name) {
-                            out.globals.push(name);
-                        }
+            Some(B::Make) | Some(B::LocalMake) if top_level && matches!(b, Some(B::Make)) => {
+                if let Some(name) = literal_word(&args[0]) {
+                    if !out.globals.contains(&name) {
+                        out.globals.push(name);
                     }
                 }
             }
@@ -187,7 +226,9 @@ fn literal_num(e: &Expr) -> Option<f64> {
 
 /// `[min max]` or `[min max step]` of literal numbers.
 fn literal_range(e: &Expr) -> Option<(f64, f64, Option<f64>)> {
-    let ExprKind::Lit(Value::List(l)) = &e.kind else { return None };
+    let ExprKind::Lit(Value::List(l)) = &e.kind else {
+        return None;
+    };
     if !(2..=3).contains(&l.items.len()) {
         return None;
     }
@@ -214,7 +255,13 @@ pub fn builtins_json() -> String {
     }
     let entries: Vec<Entry> = BUILTINS
         .iter()
-        .map(|b| Entry { name: b.name, aliases: b.aliases, args: b.args, doc: b.doc, category: b.category })
+        .map(|b| Entry {
+            name: b.name,
+            aliases: b.aliases,
+            args: b.args,
+            doc: b.doc,
+            category: b.category,
+        })
         .collect();
     serde_json::to_string(&entries).expect("builtins serialize")
 }
@@ -276,7 +323,10 @@ mod tests {
     fn param_in_procedure_warns() {
         let a = parsed("to f\nparam \"x 1\nfd :x\nend\nf");
         assert_eq!(a["params"].as_array().unwrap().len(), 0);
-        assert!(a["diagnostics"][0]["message"].as_str().unwrap().contains("top level"));
+        assert!(a["diagnostics"][0]["message"]
+            .as_str()
+            .unwrap()
+            .contains("top level"));
     }
 
     #[test]
@@ -293,7 +343,11 @@ mod tests {
         let a = parsed("make \"phase 0\nto petal :len :w\nfd :len\nend\npetal 5 1");
         assert_eq!(a["procs"][0]["name"], "petal");
         assert_eq!(a["procs"][0]["argNames"][1], "w");
-        assert!(a["globals"].as_array().unwrap().iter().any(|g| g == "phase"));
+        assert!(a["globals"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|g| g == "phase"));
     }
 
     #[test]
@@ -311,7 +365,10 @@ mod tests {
         assert_eq!(d["severity"], "error");
         assert_eq!(d["from"], 5);
         assert_eq!(d["to"], 9);
-        assert!(d["message"].as_str().unwrap().contains("I don't know how to nope"));
+        assert!(d["message"]
+            .as_str()
+            .unwrap()
+            .contains("I don't know how to nope"));
     }
 
     #[test]

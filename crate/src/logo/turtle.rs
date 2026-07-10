@@ -195,7 +195,11 @@ impl Turtle {
 
     /// Turtle space (y-up) → element-local page space (y-down), with the current pressure.
     fn emit(&self, x: f64, y: f64) -> Point {
-        Point { x: x as f32, y: -y as f32, pressure: self.pressure as f32 }
+        Point {
+            x: x as f32,
+            y: -y as f32,
+            pressure: self.pressure as f32,
+        }
     }
 
     /// Make sure the current polyline starts at the turtle's position.
@@ -282,8 +286,16 @@ mod tests {
         assert_eq!(s.len(), 1);
         let pts = xy(&s[0]);
         assert_eq!(pts.len(), 3);
-        assert!((pts[1].0 - 0.0).abs() < 1e-4 && (pts[1].1 - -10.0).abs() < 1e-4, "fd goes up (page -y): {:?}", pts);
-        assert!((pts[2].0 - 10.0).abs() < 1e-4 && (pts[2].1 - -10.0).abs() < 1e-4, "rt 90 then fd goes right: {:?}", pts);
+        assert!(
+            (pts[1].0 - 0.0).abs() < 1e-4 && (pts[1].1 - -10.0).abs() < 1e-4,
+            "fd goes up (page -y): {:?}",
+            pts
+        );
+        assert!(
+            (pts[2].0 - 10.0).abs() < 1e-4 && (pts[2].1 - -10.0).abs() < 1e-4,
+            "rt 90 then fd goes right: {:?}",
+            pts
+        );
     }
 
     #[test]

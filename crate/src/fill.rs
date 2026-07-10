@@ -15,6 +15,9 @@ const MAX_CELLS: usize = 8_000_000;
 /// Flood fill from `(seed_x, seed_y)` on the page `[0,0]..[page_w,page_h]` (mm). `xy`/`offsets` are
 /// the boundary strokes (flat points + CSR stroke offsets, point units), each `stroke_width` mm
 /// thick; `res` is the requested grid cell size (mm).
+// Mirrors the flat wasm boundary (positional by design); `!(x > 0.0)` deliberately rejects NaN
+// along with non-positive values, which `x <= 0.0` would let through.
+#[allow(clippy::too_many_arguments, clippy::neg_cmp_op_on_partial_ord)]
 pub fn flood(
     xy: &[f32],
     offsets: &[u32],
@@ -163,7 +166,12 @@ mod tests {
     }
 
     fn bbox(pts: &[Point]) -> (f32, f32, f32, f32) {
-        let mut b = (f32::INFINITY, f32::INFINITY, f32::NEG_INFINITY, f32::NEG_INFINITY);
+        let mut b = (
+            f32::INFINITY,
+            f32::INFINITY,
+            f32::NEG_INFINITY,
+            f32::NEG_INFINITY,
+        );
         for p in pts {
             b = (b.0.min(p.x), b.1.min(p.y), b.2.max(p.x), b.3.max(p.y));
         }
@@ -186,7 +194,11 @@ mod tests {
         let out = flood(&xy, &off, 20.0, 20.0, 0.4, 50.0, 50.0, 0.1);
         assert_eq!(out.len(), 1);
         let p = &out[0].points;
-        assert_eq!((p[0].x, p[0].y), (p[p.len() - 1].x, p[p.len() - 1].y), "ring is closed");
+        assert_eq!(
+            (p[0].x, p[0].y),
+            (p[p.len() - 1].x, p[p.len() - 1].y),
+            "ring is closed"
+        );
         // The fill abuts the ink from inside: roughly the square inset by the half stroke width.
         let (x0, y0, x1, y1) = bbox(p);
         for (got, want) in [(x0, 10.2), (y0, 10.2), (x1, 29.8), (y1, 29.8)] {
@@ -205,8 +217,20 @@ mod tests {
     fn island_inside_becomes_a_hole() {
         // The square plus a small closed diamond floating inside it.
         let (xy, off) = flat(&[
-            vec![(10.0, 10.0), (30.0, 10.0), (30.0, 30.0), (10.0, 30.0), (10.0, 10.0)],
-            vec![(20.0, 17.0), (23.0, 20.0), (20.0, 23.0), (17.0, 20.0), (20.0, 17.0)],
+            vec![
+                (10.0, 10.0),
+                (30.0, 10.0),
+                (30.0, 30.0),
+                (10.0, 30.0),
+                (10.0, 10.0),
+            ],
+            vec![
+                (20.0, 17.0),
+                (23.0, 20.0),
+                (20.0, 23.0),
+                (17.0, 20.0),
+                (20.0, 17.0),
+            ],
         ]);
         let out = flood(&xy, &off, 12.0, 12.0, 0.4, 50.0, 50.0, 0.1);
         assert_eq!(out.len(), 2, "outer ring + the island's hole ring");
@@ -219,7 +243,10 @@ mod tests {
         // Outside the square: the page-edge-bounded region, with the square as a hole.
         assert_eq!(out.len(), 2);
         let (x0, y0, x1, y1) = bbox(&out[0].points);
-        assert!(x0 < 0.3 && y0 < 0.3 && x1 > 49.7 && y1 > 49.7, "outer ring hugs the page");
+        assert!(
+            x0 < 0.3 && y0 < 0.3 && x1 > 49.7 && y1 > 49.7,
+            "outer ring hugs the page"
+        );
     }
 
     #[test]
@@ -233,7 +260,10 @@ mod tests {
         ]);
         let out = flood(&xy, &off, 20.0, 20.0, 0.4, 50.0, 50.0, 0.1);
         let (x0, y0, x1, y1) = bbox(&out[0].points);
-        assert!(x0 < 0.3 && y0 < 0.3 && x1 > 49.7 && y1 > 49.7, "fill escapes through the gap");
+        assert!(
+            x0 < 0.3 && y0 < 0.3 && x1 > 49.7 && y1 > 49.7,
+            "fill escapes through the gap"
+        );
 
         // A zero-width boundary must still block: the rasterizer's half-width floor keeps even a
         // hairline 4-connected.
@@ -241,7 +271,10 @@ mod tests {
         let out = flood(&xy, &off, 20.0, 20.0, 0.0, 50.0, 50.0, 0.1);
         assert_eq!(out.len(), 1);
         let (x0, _, x1, _) = bbox(&out[0].points);
-        assert!(x0 > 9.5 && x1 < 30.5, "hairline square still contains the fill");
+        assert!(
+            x0 > 9.5 && x1 < 30.5,
+            "hairline square still contains the fill"
+        );
     }
 
     #[test]

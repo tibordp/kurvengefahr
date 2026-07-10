@@ -9,7 +9,11 @@ use crate::geom::{Point, Stroke};
 
 #[inline]
 fn lerp(a: Point, b: Point, t: f32) -> Point {
-    Point { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, pressure: a.pressure + (b.pressure - a.pressure) * t }
+    Point {
+        x: a.x + (b.x - a.x) * t,
+        y: a.y + (b.y - a.y) * t,
+        pressure: a.pressure + (b.pressure - a.pressure) * t,
+    }
 }
 
 /// Split each segment into ≤`max_seg`-long pieces, keeping every original vertex (so the shape is
@@ -32,7 +36,11 @@ fn subdivide(pts: &[Point], max_seg: f32) -> Vec<Point> {
 fn relax(p: Point, a: Point, b: Point, lambda: f32) -> Point {
     let mx = (a.x + b.x) * 0.5;
     let my = (a.y + b.y) * 0.5;
-    Point { x: p.x + (mx - p.x) * lambda, y: p.y + (my - p.y) * lambda, pressure: p.pressure }
+    Point {
+        x: p.x + (mx - p.x) * lambda,
+        y: p.y + (my - p.y) * lambda,
+        pressure: p.pressure,
+    }
 }
 
 fn smooth_once(pts: &[Point], lambda: f32, closed: bool) -> Vec<Point> {
@@ -71,7 +79,12 @@ pub fn apply(strokes: &[Stroke], s: &EffectSpec) -> Vec<Stroke> {
             for _ in 0..iters {
                 pts = smooth_once(&pts, lambda, closed);
             }
-            Stroke { points: pts, pen: stroke.pen, reversible: stroke.reversible, group: stroke.group }
+            Stroke {
+                points: pts,
+                pen: stroke.pen,
+                reversible: stroke.reversible,
+                group: stroke.group,
+            }
         })
         .collect()
 }

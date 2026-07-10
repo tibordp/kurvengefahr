@@ -72,10 +72,19 @@ pub fn generate(json: &str) -> Vec<Stroke> {
 // ---- helpers ------------------------------------------------------------------------------------
 
 fn pt(x: f32, y: f32) -> Point {
-    Point { x, y, pressure: 1.0 }
+    Point {
+        x,
+        y,
+        pressure: 1.0,
+    }
 }
 fn poly(points: Vec<Point>) -> Stroke {
-    Stroke { points, pen: 0, reversible: true, group: 0 }
+    Stroke {
+        points,
+        pen: 0,
+        reversible: true,
+        group: 0,
+    }
 }
 
 /// Scale a set of polylines to fit a box `[0,w]×[0,h]` with a margin, preserving aspect, centred.
@@ -98,7 +107,13 @@ fn fit(polys: Vec<Vec<(f32, f32)>>, w: f32, h: f32) -> Vec<Stroke> {
     polys
         .into_iter()
         .filter(|pl| pl.len() >= 2)
-        .map(|pl| poly(pl.into_iter().map(|(x, y)| pt(ox + x * s, oy + y * s)).collect()))
+        .map(|pl| {
+            poly(
+                pl.into_iter()
+                    .map(|(x, y)| pt(ox + x * s, oy + y * s))
+                    .collect(),
+            )
+        })
         .collect()
 }
 
@@ -219,7 +234,11 @@ fn truchet(p: &Params) -> Vec<Stroke> {
             let (ox, oy) = (gx as f32 * s, gy as f32 * s);
             let flip = rng.next() & 1 == 0;
             if p.style == "lines" {
-                let seg = if flip { [(ox, oy), (ox + s, oy + s)] } else { [(ox + s, oy), (ox, oy + s)] };
+                let seg = if flip {
+                    [(ox, oy), (ox + s, oy + s)]
+                } else {
+                    [(ox + s, oy), (ox, oy + s)]
+                };
                 out.push(poly(vec![pt(seg[0].0, seg[0].1), pt(seg[1].0, seg[1].1)]));
             } else {
                 // Two quarter arcs joining edge midpoints (the classic Smith/Truchet tiling).
@@ -228,9 +247,23 @@ fn truchet(p: &Params) -> Vec<Stroke> {
                 let mut b = Vec::new();
                 if flip {
                     arc(ox, oy, r, 0.0, std::f32::consts::FRAC_PI_2, &mut a);
-                    arc(ox + s, oy + s, r, std::f32::consts::PI, std::f32::consts::PI + std::f32::consts::FRAC_PI_2, &mut b);
+                    arc(
+                        ox + s,
+                        oy + s,
+                        r,
+                        std::f32::consts::PI,
+                        std::f32::consts::PI + std::f32::consts::FRAC_PI_2,
+                        &mut b,
+                    );
                 } else {
-                    arc(ox + s, oy, r, std::f32::consts::FRAC_PI_2, std::f32::consts::PI, &mut a);
+                    arc(
+                        ox + s,
+                        oy,
+                        r,
+                        std::f32::consts::FRAC_PI_2,
+                        std::f32::consts::PI,
+                        &mut a,
+                    );
                     arc(ox, oy + s, r, -std::f32::consts::FRAC_PI_2, 0.0, &mut b);
                 }
                 out.push(poly(a.into_iter().map(|(x, y)| pt(x, y)).collect()));
@@ -261,7 +294,10 @@ fn voronoi(p: &Params) -> Vec<Stroke> {
     let n = p.points.clamp(3, 5000) as usize;
     let mut rng = Rng::new(p.seed);
     let pts: Vec<delaunator::Point> = (0..n)
-        .map(|_| delaunator::Point { x: (rng.f32() * p.width) as f64, y: (rng.f32() * p.height) as f64 })
+        .map(|_| delaunator::Point {
+            x: (rng.f32() * p.width) as f64,
+            y: (rng.f32() * p.height) as f64,
+        })
         .collect();
     let tri = delaunator::triangulate(&pts);
     if tri.triangles.is_empty() {
@@ -269,7 +305,13 @@ fn voronoi(p: &Params) -> Vec<Stroke> {
     }
     let ntri = tri.triangles.len() / 3;
     let cc: Vec<(f32, f32)> = (0..ntri)
-        .map(|t| circumcenter(&pts[tri.triangles[3 * t]], &pts[tri.triangles[3 * t + 1]], &pts[tri.triangles[3 * t + 2]]))
+        .map(|t| {
+            circumcenter(
+                &pts[tri.triangles[3 * t]],
+                &pts[tri.triangles[3 * t + 1]],
+                &pts[tri.triangles[3 * t + 2]],
+            )
+        })
         .collect();
     // Clip each Voronoi edge to the box so the unbounded hull cells crop cleanly (no spikes).
     let mut out = Vec::new();
@@ -287,7 +329,14 @@ fn voronoi(p: &Params) -> Vec<Stroke> {
 }
 
 /// Liang–Barsky clip of a segment to `[0,w]×[0,h]`; None if it misses the box entirely.
-fn clip_box(x0: f32, y0: f32, x1: f32, y1: f32, w: f32, h: f32) -> Option<((f32, f32), (f32, f32))> {
+fn clip_box(
+    x0: f32,
+    y0: f32,
+    x1: f32,
+    y1: f32,
+    w: f32,
+    h: f32,
+) -> Option<((f32, f32), (f32, f32))> {
     let (dx, dy) = (x1 - x0, y1 - y0);
     let p = [-dx, dx, -dy, dy];
     let q = [x0, w - x0, y0, h - y0];
@@ -335,7 +384,11 @@ fn vnoise(x: f32, y: f32, seed: u32) -> f32 {
     let (xi, yi) = (x.floor(), y.floor());
     let (xf, yf) = (x - xi, y - yi);
     let g = |ix: i32, iy: i32| -> f32 {
-        let h = hash((ix as u32).wrapping_mul(374761393) ^ (iy as u32).wrapping_mul(668265263) ^ seed.wrapping_mul(2246822519));
+        let h = hash(
+            (ix as u32).wrapping_mul(374761393)
+                ^ (iy as u32).wrapping_mul(668265263)
+                ^ seed.wrapping_mul(2246822519),
+        );
         h as f32 / u32::MAX as f32 * 2.0 - 1.0
     };
     let (x0, y0) = (xi as i32, yi as i32);
@@ -352,7 +405,15 @@ fn vnoise(x: f32, y: f32, seed: u32) -> f32 {
 
 /// Is (x,y) within `min_d` of an already-placed streamline point? Checks the 3×3 cells around it in
 /// the separation grid (cells sized `sep`, so anything within `sep` lands in a neighbour cell).
-fn flow_crowded(grid: &[Vec<(f32, f32)>], cols: i32, rows: i32, sep: f32, x: f32, y: f32, min_d2: f32) -> bool {
+fn flow_crowded(
+    grid: &[Vec<(f32, f32)>],
+    cols: i32,
+    rows: i32,
+    sep: f32,
+    x: f32,
+    y: f32,
+    min_d2: f32,
+) -> bool {
     let (cx, cy) = ((x / sep) as i32, (y / sep) as i32);
     for gy in (cy - 1).max(0)..=(cy + 1).min(rows - 1) {
         for gx in (cx - 1).max(0)..=(cx + 1).min(cols - 1) {
@@ -400,7 +461,12 @@ fn flow(p: &Params) -> Vec<Stroke> {
 
     let mut out = Vec::new();
     for (sx, sy) in seeds {
-        if sx < 0.0 || sy < 0.0 || sx > w || sy > h || flow_crowded(&grid, cols, rows, sep, sx, sy, min_d2) {
+        if sx < 0.0
+            || sy < 0.0
+            || sx > w
+            || sy > h
+            || flow_crowded(&grid, cols, rows, sep, sx, sy, min_d2)
+        {
             continue;
         }
         // Integrate one direction; `dir = -1` walks the field backwards. Returns points past the seed.
@@ -411,7 +477,12 @@ fn flow(p: &Params) -> Vec<Stroke> {
                 let a = vnoise(x * scale, y * scale, p.seed) * TAU;
                 x += dir * step_len * a.cos();
                 y += dir * step_len * a.sin();
-                if x < 0.0 || y < 0.0 || x > w || y > h || flow_crowded(grid, cols, rows, sep, x, y, min_d2) {
+                if x < 0.0
+                    || y < 0.0
+                    || x > w
+                    || y > h
+                    || flow_crowded(grid, cols, rows, sep, x, y, min_d2)
+                {
                     break;
                 }
                 pts.push((x, y));
@@ -449,7 +520,9 @@ fn flow_cell(x: f32, y: f32, sep: f32, cols: i32, rows: i32) -> Option<usize> {
 mod tests {
     use super::*;
     fn run(kind: &str) -> Vec<Stroke> {
-        generate(&format!(r#"{{"kind":"{kind}","width":120,"height":120,"seed":3}}"#))
+        generate(&format!(
+            r#"{{"kind":"{kind}","width":120,"height":120,"seed":3}}"#
+        ))
     }
     #[test]
     fn every_kind_produces_strokes() {

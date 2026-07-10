@@ -17,7 +17,9 @@ pub fn contours(grid: &Grid, p: &Params) -> Vec<Stroke> {
     // Binarize: ink where inkness clears the cutoff (threshold 0..255, higher = more ink). The grid
     // already folded in luma/composite/invert.
     let cutoff = 1.0 - p.threshold as f32 / 255.0;
-    let ink: Vec<bool> = (0..grid.w * grid.h).map(|i| grid.ink_at(i) >= cutoff).collect();
+    let ink: Vec<bool> = (0..grid.w * grid.h)
+        .map(|i| grid.ink_at(i) >= cutoff)
+        .collect();
     let sx = grid.tw / grid.w as f32;
     let sy = grid.th / grid.h as f32;
     trace_mask(&ink, grid.w, grid.h, sx, sy, p.simplify_tol, p.min_area)
@@ -37,7 +39,11 @@ pub(crate) fn trace_mask(
     min_area: f32,
 ) -> Vec<Stroke> {
     let is_ink = |x: i32, y: i32| -> bool {
-        x >= 0 && y >= 0 && (x as usize) < w && (y as usize) < h && mask[y as usize * w + x as usize]
+        x >= 0
+            && y >= 0
+            && (x as usize) < w
+            && (y as usize) < h
+            && mask[y as usize * w + x as usize]
     };
 
     // Build the directed boundary: each ink cell contributes the clockwise edges of its unit square
@@ -113,8 +119,10 @@ pub(crate) fn trace_mask(
             continue;
         }
         // Scale the rectilinear loop to mm, then smooth + decimate it (`simplify_tol` controls both).
-        let scaled: Vec<(f32, f32)> =
-            loop_v.iter().map(|v| (v.0 as f32 * sx, v.1 as f32 * sy)).collect();
+        let scaled: Vec<(f32, f32)> = loop_v
+            .iter()
+            .map(|v| (v.0 as f32 * sx, v.1 as f32 * sy))
+            .collect();
         // Elastic-band smoothing: contract the staircase taut, leashed to within `simplify_tol` of
         // the true edge, so quantization noise melts into smooth curves without drifting off-shape.
         let smoothed = elastic_smooth(&scaled, simplify_tol);
@@ -126,9 +134,18 @@ pub(crate) fn trace_mask(
             continue;
         }
         let points: Vec<Point> = (0..n)
-            .map(|k| Point { x: decimated[2 * k], y: decimated[2 * k + 1], pressure: 1.0 })
+            .map(|k| Point {
+                x: decimated[2 * k],
+                y: decimated[2 * k + 1],
+                pressure: 1.0,
+            })
             .collect();
-        out.push(Stroke { points, pen: 0, reversible: true, group: 0 });
+        out.push(Stroke {
+            points,
+            pen: 0,
+            reversible: true,
+            group: 0,
+        });
     }
     out
 }
@@ -253,7 +270,12 @@ mod tests {
     fn run(rows: &[&str], simplify_tol: f32, min_area: f32, invert: bool) -> Vec<Stroke> {
         let (rgba, w, h) = mask(rows);
         let grid = Grid::build(&rgba, w as usize, h as usize, w as f32, h as f32, invert);
-        let p = Params { simplify_tol, min_area, threshold: 128, ..Default::default() };
+        let p = Params {
+            simplify_tol,
+            min_area,
+            threshold: 128,
+            ..Default::default()
+        };
         contours(&grid, &p)
     }
 
@@ -280,7 +302,9 @@ mod tests {
 
     #[test]
     fn solid_block_is_one_contour() {
-        let out = trace(&["        ", " ####   ", " ####   ", " ####   ", " ####   ", "        "]);
+        let out = trace(&[
+            "        ", " ####   ", " ####   ", " ####   ", " ####   ", "        ",
+        ]);
         assert_eq!(out.len(), 1);
         // Closed loop: first point repeated at the end.
         let p = &out[0].points;
@@ -336,12 +360,36 @@ mod tests {
     fn smoothing_stays_within_tolerance() {
         // A solid block: smoothing must not push the outline more than ~tol beyond the true edges.
         let tol = 1.0;
-        let out = run(&["          ", " ######## ", " ######## ", " ######## ", " ######## ", " ######## ", " ######## ", " ######## ", " ######## ", "          "], tol, 1.0, false);
+        let out = run(
+            &[
+                "          ",
+                " ######## ",
+                " ######## ",
+                " ######## ",
+                " ######## ",
+                " ######## ",
+                " ######## ",
+                " ######## ",
+                " ######## ",
+                "          ",
+            ],
+            tol,
+            1.0,
+            false,
+        );
         assert_eq!(out.len(), 1);
         // The ink spans x,y ∈ [1,9]; with the leash every vertex stays within tol of that box.
         for p in &out[0].points {
-            assert!(p.x >= 1.0 - tol - 1e-3 && p.x <= 9.0 + tol + 1e-3, "x {} out of leash", p.x);
-            assert!(p.y >= 1.0 - tol - 1e-3 && p.y <= 9.0 + tol + 1e-3, "y {} out of leash", p.y);
+            assert!(
+                p.x >= 1.0 - tol - 1e-3 && p.x <= 9.0 + tol + 1e-3,
+                "x {} out of leash",
+                p.x
+            );
+            assert!(
+                p.y >= 1.0 - tol - 1e-3 && p.y <= 9.0 + tol + 1e-3,
+                "y {} out of leash",
+                p.y
+            );
         }
     }
 

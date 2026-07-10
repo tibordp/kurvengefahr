@@ -25,7 +25,10 @@ struct Params {
 }
 impl Default for Params {
     fn default() -> Self {
-        Self { unit_scale: 1.0, merge: true }
+        Self {
+            unit_scale: 1.0,
+            merge: true,
+        }
     }
 }
 
@@ -84,13 +87,24 @@ struct Rec {
 }
 impl Rec {
     fn f(&self, code: i32) -> f64 {
-        self.fields.iter().find(|(c, _)| *c == code).and_then(|(_, v)| v.parse().ok()).unwrap_or(0.0)
+        self.fields
+            .iter()
+            .find(|(c, _)| *c == code)
+            .and_then(|(_, v)| v.parse().ok())
+            .unwrap_or(0.0)
     }
     fn i(&self, code: i32) -> i32 {
-        self.fields.iter().find(|(c, _)| *c == code).and_then(|(_, v)| v.parse().ok()).unwrap_or(0)
+        self.fields
+            .iter()
+            .find(|(c, _)| *c == code)
+            .and_then(|(_, v)| v.parse().ok())
+            .unwrap_or(0)
     }
     fn s(&self, code: i32) -> Option<&str> {
-        self.fields.iter().find(|(c, _)| *c == code).map(|(_, v)| v.as_str())
+        self.fields
+            .iter()
+            .find(|(c, _)| *c == code)
+            .map(|(_, v)| v.as_str())
     }
 }
 
@@ -99,13 +113,18 @@ fn records(text: &str) -> Vec<Rec> {
     let mut recs: Vec<Rec> = Vec::new();
     let mut cur: Option<Rec> = None;
     while let (Some(code), Some(val)) = (lines.next(), lines.next()) {
-        let Ok(code) = code.trim().parse::<i32>() else { continue };
+        let Ok(code) = code.trim().parse::<i32>() else {
+            continue;
+        };
         let val = val.trim().to_string();
         if code == 0 {
             if let Some(r) = cur.take() {
                 recs.push(r);
             }
-            cur = Some(Rec { typ: val, fields: Vec::new() });
+            cur = Some(Rec {
+                typ: val,
+                fields: Vec::new(),
+            });
         } else if let Some(r) = cur.as_mut() {
             r.fields.push((code, val));
         }
@@ -162,10 +181,12 @@ fn push_bulge(out: &mut Ring, p0: (f64, f64), p1: (f64, f64), bulge: f64) {
 
 fn flatten_circle(cx: f64, cy: f64, r: f64) -> Ring {
     let n = crate::tess::CIRCLE_SEGMENTS;
-    (0..n).map(|i| {
-        let a = 2.0 * PI * i as f64 / n as f64;
-        (cx + r * a.cos(), cy + r * a.sin())
-    }).collect()
+    (0..n)
+        .map(|i| {
+            let a = 2.0 * PI * i as f64 / n as f64;
+            (cx + r * a.cos(), cy + r * a.sin())
+        })
+        .collect()
 }
 
 fn flatten_arc(cx: f64, cy: f64, r: f64, start_deg: f64, end_deg: f64) -> Ring {
@@ -175,10 +196,12 @@ fn flatten_arc(cx: f64, cy: f64, r: f64, start_deg: f64, end_deg: f64) -> Ring {
         sweep += 2.0 * PI; // DXF arcs run CCW from start to end
     }
     let steps = arc_steps(sweep);
-    (0..=steps).map(|i| {
-        let a = a0 + sweep * i as f64 / steps as f64;
-        (cx + r * a.cos(), cy + r * a.sin())
-    }).collect()
+    (0..=steps)
+        .map(|i| {
+            let a = a0 + sweep * i as f64 / steps as f64;
+            (cx + r * a.cos(), cy + r * a.sin())
+        })
+        .collect()
 }
 
 /// `major` is the major-axis endpoint relative to centre; minor = major rotated 90° × ratio.
@@ -187,10 +210,15 @@ fn flatten_ellipse(c: (f64, f64), major: (f64, f64), ratio: f64, t0: f64, t1: f6
     let sweep = t1 - t0;
     let closed = sweep.abs() >= 2.0 * PI - 1e-3;
     let steps = arc_steps(sweep);
-    let ring = (0..=steps).map(|i| {
-        let t = t0 + sweep * i as f64 / steps as f64;
-        (c.0 + major.0 * t.cos() + minor.0 * t.sin(), c.1 + major.1 * t.cos() + minor.1 * t.sin())
-    }).collect();
+    let ring = (0..=steps)
+        .map(|i| {
+            let t = t0 + sweep * i as f64 / steps as f64;
+            (
+                c.0 + major.0 * t.cos() + minor.0 * t.sin(),
+                c.1 + major.1 * t.cos() + minor.1 * t.sin(),
+            )
+        })
+        .collect();
     (ring, closed)
 }
 
@@ -199,14 +227,23 @@ fn flatten_ellipse(c: (f64, f64), major: (f64, f64), ratio: f64, t0: f64, t1: f6
 fn flatten_spline(degree: usize, knots: &[f64], ctrl: &[(f64, f64)], fit: &[(f64, f64)]) -> Ring {
     let (n, p) = (ctrl.len(), degree);
     if p == 0 || n < p + 1 || knots.len() != n + p + 1 {
-        return if fit.len() >= 2 { fit.to_vec() } else { ctrl.to_vec() };
+        return if fit.len() >= 2 {
+            fit.to_vec()
+        } else {
+            ctrl.to_vec()
+        };
     }
     let (lo, hi) = (knots[p], knots[n]);
-    let steps = (n * crate::tess::SPLINE_SAMPLES_PER_CTRL).clamp(crate::tess::SPLINE_MIN_SAMPLES, crate::tess::SPLINE_MAX_SAMPLES);
-    (0..=steps).map(|i| {
-        let t = (lo + (hi - lo) * i as f64 / steps as f64).clamp(lo, hi - 1e-9);
-        deboor(p, knots, ctrl, t)
-    }).collect()
+    let steps = (n * crate::tess::SPLINE_SAMPLES_PER_CTRL).clamp(
+        crate::tess::SPLINE_MIN_SAMPLES,
+        crate::tess::SPLINE_MAX_SAMPLES,
+    );
+    (0..=steps)
+        .map(|i| {
+            let t = (lo + (hi - lo) * i as f64 / steps as f64).clamp(lo, hi - 1e-9);
+            deboor(p, knots, ctrl, t)
+        })
+        .collect()
 }
 
 fn deboor(p: usize, knots: &[f64], ctrl: &[(f64, f64)], t: f64) -> (f64, f64) {
@@ -220,8 +257,15 @@ fn deboor(p: usize, knots: &[f64], ctrl: &[(f64, f64)], t: f64) -> (f64, f64) {
         for j in (r..=p).rev() {
             let i = k - p + j;
             let denom = knots[i + p - r + 1] - knots[i];
-            let a = if denom.abs() < 1e-12 { 0.0 } else { (t - knots[i]) / denom };
-            d[j] = (d[j - 1].0 + a * (d[j].0 - d[j - 1].0), d[j - 1].1 + a * (d[j].1 - d[j - 1].1));
+            let a = if denom.abs() < 1e-12 {
+                0.0
+            } else {
+                (t - knots[i]) / denom
+            };
+            d[j] = (
+                d[j - 1].0 + a * (d[j].0 - d[j - 1].0),
+                d[j - 1].1 + a * (d[j].1 - d[j - 1].1),
+            );
         }
     }
     d[p]
@@ -254,11 +298,21 @@ fn lwpoly_ring(r: &Rec) -> (Ring, bool) {
     }
     let mut out: Ring = vec![(verts[0].0, verts[0].1)];
     for i in 0..verts.len() - 1 {
-        push_bulge(&mut out, (verts[i].0, verts[i].1), (verts[i + 1].0, verts[i + 1].1), verts[i].2);
+        push_bulge(
+            &mut out,
+            (verts[i].0, verts[i].1),
+            (verts[i + 1].0, verts[i + 1].1),
+            verts[i].2,
+        );
     }
     if closed {
         let last = verts.len() - 1;
-        push_bulge(&mut out, (verts[last].0, verts[last].1), (verts[0].0, verts[0].1), verts[last].2);
+        push_bulge(
+            &mut out,
+            (verts[last].0, verts[last].1),
+            (verts[0].0, verts[0].1),
+            verts[last].2,
+        );
     }
     (out, closed)
 }
@@ -294,8 +348,17 @@ fn entity_ring(r: &Rec) -> Option<(Ring, bool)> {
     match r.typ.as_str() {
         "LINE" => Some((vec![(r.f(10), r.f(20)), (r.f(11), r.f(21))], false)),
         "CIRCLE" => Some((flatten_circle(r.f(10), r.f(20), r.f(40)), true)),
-        "ARC" => Some((flatten_arc(r.f(10), r.f(20), r.f(40), r.f(50), r.f(51)), false)),
-        "ELLIPSE" => Some(flatten_ellipse((r.f(10), r.f(20)), (r.f(11), r.f(21)), r.f(40), r.f(41), r.f(42))),
+        "ARC" => Some((
+            flatten_arc(r.f(10), r.f(20), r.f(40), r.f(50), r.f(51)),
+            false,
+        )),
+        "ELLIPSE" => Some(flatten_ellipse(
+            (r.f(10), r.f(20)),
+            (r.f(11), r.f(21)),
+            r.f(40),
+            r.f(41),
+            r.f(42),
+        )),
         "LWPOLYLINE" => Some(lwpoly_ring(r)),
         "SPLINE" => Some((spline_ring(r), false)),
         _ => None,
@@ -373,7 +436,13 @@ pub fn import(bytes: &[u8], params_json: &str) -> DxfImport {
     let s = p.unit_scale as f64;
     let mut mm: Vec<(Ring, bool, u32)> = rings
         .into_iter()
-        .map(|(pts, closed, rgb)| (pts.into_iter().map(|(x, y)| (x * s, -y * s)).collect(), closed, rgb))
+        .map(|(pts, closed, rgb)| {
+            (
+                pts.into_iter().map(|(x, y)| (x * s, -y * s)).collect(),
+                closed,
+                rgb,
+            )
+        })
         .collect();
     if p.merge {
         mm = merge_chains(mm, crate::tess::DXF_WELD_TOL as f64);
@@ -385,13 +454,22 @@ pub fn import(bytes: &[u8], params_json: &str) -> DxfImport {
     // Visually lossless for a plotter (well under a pen width).
     for (pts, _, _) in mm.iter_mut() {
         if pts.len() > 2 {
-            let flat: Vec<f32> = pts.iter().flat_map(|&(x, y)| [x as f32, y as f32]).collect();
+            let flat: Vec<f32> = pts
+                .iter()
+                .flat_map(|&(x, y)| [x as f32, y as f32])
+                .collect();
             let kept = crate::shapes::simplify(&flat, crate::tess::DXF_SIMPLIFY_TOL);
-            *pts = kept.chunks_exact(2).map(|c| (c[0] as f64, c[1] as f64)).collect();
+            *pts = kept
+                .chunks_exact(2)
+                .map(|c| (c[0] as f64, c[1] as f64))
+                .collect();
         }
     }
 
-    let mut out = Out { insunits, ..Out::default() };
+    let mut out = Out {
+        insunits,
+        ..Out::default()
+    };
     out.ring_starts.push(0);
     out.shape_starts.push(0);
     for (pts, closed, rgb) in mm {
@@ -435,7 +513,8 @@ fn merge_chains(rings: Vec<(Ring, bool, u32)>, tol: f64) -> Vec<(Ring, bool, u32
     for rgb in colors {
         let segs = by_color.remove(&rgb).unwrap();
         for chain in chain_polylines(&segs, tol) {
-            let closed = chain.len() > 2 && qkey(chain[0], tol) == qkey(*chain.last().unwrap(), tol);
+            let closed =
+                chain.len() > 2 && qkey(chain[0], tol) == qkey(*chain.last().unwrap(), tol);
             out.push((chain, closed, rgb));
         }
     }
@@ -447,10 +526,13 @@ fn chain_polylines(segs: &[Ring], tol: f64) -> Vec<Ring> {
     let mut ends: HashMap<(i64, i64), Vec<(usize, usize)>> = HashMap::new();
     for (i, s) in segs.iter().enumerate() {
         ends.entry(qkey(s[0], tol)).or_default().push((i, 0));
-        ends.entry(qkey(*s.last().unwrap(), tol)).or_default().push((i, 1));
+        ends.entry(qkey(*s.last().unwrap(), tol))
+            .or_default()
+            .push((i, 1));
     }
     let pick = |ends: &HashMap<(i64, i64), Vec<(usize, usize)>>, used: &[bool], k: (i64, i64)| {
-        ends.get(&k).and_then(|c| c.iter().copied().find(|&(si, _)| !used[si]))
+        ends.get(&k)
+            .and_then(|c| c.iter().copied().find(|&(si, _)| !used[si]))
     };
     let mut used = vec![false; segs.len()];
     let mut out: Vec<Ring> = Vec::new();
@@ -464,14 +546,22 @@ fn chain_polylines(segs: &[Ring], tol: f64) -> Vec<Ring> {
         while let Some((si, end)) = pick(&ends, &used, qkey(*chain.last().unwrap(), tol)) {
             used[si] = true;
             let seg = &segs[si];
-            let oriented: Ring = if end == 0 { seg.clone() } else { seg.iter().rev().copied().collect() };
+            let oriented: Ring = if end == 0 {
+                seg.clone()
+            } else {
+                seg.iter().rev().copied().collect()
+            };
             chain.extend_from_slice(&oriented[1..]); // skip the duplicated shared point
         }
         // Grow backward from the chain's head.
         while let Some((si, end)) = pick(&ends, &used, qkey(chain[0], tol)) {
             used[si] = true;
             let seg = &segs[si];
-            let oriented: Ring = if end == 1 { seg.clone() } else { seg.iter().rev().copied().collect() };
+            let oriented: Ring = if end == 1 {
+                seg.clone()
+            } else {
+                seg.iter().rev().copied().collect()
+            };
             let mut next = oriented[..oriented.len() - 1].to_vec();
             next.extend_from_slice(&chain);
             chain = next;
@@ -490,14 +580,19 @@ mod tests {
         let dxf = "0\nSECTION\n2\nENTITIES\n0\nLINE\n8\n0\n10\n0\n20\n0\n11\n10\n21\n0\n0\nCIRCLE\n8\n0\n10\n5\n20\n5\n40\n2\n0\nENDSEC\n0\nEOF\n";
         let res = import(dxf.as_bytes(), r#"{"merge":false}"#);
         assert_eq!(res.inner.colors.len(), 2, "two entities → two shapes");
-        assert_eq!(res.inner.ring_closed, vec![0, 1], "line open, circle closed");
+        assert_eq!(
+            res.inner.ring_closed,
+            vec![0, 1],
+            "line open, circle closed"
+        );
         assert!(res.inner.xy.iter().all(|v| v.is_finite()));
     }
 
     #[test]
     fn merges_chained_line_segments() {
         // Four LINEs forming a square loop → one closed ring (instead of four elements).
-        let seg = |x0, y0, x1, y1| format!("0\nLINE\n8\n0\n10\n{x0}\n20\n{y0}\n11\n{x1}\n21\n{y1}\n");
+        let seg =
+            |x0, y0, x1, y1| format!("0\nLINE\n8\n0\n10\n{x0}\n20\n{y0}\n11\n{x1}\n21\n{y1}\n");
         let dxf = format!(
             "0\nSECTION\n2\nENTITIES\n{}{}{}{}0\nENDSEC\n0\nEOF\n",
             seg(0, 0, 10, 0),
@@ -506,11 +601,23 @@ mod tests {
             seg(0, 10, 0, 0),
         );
         let res = import(dxf.as_bytes(), r#"{"merge":true}"#);
-        assert_eq!(res.inner.colors.len(), 1, "four segments merge into one polyline");
-        assert_eq!(res.inner.ring_closed, vec![1], "the closed loop is detected");
+        assert_eq!(
+            res.inner.colors.len(),
+            1,
+            "four segments merge into one polyline"
+        );
+        assert_eq!(
+            res.inner.ring_closed,
+            vec![1],
+            "the closed loop is detected"
+        );
 
         let unmerged = import(dxf.as_bytes(), r#"{"merge":false}"#);
-        assert_eq!(unmerged.inner.colors.len(), 4, "merge off keeps them separate");
+        assert_eq!(
+            unmerged.inner.colors.len(),
+            4,
+            "merge off keeps them separate"
+        );
     }
 
     #[test]
@@ -522,4 +629,3 @@ mod tests {
         assert_eq!(res.inner.ring_closed, vec![1], "closed flag honoured");
     }
 }
-

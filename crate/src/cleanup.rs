@@ -3,6 +3,7 @@
 //!   - **dedupe** coincident segments (shared edges drawn once — common in occluded SVG imports),
 //!   - **chain** touching strokes into continuous polylines (fewer pen-up/pen-down cycles),
 //!   - **drop collinear** interior points (smaller G-code).
+//!
 //! Locked chains (nonzero `group`, e.g. handwriting) pass through untouched, and so do
 //! **variable-pressure** strokes (raster `pressurehatch`): their exact point sequence *is* the tonal
 //! signal, so dropping "collinear" points would quantize the pressure ramp into visible width bands,
@@ -100,7 +101,7 @@ fn clean_pen(strokes: &[&Stroke], pen: u16) -> Vec<Stroke> {
                 Some((dx, dy)) => ((pf.x - pv.x) / len) * dx + ((pf.y - pv.y) / len) * dy,
                 None => 0.0,
             };
-            if best.map_or(true, |(_, _, bs)| score > bs + 1e-9) {
+            if best.is_none_or(|(_, _, bs)| score > bs + 1e-9) {
                 best = Some((i, far, score));
             }
         }
@@ -163,7 +164,12 @@ fn clean_pen(strokes: &[&Stroke], pen: u16) -> Vec<Stroke> {
             let pts: Vec<Point> = keys.into_iter().map(pt).collect();
             let merged = drop_collinear(&pts);
             if merged.len() >= 2 {
-                Some(Stroke { points: merged, pen, reversible: true, group: 0 })
+                Some(Stroke {
+                    points: merged,
+                    pen,
+                    reversible: true,
+                    group: 0,
+                })
             } else {
                 None
             }
@@ -205,7 +211,14 @@ mod tests {
     use super::*;
     fn s(pen: u16, pts: &[(f32, f32)]) -> Stroke {
         Stroke {
-            points: pts.iter().map(|&(x, y)| Point { x, y, pressure: 1.0 }).collect(),
+            points: pts
+                .iter()
+                .map(|&(x, y)| Point {
+                    x,
+                    y,
+                    pressure: 1.0,
+                })
+                .collect(),
             pen,
             reversible: true,
             group: 0,
@@ -218,7 +231,10 @@ mod tests {
     #[test]
     fn joins_touching_strokes() {
         // Two strokes meeting end-to-start → one continuous polyline (one fewer pen lift).
-        let out = cleanup(&[s(0, &[(0.0, 0.0), (1.0, 0.0)]), s(0, &[(1.0, 0.0), (2.0, 0.0)])]);
+        let out = cleanup(&[
+            s(0, &[(0.0, 0.0), (1.0, 0.0)]),
+            s(0, &[(1.0, 0.0), (2.0, 0.0)]),
+        ]);
         assert_eq!(out.len(), 1, "touching strokes chain into one");
     }
 
@@ -226,26 +242,43 @@ mod tests {
     fn dedupes_shared_edge() {
         // Two unit squares sharing the edge x=1: the shared edge must be drawn exactly once, and no
         // segment may appear twice anywhere in the output.
-        let sq1 = s(0, &[(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0), (0.0, 0.0)]);
-        let sq2 = s(0, &[(1.0, 0.0), (2.0, 0.0), (2.0, 1.0), (1.0, 1.0), (1.0, 0.0)]);
+        let sq1 = s(
+            0,
+            &[(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0), (0.0, 0.0)],
+        );
+        let sq2 = s(
+            0,
+            &[(1.0, 0.0), (2.0, 0.0), (2.0, 1.0), (1.0, 1.0), (1.0, 0.0)],
+        );
         let out = cleanup(&[sq1, sq2]);
         let mut seen = std::collections::HashSet::new();
         for st in &out {
             for w in st.points.windows(2) {
                 let uk = {
                     let (a, b) = (key(w[0]), key(w[1]));
-                    if a <= b { (a, b) } else { (b, a) }
+                    if a <= b {
+                        (a, b)
+                    } else {
+                        (b, a)
+                    }
                 };
                 assert!(seen.insert(uk), "a segment was drawn twice");
             }
         }
-        assert!(total_points(&out) < 10, "deduped + collinear-merged, not the naive 10 input points");
+        assert!(
+            total_points(&out) < 10,
+            "deduped + collinear-merged, not the naive 10 input points"
+        );
     }
 
     #[test]
     fn drops_collinear_points() {
         let out = cleanup(&[s(0, &[(0.0, 0.0), (1.0, 0.0), (2.0, 0.0), (3.0, 0.0)])]);
-        assert_eq!(total_points(&out), 2, "straight run collapses to its endpoints (uniform pressure)");
+        assert_eq!(
+            total_points(&out),
+            2,
+            "straight run collapses to its endpoints (uniform pressure)"
+        );
     }
 
     #[test]
@@ -255,11 +288,24 @@ mod tests {
         // are the tonal signal, not redundant geometry).
         let n = 21;
         let pts: Vec<Point> = (0..n)
-            .map(|i| Point { x: i as f32 * 0.5, y: 0.0, pressure: i as f32 / (n as f32 - 1.0) })
+            .map(|i| Point {
+                x: i as f32 * 0.5,
+                y: 0.0,
+                pressure: i as f32 / (n as f32 - 1.0),
+            })
             .collect();
-        let out = cleanup(&[Stroke { points: pts.clone(), pen: 0, reversible: true, group: 0 }]);
+        let out = cleanup(&[Stroke {
+            points: pts.clone(),
+            pen: 0,
+            reversible: true,
+            group: 0,
+        }]);
         assert_eq!(out.len(), 1);
-        assert_eq!(out[0].points.len(), n, "all points kept verbatim (not decimated)");
+        assert_eq!(
+            out[0].points.len(),
+            n,
+            "all points kept verbatim (not decimated)"
+        );
         for (o, i) in out[0].points.iter().zip(&pts) {
             assert!((o.pressure - i.pressure).abs() < 1e-6, "pressure preserved");
         }
@@ -267,10 +313,19 @@ mod tests {
 
     #[test]
     fn keeps_pens_separate_and_chains_untouched() {
-        let chain = Stroke { group: 7, ..s(0, &[(0.0, 0.0), (1.0, 0.0)]) };
-        let out = cleanup(&[s(0, &[(0.0, 0.0), (1.0, 0.0)]), s(1, &[(0.0, 0.0), (1.0, 0.0)]), chain]);
-        assert_eq!(out.len(), 3, "two pens stay separate; the locked chain passes through");
+        let chain = Stroke {
+            group: 7,
+            ..s(0, &[(0.0, 0.0), (1.0, 0.0)])
+        };
+        let out = cleanup(&[
+            s(0, &[(0.0, 0.0), (1.0, 0.0)]),
+            s(1, &[(0.0, 0.0), (1.0, 0.0)]),
+            chain,
+        ]);
+        assert_eq!(
+            out.len(),
+            3,
+            "two pens stay separate; the locked chain passes through"
+        );
     }
 }
-
-

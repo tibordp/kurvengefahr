@@ -26,13 +26,13 @@ fn default_line() -> f32 {
 #[serde(default)]
 struct Params {
     text: String,
-    mode: String,           // "single" | "outline"
-    font: String,           // hershey key, or "sans" / "serif" / "mono"
-    size: f32,              // mm (em)
-    letter_spacing: f32,    // extra mm between glyphs
-    line_spacing: f32,      // line-height factor
-    align: String,          // "left" | "center" | "right" | "justify"
-    max_width: f32,         // wrap width in mm; 0 = no wrap (lines break only on '\n')
+    mode: String,        // "single" | "outline"
+    font: String,        // hershey key, or "sans" / "serif" / "mono"
+    size: f32,           // mm (em)
+    letter_spacing: f32, // extra mm between glyphs
+    line_spacing: f32,   // line-height factor
+    align: String,       // "left" | "center" | "right" | "justify"
+    max_width: f32,      // wrap width in mm; 0 = no wrap (lines break only on '\n')
 }
 impl Default for Params {
     fn default() -> Self {
@@ -106,7 +106,10 @@ fn parse_glyph(c: &RawChar) -> HGlyph {
     if cur.len() >= 2 {
         strokes.push(cur);
     }
-    HGlyph { strokes, advance: c.a }
+    HGlyph {
+        strokes,
+        advance: c.a,
+    }
 }
 
 // ---- TTF outline --------------------------------------------------------------------------------
@@ -150,7 +153,15 @@ impl ttf_parser::OutlineBuilder for Outliner {
         self.last = (x, y);
     }
     fn curve_to(&mut self, x1: f32, y1: f32, x2: f32, y2: f32, x: f32, y: f32) {
-        flatten_cubic(self.last, (x1, y1), (x2, y2), (x, y), self.tol, &mut self.cur, 0);
+        flatten_cubic(
+            self.last,
+            (x1, y1),
+            (x2, y2),
+            (x, y),
+            self.tol,
+            &mut self.cur,
+            0,
+        );
         self.last = (x, y);
     }
     fn close(&mut self) {
@@ -246,7 +257,11 @@ fn layout_paragraph(
             continue;
         }
         if toks.is_empty() || gap > 0 {
-            toks.push(Tok { chars: Vec::new(), width: 0.0, gap });
+            toks.push(Tok {
+                chars: Vec::new(),
+                width: 0.0,
+                gap,
+            });
             gap = 0;
         }
         toks.last_mut().unwrap().chars.push(c);
@@ -256,7 +271,12 @@ fn layout_paragraph(
         return 1; // blank line: consumes vertical space, draws nothing
     }
     for t in &mut toks {
-        t.width = t.chars.iter().enumerate().map(|(i, &c)| adv(t.chars.get(i + 1).copied(), c)).sum();
+        t.width = t
+            .chars
+            .iter()
+            .enumerate()
+            .map(|(i, &c)| adv(t.chars.get(i + 1).copied(), c))
+            .sum();
     }
 
     // Greedy break. Unwrapped: one line whose width includes the trailing spaces (so center/right
@@ -265,18 +285,48 @@ fn layout_paragraph(
     let wrap = p.max_width > 0.0;
     let mut lines: Vec<Line> = Vec::new();
     if !wrap {
-        let width = toks.iter().map(|t| t.gap as f32 * space_w + t.width).sum::<f32>() + trailing as f32 * space_w;
+        let width = toks
+            .iter()
+            .map(|t| t.gap as f32 * space_w + t.width)
+            .sum::<f32>()
+            + trailing as f32 * space_w;
         let gap_spaces = toks.iter().skip(1).map(|t| t.gap).sum();
-        lines.push(Line { start: 0, end: toks.len(), width, gap_spaces, soft: false });
+        lines.push(Line {
+            start: 0,
+            end: toks.len(),
+            width,
+            gap_spaces,
+            soft: false,
+        });
     } else {
-        let mut cur = Line { start: 0, end: 0, width: 0.0, gap_spaces: 0, soft: false };
+        let mut cur = Line {
+            start: 0,
+            end: 0,
+            width: 0.0,
+            gap_spaces: 0,
+            soft: false,
+        };
         for (i, t) in toks.iter().enumerate() {
-            let lead = if i == cur.start { if cur.start == 0 { t.gap as f32 * space_w } else { 0.0 } } else { t.gap as f32 * space_w };
+            let lead = if i == cur.start {
+                if cur.start == 0 {
+                    t.gap as f32 * space_w
+                } else {
+                    0.0
+                }
+            } else {
+                t.gap as f32 * space_w
+            };
             if i > cur.start && cur.width + lead + t.width > p.max_width {
                 cur.end = i;
                 cur.soft = true; // broken by wrap, not by paragraph end
                 lines.push(cur);
-                cur = Line { start: i, end: i, width: t.width, gap_spaces: 0, soft: false };
+                cur = Line {
+                    start: i,
+                    end: i,
+                    width: t.width,
+                    gap_spaces: 0,
+                    soft: false,
+                };
             } else {
                 if i > cur.start {
                     cur.gap_spaces += t.gap;
@@ -293,9 +343,25 @@ fn layout_paragraph(
     // on soft lines only.
     for (lli, line) in lines.iter().enumerate() {
         let (x0, extra_per_space) = match p.align.as_str() {
-            "center" => (if wrap { (p.max_width - line.width) * 0.5 } else { -line.width * 0.5 }, 0.0),
-            "right" => (if wrap { p.max_width - line.width } else { -line.width }, 0.0),
-            "justify" if line.soft && line.gap_spaces > 0 => (0.0, (p.max_width - line.width) / line.gap_spaces as f32),
+            "center" => (
+                if wrap {
+                    (p.max_width - line.width) * 0.5
+                } else {
+                    -line.width * 0.5
+                },
+                0.0,
+            ),
+            "right" => (
+                if wrap {
+                    p.max_width - line.width
+                } else {
+                    -line.width
+                },
+                0.0,
+            ),
+            "justify" if line.soft && line.gap_spaces > 0 => {
+                (0.0, (p.max_width - line.width) / line.gap_spaces as f32)
+            }
             _ => (0.0, 0.0),
         };
         let li = li0 + lli;
@@ -332,10 +398,14 @@ impl<'a> KernTable<'a> {
         let mut pairs = Vec::new();
         if let Some(gpos) = face.tables().gpos {
             for li in 0..gpos.lookups.len() {
-                let Some(lookup) = gpos.lookups.get(li) else { continue };
+                let Some(lookup) = gpos.lookups.get(li) else {
+                    continue;
+                };
                 for si in 0..lookup.subtables.len() {
                     if let Some(ttf_parser::gpos::PositioningSubtable::Pair(pa)) =
-                        lookup.subtables.get::<ttf_parser::gpos::PositioningSubtable>(si)
+                        lookup
+                            .subtables
+                            .get::<ttf_parser::gpos::PositioningSubtable>(si)
                     {
                         pairs.push(pa);
                     }
@@ -357,9 +427,15 @@ impl<'a> KernTable<'a> {
                         }
                     }
                 }
-                PairAdjustment::Format2 { coverage, classes, matrix } => {
+                PairAdjustment::Format2 {
+                    coverage,
+                    classes,
+                    matrix,
+                } => {
                     if coverage.get(left).is_some() {
-                        if let Some((v, _)) = matrix.get((classes.0.get(left), classes.1.get(right))) {
+                        if let Some((v, _)) =
+                            matrix.get((classes.0.get(left), classes.1.get(right)))
+                        {
                             return v.x_advance as f32;
                         }
                     }
@@ -371,7 +447,12 @@ impl<'a> KernTable<'a> {
 }
 
 fn stroke(points: Vec<Point>) -> Stroke {
-    Stroke { points, pen: 0, reversible: true, group: 0 }
+    Stroke {
+        points,
+        pen: 0,
+        reversible: true,
+        group: 0,
+    }
 }
 
 pub fn text(params_json: &str) -> Vec<Stroke> {
@@ -404,8 +485,9 @@ fn hershey_layout(p: &Params) -> Vec<Stroke> {
         };
         // True JHF advances; an unmapped char takes the space advance (glyph 0).
         let space_adv = glyphs.first().map_or(16.0, |g| g.advance);
-        let mut adv =
-            |_next: Option<char>, c: char| glyph_for(c).map_or(space_adv, |g| g.advance) * scale + p.letter_spacing;
+        let mut adv = |_next: Option<char>, c: char| {
+            glyph_for(c).map_or(space_adv, |g| g.advance) * scale + p.letter_spacing
+        };
 
         let mut out = Vec::new();
         let mut emit = |li: usize, pen: f32, c: char| {
@@ -413,7 +495,13 @@ fn hershey_layout(p: &Params) -> Vec<Stroke> {
             if let Some(g) = glyph_for(c) {
                 for s in &g.strokes {
                     out.push(stroke(
-                        s.iter().map(|&(x, y)| Point { x: pen + x * scale, y: top + y * scale, pressure: 1.0 }).collect(),
+                        s.iter()
+                            .map(|&(x, y)| Point {
+                                x: pen + x * scale,
+                                y: top + y * scale,
+                                pressure: 1.0,
+                            })
+                            .collect(),
                     ));
                 }
             }
@@ -441,7 +529,9 @@ fn outline_layout(p: &Params) -> Vec<Stroke> {
     // and it's inside measurement, so wrap and alignment see the kerned widths.
     let mut adv = |next: Option<char>, c: char| -> f32 {
         let gid = face.glyph_index(c);
-        let a = gid.and_then(|g| face.glyph_hor_advance(g)).map_or(space, |a| a as f32);
+        let a = gid
+            .and_then(|g| face.glyph_hor_advance(g))
+            .map_or(space, |a| a as f32);
         let k = match (gid, next.and_then(|nc| face.glyph_index(nc))) {
             (Some(l), Some(r)) => kern.kern(l, r),
             _ => 0.0,
@@ -454,14 +544,23 @@ fn outline_layout(p: &Params) -> Vec<Stroke> {
         // Baseline so the em box top sits at the line top (y-down page; glyph units are y-up).
         let baseline = li as f32 * line_h + p.size;
         if let Some(gid) = face.glyph_index(c) {
-            let mut b = Outliner { contours: Vec::new(), cur: Vec::new(), last: (0.0, 0.0), tol: tol_units };
+            let mut b = Outliner {
+                contours: Vec::new(),
+                cur: Vec::new(),
+                last: (0.0, 0.0),
+                tol: tol_units,
+            };
             if face.outline_glyph(gid, &mut b).is_some() {
                 b.flush();
                 for contour in &b.contours {
                     out.push(stroke(
                         contour
                             .iter()
-                            .map(|&(x, y)| Point { x: pen + x * scale, y: baseline - y * scale, pressure: 1.0 })
+                            .map(|&(x, y)| Point {
+                                x: pen + x * scale,
+                                y: baseline - y * scale,
+                                pressure: 1.0,
+                            })
                             .collect(),
                     ));
                 }
@@ -480,10 +579,14 @@ mod tests {
     use super::*;
 
     fn max_x(v: &[Stroke]) -> f32 {
-        v.iter().flat_map(|s| s.points.iter()).fold(f32::MIN, |m, p| m.max(p.x))
+        v.iter()
+            .flat_map(|s| s.points.iter())
+            .fold(f32::MIN, |m, p| m.max(p.x))
     }
     fn max_y(v: &[Stroke]) -> f32 {
-        v.iter().flat_map(|s| s.points.iter()).fold(f32::MIN, |m, p| m.max(p.y))
+        v.iter()
+            .flat_map(|s| s.points.iter())
+            .fold(f32::MIN, |m, p| m.max(p.y))
     }
 
     #[test]
@@ -499,7 +602,12 @@ mod tests {
         HERSHEY.with(|fonts| {
             let g = &fonts["futural"];
             let adv = |c: char| g[(c as usize) - 32].advance;
-            assert!(adv('i') < adv('m'), "i ({}) narrower than m ({})", adv('i'), adv('m'));
+            assert!(
+                adv('i') < adv('m'),
+                "i ({}) narrower than m ({})",
+                adv('i'),
+                adv('m')
+            );
             assert!(adv(' ') > 0.0, "space has a real advance");
         });
     }
@@ -510,22 +618,36 @@ mod tests {
         let two = text(r#"{"text":"i  i","mode":"single","size":10}"#);
         let space_mm = HERSHEY.with(|f| f["futural"][0].advance) * 10.0 / HERSHEY_EM;
         let d = max_x(&two) - max_x(&one);
-        assert!((d - space_mm).abs() < 1e-4, "extra space advanced by {d}, want {space_mm}");
+        assert!(
+            (d - space_mm).abs() < 1e-4,
+            "extra space advanced by {d}, want {space_mm}"
+        );
     }
 
     #[test]
     fn wrap_breaks_at_word_boundaries() {
         let flat = text(r#"{"text":"mmm mmm mmm mmm","mode":"single","size":10}"#);
-        let wrapped = text(r#"{"text":"mmm mmm mmm mmm","mode":"single","size":10,"max_width":40}"#);
-        assert!(max_y(&wrapped) > max_y(&flat) + 5.0, "wrapping stacked lines");
-        assert!(max_x(&wrapped) <= 40.0, "no line overflows the wrap width (ink {} mm)", max_x(&wrapped));
+        let wrapped =
+            text(r#"{"text":"mmm mmm mmm mmm","mode":"single","size":10,"max_width":40}"#);
+        assert!(
+            max_y(&wrapped) > max_y(&flat) + 5.0,
+            "wrapping stacked lines"
+        );
+        assert!(
+            max_x(&wrapped) <= 40.0,
+            "no line overflows the wrap width (ink {} mm)",
+            max_x(&wrapped)
+        );
     }
 
     #[test]
     fn hard_breaks_survive_wrapping() {
         let soft = text(r#"{"text":"ii ii","mode":"single","size":10,"max_width":200}"#);
         let hard = text(r#"{"text":"ii\n\nii","mode":"single","size":10,"max_width":200}"#);
-        assert!(max_y(&hard) > max_y(&soft) + 20.0, "explicit newlines (incl. blank line) still break");
+        assert!(
+            max_y(&hard) > max_y(&soft) + 20.0,
+            "explicit newlines (incl. blank line) still break"
+        );
     }
 
     #[test]
@@ -534,9 +656,19 @@ mod tests {
         let base = r#""text":"mmm mmm mmm mm","mode":"single","size":10,"max_width":65"#;
         let left = text(&format!("{{{base},\"align\":\"left\"}}"));
         let just = text(&format!("{{{base},\"align\":\"justify\"}}"));
-        assert!((max_y(&left) - max_y(&just)).abs() < 1e-4, "same line breaks");
-        assert!(max_x(&just) > max_x(&left) + 1.0, "soft line gaps stretched");
-        assert!(max_x(&just) <= 65.0 && max_x(&just) > 65.0 * 0.85, "fills the box (ink {} mm)", max_x(&just));
+        assert!(
+            (max_y(&left) - max_y(&just)).abs() < 1e-4,
+            "same line breaks"
+        );
+        assert!(
+            max_x(&just) > max_x(&left) + 1.0,
+            "soft line gaps stretched"
+        );
+        assert!(
+            max_x(&just) <= 65.0 && max_x(&just) > 65.0 * 0.85,
+            "fills the box (ink {} mm)",
+            max_x(&just)
+        );
     }
 
     #[test]
@@ -560,13 +692,22 @@ mod tests {
         let av = text(r#"{"text":"AV","mode":"outline","font":"sans","size":20}"#);
         let aa = text(r#"{"text":"AA","mode":"outline","font":"sans","size":20}"#);
         // Same first glyph; AV kerns negative while AA doesn't, so AV's ink ends earlier.
-        assert!(max_x(&av) < max_x(&aa), "AV ({}) tighter than AA ({})", max_x(&av), max_x(&aa));
+        assert!(
+            max_x(&av) < max_x(&aa),
+            "AV ({}) tighter than AA ({})",
+            max_x(&av),
+            max_x(&aa)
+        );
     }
     #[test]
     fn outline_emits_closed_contours_with_holes() {
         // 'o' has two contours (outer + inner hole) in the outline font.
         let out = text(r#"{"text":"o","mode":"outline","font":"sans","size":20}"#);
-        assert!(out.len() >= 2, "outline 'o' has an outer ring and a hole, got {}", out.len());
+        assert!(
+            out.len() >= 2,
+            "outline 'o' has an outer ring and a hole, got {}",
+            out.len()
+        );
         for s in &out {
             let (a, b) = (s.points[0], s.points[s.points.len() - 1]);
             assert!((a.x - b.x).abs() < 1.0 && (a.y - b.y).abs() < 1.0 || s.points.len() > 3);
@@ -576,7 +717,11 @@ mod tests {
     fn newline_stacks_lines() {
         let one = text(r#"{"text":"A","mode":"single","size":10}"#);
         let two = text(r#"{"text":"A\nA","mode":"single","size":10}"#);
-        let maxy = |v: &[Stroke]| v.iter().flat_map(|s| s.points.iter()).fold(0.0f32, |m, p| m.max(p.y));
+        let maxy = |v: &[Stroke]| {
+            v.iter()
+                .flat_map(|s| s.points.iter())
+                .fold(0.0f32, |m, p| m.max(p.y))
+        };
         assert!(maxy(&two) > maxy(&one) + 5.0, "second line is lower");
     }
 }

@@ -16,7 +16,7 @@ pub fn apply(strokes: &[Stroke], s: &EffectSpec) -> Vec<Stroke> {
     let detail = s.detail_mm.max(0.3);
     let freq = 1.0 / detail; // wobble feature size ≈ detailMm
     let tfreq = 1.0 / 1.5; // tremor: a fixed fine ~1.5 mm shake
-    // Sample finely enough to render the wobble smoothly, scaled to the feature size.
+                           // Sample finely enough to render the wobble smoothly, scaled to the feature size.
     let step = (detail * 0.25).clamp(0.3, 1.0);
     // Distinct streams per axis so the offset isn't locked to the diagonal.
     let (sax, say) = (s.seed ^ 0x1111_1111, s.seed ^ 0x2222_2222);
@@ -43,12 +43,21 @@ pub fn apply(strokes: &[Stroke], s: &EffectSpec) -> Vec<Stroke> {
                 .iter()
                 .map(|p| {
                     let (ox, oy) = offset(p.x, p.y);
-                    Point { x: p.x + ox, y: p.y + oy, pressure: p.pressure }
+                    Point {
+                        x: p.x + ox,
+                        y: p.y + oy,
+                        pressure: p.pressure,
+                    }
                 })
                 .collect();
             // Closed contours stay closed for free: first and last share a position, so they get the
             // same offset.
-            Stroke { points: out, pen: stroke.pen, reversible: stroke.reversible, group: stroke.group }
+            Stroke {
+                points: out,
+                pen: stroke.pen,
+                reversible: stroke.reversible,
+                group: stroke.group,
+            }
         })
         .collect()
 }

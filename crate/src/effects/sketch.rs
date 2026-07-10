@@ -25,7 +25,7 @@ pub fn apply(strokes: &[Stroke], s: &EffectSpec) -> Vec<Stroke> {
         let pts = resample(&stroke.points, step);
         for pass in 0..passes {
             // A distinct field per pass (so passes differ), shared across strokes (so seams hold).
-            let base = s.seed.wrapping_add((pass as u32).wrapping_mul(0x9e37_79b1));
+            let base = s.seed.wrapping_add(pass.wrapping_mul(0x9e37_79b1));
             let (sx, sy) = (base ^ 0xaaaa_aaaa, base ^ 0x5555_5555);
             let pp: Vec<Point> = pts
                 .iter()
@@ -35,7 +35,12 @@ pub fn apply(strokes: &[Stroke], s: &EffectSpec) -> Vec<Stroke> {
                     pressure: p.pressure,
                 })
                 .collect();
-            out.push(Stroke { points: pp, pen: stroke.pen, reversible: stroke.reversible, group: stroke.group });
+            out.push(Stroke {
+                points: pp,
+                pen: stroke.pen,
+                reversible: stroke.reversible,
+                group: stroke.group,
+            });
         }
     }
     out

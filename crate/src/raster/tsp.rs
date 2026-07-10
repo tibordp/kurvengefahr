@@ -43,7 +43,12 @@ pub fn tsp(grid: &Grid, p: &Params) -> Vec<Stroke> {
     let order = solve(&pts);
     // One unbroken designed path — fixed direction so the artistic continuity survives optimization.
     let points: Vec<Point> = order.iter().map(|&i| pt(pts[i].0, pts[i].1)).collect();
-    vec![Stroke { points, pen: 0, reversible: false, group: 0 }]
+    vec![Stroke {
+        points,
+        pen: 0,
+        reversible: false,
+        group: 0,
+    }]
 }
 
 /// Number of nearest neighbours each city considers in 2-opt — small candidate lists are what make
@@ -211,7 +216,15 @@ impl SpatialGrid {
             let cy = (((y - miny) * inv_cell) as i32).clamp(0, rows - 1);
             cells[(cy * cols + cx) as usize].push(i as u32);
         }
-        SpatialGrid { minx, miny, inv_cell, cell, cols, rows, cells }
+        SpatialGrid {
+            minx,
+            miny,
+            inv_cell,
+            cell,
+            cols,
+            rows,
+            cells,
+        }
     }
 
     #[inline]
@@ -407,14 +420,22 @@ impl SpatialGrid {
         // t (0..1 along the segment) to the next cell boundary, and to cross one full cell, per axis.
         let (mut t_max_x, t_delta_x) = if dx != 0.0 {
             let adx = dx.abs();
-            let next = if dx > 0.0 { (cx + 1) as f32 - ax } else { ax - cx as f32 };
+            let next = if dx > 0.0 {
+                (cx + 1) as f32 - ax
+            } else {
+                ax - cx as f32
+            };
             (next / adx, 1.0 / adx)
         } else {
             (f32::INFINITY, f32::INFINITY)
         };
         let (mut t_max_y, t_delta_y) = if dy != 0.0 {
             let ady = dy.abs();
-            let next = if dy > 0.0 { (cy + 1) as f32 - ay } else { ay - cy as f32 };
+            let next = if dy > 0.0 {
+                (cy + 1) as f32 - ay
+            } else {
+                ay - cy as f32
+            };
             (next / ady, 1.0 / ady)
         } else {
             (f32::INFINITY, f32::INFINITY)
@@ -448,8 +469,10 @@ fn proper_cross(a: (f32, f32), b: (f32, f32), c: (f32, f32), d: (f32, f32)) -> b
     let d2 = orient(c, d, b);
     let d3 = orient(a, b, c);
     let d4 = orient(a, b, d);
-    ((d1 > 0.0) != (d2 > 0.0)) && (d1 != 0.0 && d2 != 0.0)
-        && ((d3 > 0.0) != (d4 > 0.0)) && (d3 != 0.0 && d4 != 0.0)
+    ((d1 > 0.0) != (d2 > 0.0))
+        && (d1 != 0.0 && d2 != 0.0)
+        && ((d3 > 0.0) != (d4 > 0.0))
+        && (d3 != 0.0 && d4 != 0.0)
 }
 
 #[cfg(test)]
@@ -472,7 +495,9 @@ mod tests {
         // A scattered cloud (deterministic): the tour must be a permutation, and 2-opt's path must
         // beat a naive index-order traversal by a wide margin.
         let mut rng = Rng::new(42);
-        let pts: Vec<(f32, f32)> = (0..2000).map(|_| (rng.f32() * 200.0, rng.f32() * 200.0)).collect();
+        let pts: Vec<(f32, f32)> = (0..2000)
+            .map(|_| (rng.f32() * 200.0, rng.f32() * 200.0))
+            .collect();
         let order = solve(&pts);
         assert_eq!(order.len(), pts.len());
         let mut seen = vec![false; pts.len()];
@@ -500,7 +525,9 @@ mod tests {
         // The uncrossing pass must leave a planar (non-self-intersecting) path — that's the whole
         // point. Brute-force every non-adjacent edge pair of the open path.
         let mut rng = Rng::new(99);
-        let pts: Vec<(f32, f32)> = (0..4000).map(|_| (rng.f32() * 150.0, rng.f32() * 150.0)).collect();
+        let pts: Vec<(f32, f32)> = (0..4000)
+            .map(|_| (rng.f32() * 150.0, rng.f32() * 150.0))
+            .collect();
         let order = solve(&pts);
         let mut crossings = 0;
         for i in 0..order.len() - 1 {
@@ -538,8 +565,16 @@ mod tests {
     #[test]
     fn sample_is_deterministic_and_seed_varies() {
         let g = gradient_grid(false);
-        assert_eq!(sample(&g, 1, 500), sample(&g, 1, 500), "same seed must reproduce");
-        assert_ne!(sample(&g, 1, 500), sample(&g, 2, 500), "different seed must differ");
+        assert_eq!(
+            sample(&g, 1, 500),
+            sample(&g, 1, 500),
+            "same seed must reproduce"
+        );
+        assert_ne!(
+            sample(&g, 1, 500),
+            sample(&g, 2, 500),
+            "different seed must differ"
+        );
     }
 
     #[test]
@@ -547,9 +582,15 @@ mod tests {
         // Dark-centre gradient: points cluster near the centre; with invert they cluster at the edges.
         let mean_r = |g: &Grid| {
             let pts = sample(g, 3, 1500);
-            let s: f32 = pts.iter().map(|&(x, y)| ((x - 30.0).powi(2) + (y - 30.0).powi(2)).sqrt()).sum();
+            let s: f32 = pts
+                .iter()
+                .map(|&(x, y)| ((x - 30.0).powi(2) + (y - 30.0).powi(2)).sqrt())
+                .sum();
             s / pts.len().max(1) as f32
         };
-        assert!(mean_r(&gradient_grid(false)) < mean_r(&gradient_grid(true)), "invert should push points outward");
+        assert!(
+            mean_r(&gradient_grid(false)) < mean_r(&gradient_grid(true)),
+            "invert should push points outward"
+        );
     }
 }

@@ -40,7 +40,11 @@ pub fn centerline(grid: &Grid, p: &Params) -> Vec<Stroke> {
     let smx = grid.sx * f as f32;
     let smy = grid.sy * f as f32;
     let to_mm = |x: usize, y: usize| ((x as f32 + 0.5) * smx, (y as f32 + 0.5) * smy);
-    let tol = if p.simplify_tol > 0.0 { p.simplify_tol } else { 0.2 };
+    let tol = if p.simplify_tol > 0.0 {
+        p.simplify_tol
+    } else {
+        0.2
+    };
 
     let mut out = Vec::new();
     for poly in trace(&mask, mw, mh) {
@@ -55,9 +59,21 @@ pub fn centerline(grid: &Grid, p: &Params) -> Vec<Stroke> {
             })
             .collect();
         let kept = crate::shapes::simplify(&flat, tol);
-        let pts: Vec<Point> = kept.chunks_exact(2).map(|c| Point { x: c[0], y: c[1], pressure: 1.0 }).collect();
+        let pts: Vec<Point> = kept
+            .chunks_exact(2)
+            .map(|c| Point {
+                x: c[0],
+                y: c[1],
+                pressure: 1.0,
+            })
+            .collect();
         if pts.len() >= 2 {
-            out.push(Stroke { points: pts, pen: 0, reversible: true, group: 0 });
+            out.push(Stroke {
+                points: pts,
+                pen: 0,
+                reversible: true,
+                group: 0,
+            });
         }
     }
     out
@@ -133,13 +149,27 @@ fn thin(mask: &mut [u8], w: usize, h: usize) {
 
 // ---- trace skeleton → polylines -----------------------------------------------------------------
 
-const NB: [(isize, isize); 8] = [(0, -1), (1, -1), (1, 0), (1, 1), (0, 1), (-1, 1), (-1, 0), (-1, -1)];
+const NB: [(isize, isize); 8] = [
+    (0, -1),
+    (1, -1),
+    (1, 0),
+    (1, 1),
+    (0, 1),
+    (-1, 1),
+    (-1, 0),
+    (-1, -1),
+];
 
 fn neighbors(m: &[u8], w: usize, h: usize, x: usize, y: usize) -> Vec<(usize, usize)> {
     let mut v = Vec::with_capacity(8);
     for &(dx, dy) in &NB {
         let (nx, ny) = (x as isize + dx, y as isize + dy);
-        if nx >= 0 && ny >= 0 && (nx as usize) < w && (ny as usize) < h && m[ny as usize * w + nx as usize] == 1 {
+        if nx >= 0
+            && ny >= 0
+            && (nx as usize) < w
+            && (ny as usize) < h
+            && m[ny as usize * w + nx as usize] == 1
+        {
             v.push((nx as usize, ny as usize));
         }
     }
@@ -160,8 +190,10 @@ fn trace(mask: &[u8], w: usize, h: usize) -> Vec<Vec<(usize, usize)>> {
         let (mut cx, mut cy) = (sx, sy);
         let (mut pdx, mut pdy) = (0.0f32, 0.0f32);
         loop {
-            let cand: Vec<(usize, usize)> =
-                neighbors(mask, w, h, cx, cy).into_iter().filter(|&(nx, ny)| !visited[ny * w + nx]).collect();
+            let cand: Vec<(usize, usize)> = neighbors(mask, w, h, cx, cy)
+                .into_iter()
+                .filter(|&(nx, ny)| !visited[ny * w + nx])
+                .collect();
             if cand.is_empty() {
                 break;
             }
@@ -171,7 +203,11 @@ fn trace(mask: &[u8], w: usize, h: usize) -> Vec<Vec<(usize, usize)>> {
             for &(nx, ny) in &cand {
                 let (dx, dy) = (nx as f32 - cx as f32, ny as f32 - cy as f32);
                 let l = (dx * dx + dy * dy).sqrt().max(1e-6);
-                let s = if pdx == 0.0 && pdy == 0.0 { 0.0 } else { (dx / l) * pdx + (dy / l) * pdy };
+                let s = if pdx == 0.0 && pdy == 0.0 {
+                    0.0
+                } else {
+                    (dx / l) * pdx + (dy / l) * pdy
+                };
                 if s > bests {
                     bests = s;
                     best = (nx, ny);
@@ -243,13 +279,24 @@ mod tests {
             "............",
         ];
         let g = grid_from(&rows);
-        let p = Params { method: "centerline".into(), threshold: 128, ..Default::default() };
+        let p = Params {
+            method: "centerline".into(),
+            threshold: 128,
+            ..Default::default()
+        };
         let out = centerline(&g, &p);
-        assert_eq!(out.len(), 1, "one centreline for the bar, got {}", out.len());
+        assert_eq!(
+            out.len(),
+            1,
+            "one centreline for the bar, got {}",
+            out.len()
+        );
         // It thins to a single horizontal line near the bar's vertical centre, spanning most of it.
         let s = &out[0];
-        let xspan = s.points.iter().fold((f32::MAX, f32::MIN), |(a, b), p| (a.min(p.x), b.max(p.x)));
+        let xspan = s
+            .points
+            .iter()
+            .fold((f32::MAX, f32::MIN), |(a, b), p| (a.min(p.x), b.max(p.x)));
         assert!(xspan.1 - xspan.0 > 5.0, "centreline spans the bar");
     }
 }
-

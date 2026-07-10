@@ -72,7 +72,11 @@ pub fn hatch_pass(
             let y = o * ny + t * dy;
             let inside = x >= -eps && y >= -eps && x <= tw + eps && y <= th + eps;
             if inside && keep(grid.ink_mm(x, y)) {
-                seg.push(Point { x, y, pressure: 1.0 });
+                seg.push(Point {
+                    x,
+                    y,
+                    pressure: 1.0,
+                });
             } else if seg.len() >= 2 {
                 out.push(stroke(std::mem::take(&mut seg)));
             } else {
@@ -132,7 +136,11 @@ pub fn pressure_hatch(grid: &Grid, p: &Params) -> Vec<Stroke> {
             let inside = x >= -eps && y >= -eps && x <= tw + eps && y <= th + eps;
             let ink = if inside { grid.ink_mm(x, y) } else { 0.0 };
             if ink > INK_FLOOR {
-                seg.push(Point { x, y, pressure: contrast(ink, c) });
+                seg.push(Point {
+                    x,
+                    y,
+                    pressure: contrast(ink, c),
+                });
             } else if seg.len() >= 2 {
                 out.push(stroke(std::mem::take(&mut seg)));
             } else {
@@ -147,4 +155,3 @@ pub fn pressure_hatch(grid: &Grid, p: &Params) -> Vec<Stroke> {
     }
     out
 }
-

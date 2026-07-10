@@ -141,7 +141,12 @@ impl Chainer {
             let end = *chain.last().unwrap();
             grow(&mut chain, end, &mut used, &adj, &self.segs);
             if chain.len() >= 2 {
-                out.push(stroke(chain.iter().map(|&pi| pt(self.pool[pi].0, self.pool[pi].1)).collect()));
+                out.push(stroke(
+                    chain
+                        .iter()
+                        .map(|&pi| pt(self.pool[pi].0, self.pool[pi].1))
+                        .collect(),
+                ));
             }
         }
     }

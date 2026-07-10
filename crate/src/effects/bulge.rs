@@ -28,10 +28,19 @@ pub fn apply(strokes: &[Stroke], s: &EffectSpec) -> Vec<Stroke> {
                     let falloff = (1.0 - r / radius).clamp(0.0, 1.0);
                     // Smooth radial gain: outward for +strength, inward for −strength.
                     let gain = 1.0 + strength * falloff;
-                    Point { x: cx + dx * gain, y: cy + dy * gain, pressure: p.pressure }
+                    Point {
+                        x: cx + dx * gain,
+                        y: cy + dy * gain,
+                        pressure: p.pressure,
+                    }
                 })
                 .collect();
-            Stroke { points: out, pen: stroke.pen, reversible: stroke.reversible, group: stroke.group }
+            Stroke {
+                points: out,
+                pen: stroke.pen,
+                reversible: stroke.reversible,
+                group: stroke.group,
+            }
         })
         .collect()
 }

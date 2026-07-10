@@ -45,5 +45,10 @@ pub fn spiral(grid: &Grid, p: &Params) -> Vec<Stroke> {
         return vec![];
     }
     // One unbroken designed path.
-    vec![Stroke { points: pts, pen: 0, reversible: false, group: 0 }]
+    vec![Stroke {
+        points: pts,
+        pen: 0,
+        reversible: false,
+        group: 0,
+    }]
 }

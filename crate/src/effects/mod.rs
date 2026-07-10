@@ -101,7 +101,8 @@ fn lerp_point(a: Point, b: Point, t: f32) -> Point {
 
 /// A polyline is closed when its ends coincide (a shape contour) — effects must keep it closed.
 pub fn is_closed(pts: &[Point]) -> bool {
-    pts.len() >= 4 && (pts[0].x - pts[pts.len() - 1].x).hypot(pts[0].y - pts[pts.len() - 1].y) < 1e-3
+    pts.len() >= 4
+        && (pts[0].x - pts[pts.len() - 1].x).hypot(pts[0].y - pts[pts.len() - 1].y) < 1e-3
 }
 
 /// Resample a polyline to roughly `step`-spaced points (interpolating pressure), keeping the exact
@@ -138,7 +139,12 @@ pub fn resample(pts: &[Point], step: f32) -> Vec<Point> {
 
 /// Axis-aligned bounding-box centre of all points across the strokes (the pivot for twist/bulge).
 pub fn centroid(strokes: &[Stroke]) -> (f32, f32) {
-    let (mut x0, mut y0, mut x1, mut y1) = (f32::INFINITY, f32::INFINITY, f32::NEG_INFINITY, f32::NEG_INFINITY);
+    let (mut x0, mut y0, mut x1, mut y1) = (
+        f32::INFINITY,
+        f32::INFINITY,
+        f32::NEG_INFINITY,
+        f32::NEG_INFINITY,
+    );
     for s in strokes {
         for p in &s.points {
             x0 = x0.min(p.x);
@@ -201,8 +207,16 @@ mod tests {
     fn line() -> Vec<Stroke> {
         vec![Stroke {
             points: vec![
-                Point { x: 0.0, y: 0.0, pressure: 1.0 },
-                Point { x: 100.0, y: 0.0, pressure: 1.0 },
+                Point {
+                    x: 0.0,
+                    y: 0.0,
+                    pressure: 1.0,
+                },
+                Point {
+                    x: 100.0,
+                    y: 0.0,
+                    pressure: 1.0,
+                },
             ],
             pen: 3,
             reversible: true,
@@ -213,11 +227,31 @@ mod tests {
     fn square() -> Vec<Stroke> {
         vec![Stroke {
             points: vec![
-                Point { x: 0.0, y: 0.0, pressure: 1.0 },
-                Point { x: 10.0, y: 0.0, pressure: 1.0 },
-                Point { x: 10.0, y: 10.0, pressure: 1.0 },
-                Point { x: 0.0, y: 10.0, pressure: 1.0 },
-                Point { x: 0.0, y: 0.0, pressure: 1.0 },
+                Point {
+                    x: 0.0,
+                    y: 0.0,
+                    pressure: 1.0,
+                },
+                Point {
+                    x: 10.0,
+                    y: 0.0,
+                    pressure: 1.0,
+                },
+                Point {
+                    x: 10.0,
+                    y: 10.0,
+                    pressure: 1.0,
+                },
+                Point {
+                    x: 0.0,
+                    y: 10.0,
+                    pressure: 1.0,
+                },
+                Point {
+                    x: 0.0,
+                    y: 0.0,
+                    pressure: 1.0,
+                },
             ],
             pen: 0,
             reversible: false,
@@ -231,7 +265,11 @@ mod tests {
         assert_eq!(apply(&s, "[]").len(), 1);
         let off = r#"[{"type":"roughen","enabled":false,"amplitudeMm":5,"detailMm":4,"tremorMm":0,"seed":1}]"#;
         let out = apply(&s, off);
-        assert_eq!(out[0].points.len(), 2, "disabled effect must not touch geometry");
+        assert_eq!(
+            out[0].points.len(),
+            2,
+            "disabled effect must not touch geometry"
+        );
         // Malformed JSON → unchanged.
         assert_eq!(apply(&s, "not json")[0].points.len(), 2);
     }
@@ -252,7 +290,11 @@ mod tests {
         }
         // A different seed yields a different path.
         let c = apply(&line(), &json.replace("42", "43"));
-        let diff = a[0].points.iter().zip(&c[0].points).any(|(p, q)| (p.y - q.y).abs() > 1e-4);
+        let diff = a[0]
+            .points
+            .iter()
+            .zip(&c[0].points)
+            .any(|(p, q)| (p.y - q.y).abs() > 1e-4);
         assert!(diff, "different seed → different roughening");
     }
 
@@ -261,8 +303,40 @@ mod tests {
         // Two separate strokes meeting at (10,0) — the Truchet/Voronoi case. A positional field gives
         // both the same offset there, so the seam doesn't tear apart.
         let strokes = vec![
-            Stroke { points: vec![Point { x: 0.0, y: 0.0, pressure: 1.0 }, Point { x: 10.0, y: 0.0, pressure: 1.0 }], pen: 0, reversible: true, group: 0 },
-            Stroke { points: vec![Point { x: 10.0, y: 0.0, pressure: 1.0 }, Point { x: 10.0, y: 10.0, pressure: 1.0 }], pen: 0, reversible: true, group: 0 },
+            Stroke {
+                points: vec![
+                    Point {
+                        x: 0.0,
+                        y: 0.0,
+                        pressure: 1.0,
+                    },
+                    Point {
+                        x: 10.0,
+                        y: 0.0,
+                        pressure: 1.0,
+                    },
+                ],
+                pen: 0,
+                reversible: true,
+                group: 0,
+            },
+            Stroke {
+                points: vec![
+                    Point {
+                        x: 10.0,
+                        y: 0.0,
+                        pressure: 1.0,
+                    },
+                    Point {
+                        x: 10.0,
+                        y: 10.0,
+                        pressure: 1.0,
+                    },
+                ],
+                pen: 0,
+                reversible: true,
+                group: 0,
+            },
         ];
         let json = r#"[{"type":"roughen","enabled":true,"amplitudeMm":3,"detailMm":5,"tremorMm":0.5,"seed":9}]"#;
         let out = apply(&strokes, json);
@@ -271,10 +345,16 @@ mod tests {
         assert!(
             (a_end.x - b_start.x).abs() < 1e-4 && (a_end.y - b_start.y).abs() < 1e-4,
             "shared endpoint must stay joined (({},{}) vs ({},{}))",
-            a_end.x, a_end.y, b_start.x, b_start.y,
+            a_end.x,
+            a_end.y,
+            b_start.x,
+            b_start.y,
         );
         // And it actually moved (not a no-op).
-        assert!((a_end.x - 10.0).abs() + (a_end.y - 0.0).abs() > 0.1, "endpoint should be displaced");
+        assert!(
+            (a_end.x - 10.0).abs() + (a_end.y - 0.0).abs() > 0.1,
+            "endpoint should be displaced"
+        );
     }
 
     #[test]
@@ -283,18 +363,34 @@ mod tests {
         // points, while the open polyline's endpoints stay exactly put.
         let strokes = vec![Stroke {
             points: vec![
-                Point { x: 0.0, y: 0.0, pressure: 1.0 },
-                Point { x: 1.0, y: 10.0, pressure: 1.0 },
-                Point { x: 2.0, y: 0.0, pressure: 1.0 },
+                Point {
+                    x: 0.0,
+                    y: 0.0,
+                    pressure: 1.0,
+                },
+                Point {
+                    x: 1.0,
+                    y: 10.0,
+                    pressure: 1.0,
+                },
+                Point {
+                    x: 2.0,
+                    y: 0.0,
+                    pressure: 1.0,
+                },
             ],
             pen: 5,
             reversible: true,
             group: 2,
         }];
-        let json = r#"[{"type":"smooth","enabled":true,"detailMm":2.0,"strength":0.7,"iterations":15}]"#;
+        let json =
+            r#"[{"type":"smooth","enabled":true,"detailMm":2.0,"strength":0.7,"iterations":15}]"#;
         let out = apply(&strokes, json);
         assert_eq!(out[0].pen, 5);
-        assert!(out[0].points.len() > 3, "subdivision adds points (more than the 3 input)");
+        assert!(
+            out[0].points.len() > 3,
+            "subdivision adds points (more than the 3 input)"
+        );
         let first = out[0].points[0];
         let last = *out[0].points.last().unwrap();
         assert!(first.x == 0.0 && first.y == 0.0, "first endpoint pinned");
@@ -317,7 +413,10 @@ mod tests {
         let json = r#"[{"type":"wave","enabled":true,"amplitudeMm":5,"wavelengthMm":40,"angleDeg":0,"phaseDeg":0,"harmonics":1}]"#;
         let out = apply(&line(), json);
         let max_y = out[0].points.iter().fold(0.0f32, |m, p| m.max(p.y.abs()));
-        assert!(max_y > 3.0, "wave should push points off the baseline (got {max_y})");
+        assert!(
+            max_y > 3.0,
+            "wave should push points off the baseline (got {max_y})"
+        );
     }
 
     #[test]
@@ -328,10 +427,21 @@ mod tests {
         assert_eq!(out.len(), 1);
         let pts = &out[0].points;
         assert!(pts.len() > 2, "taper zones densified for a smooth ramp");
-        assert!(pts[0].pressure < 0.05, "head tip near zero (got {})", pts[0].pressure);
+        assert!(
+            pts[0].pressure < 0.05,
+            "head tip near zero (got {})",
+            pts[0].pressure
+        );
         assert!(pts.last().unwrap().pressure < 0.05, "tail tip near zero");
-        let mid = pts.iter().min_by(|a, b| (a.x - 50.0).abs().partial_cmp(&(b.x - 50.0).abs()).unwrap()).unwrap();
-        assert!(mid.pressure > 0.95, "untapered middle stays full (got {})", mid.pressure);
+        let mid = pts
+            .iter()
+            .min_by(|a, b| (a.x - 50.0).abs().partial_cmp(&(b.x - 50.0).abs()).unwrap())
+            .unwrap();
+        assert!(
+            mid.pressure > 0.95,
+            "untapered middle stays full (got {})",
+            mid.pressure
+        );
         assert_eq!(out[0].pen, 3);
         assert_eq!(out[0].group, 7);
     }
@@ -341,7 +451,13 @@ mod tests {
         let json = r#"[{"type":"taper","enabled":true,"startMm":5,"endMm":5,"minPressure":0}]"#;
         let out = apply(&square(), json);
         assert_eq!(out[0].points.len(), 5, "closed contour untouched");
-        assert!(out[0].points.iter().all(|p| (p.pressure - 1.0).abs() < 1e-6), "pressure unchanged");
+        assert!(
+            out[0]
+                .points
+                .iter()
+                .all(|p| (p.pressure - 1.0).abs() < 1e-6),
+            "pressure unchanged"
+        );
     }
 
     #[test]
@@ -356,8 +472,40 @@ mod tests {
     fn sketch_keeps_shared_endpoints_joined_per_pass() {
         // Two strokes meeting at (10,0); within a pass the positional wander keeps the seam joined.
         let strokes = vec![
-            Stroke { points: vec![Point { x: 0.0, y: 0.0, pressure: 1.0 }, Point { x: 10.0, y: 0.0, pressure: 1.0 }], pen: 0, reversible: true, group: 0 },
-            Stroke { points: vec![Point { x: 10.0, y: 0.0, pressure: 1.0 }, Point { x: 10.0, y: 10.0, pressure: 1.0 }], pen: 0, reversible: true, group: 0 },
+            Stroke {
+                points: vec![
+                    Point {
+                        x: 0.0,
+                        y: 0.0,
+                        pressure: 1.0,
+                    },
+                    Point {
+                        x: 10.0,
+                        y: 0.0,
+                        pressure: 1.0,
+                    },
+                ],
+                pen: 0,
+                reversible: true,
+                group: 0,
+            },
+            Stroke {
+                points: vec![
+                    Point {
+                        x: 10.0,
+                        y: 0.0,
+                        pressure: 1.0,
+                    },
+                    Point {
+                        x: 10.0,
+                        y: 10.0,
+                        pressure: 1.0,
+                    },
+                ],
+                pen: 0,
+                reversible: true,
+                group: 0,
+            },
         ];
         let json = r#"[{"type":"sketch","enabled":true,"passes":2,"offsetMm":1.0,"seed":4}]"#;
         let out = apply(&strokes, json); // order: [A0, A1, B0, B1]

@@ -21,8 +21,8 @@ mod value;
 
 use std::collections::HashMap;
 
-use lex::Span;
 pub use eval::RunResult;
+use lex::Span;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ErrKind {
@@ -33,6 +33,7 @@ pub enum ErrKind {
 
 #[derive(Clone, Debug)]
 pub struct LogoError {
+    #[allow(dead_code)]
     pub kind: ErrKind,
     pub message: String,
     pub span: Span,
@@ -40,13 +41,25 @@ pub struct LogoError {
 
 impl LogoError {
     pub fn parse(message: &str, span: Span) -> Self {
-        LogoError { kind: ErrKind::Parse, message: message.to_string(), span }
+        LogoError {
+            kind: ErrKind::Parse,
+            message: message.to_string(),
+            span,
+        }
     }
     pub fn runtime(message: &str, span: Span) -> Self {
-        LogoError { kind: ErrKind::Runtime, message: message.to_string(), span }
+        LogoError {
+            kind: ErrKind::Runtime,
+            message: message.to_string(),
+            span,
+        }
     }
     pub fn limit(message: &str, span: Span) -> Self {
-        LogoError { kind: ErrKind::Limit, message: message.to_string(), span }
+        LogoError {
+            kind: ErrKind::Limit,
+            message: message.to_string(),
+            span,
+        }
     }
 }
 
@@ -189,7 +202,11 @@ mod tests {
     fn unary_minus_statements() {
         // `fd 10 -5` = fd 10, then a dangling -5.
         let e = run_err("fd 10 -5");
-        assert!(e.message.contains("you don't say what to do with -5"), "{}", e.message);
+        assert!(
+            e.message.contains("you don't say what to do with -5"),
+            "{}",
+            e.message
+        );
         // `fd 10 - 5` = fd 5.
         let s = run_ok("fd 10 - 5");
         assert_eq!(end_pos(&s), (0.0, -5.0));
@@ -217,7 +234,9 @@ mod tests {
         assert!(run_err("to square\nfd 10").message.contains("no end"));
         assert!(run_err("end").message.contains("end without to"));
         assert!(run_err("to fd :n\nend").message.contains("built-in"));
-        assert!(run_err("to a\nto b\nend\nend").message.contains("to inside a procedure"));
+        assert!(run_err("to a\nto b\nend\nend")
+            .message
+            .contains("to inside a procedure"));
     }
 
     // ── evaluation ──────────────────────────────────────────────────────────────────────────────
@@ -259,7 +278,17 @@ spin :n - 1
 end
 spin 100000
 fd 10";
-        let s = run_source(src, HashMap::new(), 1, Limits { max_steps: 10_000_000, ..Limits::default() }).unwrap().strokes;
+        let s = run_source(
+            src,
+            HashMap::new(),
+            1,
+            Limits {
+                max_steps: 10_000_000,
+                ..Limits::default()
+            },
+        )
+        .unwrap()
+        .strokes;
         assert_eq!(s.len(), 1); // it got to the fd
     }
 
@@ -273,7 +302,15 @@ f :n + 1
 fd 1
 end
 f 0";
-        let e = match run_source(src, HashMap::new(), 1, Limits { max_depth: 64, ..Limits::default() }) {
+        let e = match run_source(
+            src,
+            HashMap::new(),
+            1,
+            Limits {
+                max_depth: 64,
+                ..Limits::default()
+            },
+        ) {
             Err(e) => e,
             Ok(_) => panic!("expected depth limit"),
         };
@@ -283,7 +320,15 @@ f 0";
 
     #[test]
     fn step_limit_fires() {
-        let e = match run_source("while [1 < 2] [rt 1]", HashMap::new(), 1, Limits { max_steps: 10_000, ..Limits::default() }) {
+        let e = match run_source(
+            "while [1 < 2] [rt 1]",
+            HashMap::new(),
+            1,
+            Limits {
+                max_steps: 10_000,
+                ..Limits::default()
+            },
+        ) {
             Err(e) => e,
             Ok(_) => panic!("expected step limit"),
         };
@@ -297,7 +342,10 @@ f 0";
             "repeat 100000 [fd 1 rt 1]",
             HashMap::new(),
             1,
-            Limits { max_points: 1000, ..Limits::default() },
+            Limits {
+                max_points: 1000,
+                ..Limits::default()
+            },
         ) {
             Err(e) => e,
             Ok(_) => panic!("expected point limit"),
@@ -358,10 +406,35 @@ f 0";
 
     #[test]
     fn seeded_random_is_deterministic() {
-        let a = run_source("repeat 20 [fd random 10 rt random 360]", HashMap::new(), 7, Limits::default()).unwrap().strokes;
-        let b = run_source("repeat 20 [fd random 10 rt random 360]", HashMap::new(), 7, Limits::default()).unwrap().strokes;
-        let c = run_source("repeat 20 [fd random 10 rt random 360]", HashMap::new(), 8, Limits::default()).unwrap().strokes;
-        let flat = |s: &[Stroke]| s.iter().flat_map(|st| st.points.iter().map(|p| (p.x, p.y))).collect::<Vec<_>>();
+        let a = run_source(
+            "repeat 20 [fd random 10 rt random 360]",
+            HashMap::new(),
+            7,
+            Limits::default(),
+        )
+        .unwrap()
+        .strokes;
+        let b = run_source(
+            "repeat 20 [fd random 10 rt random 360]",
+            HashMap::new(),
+            7,
+            Limits::default(),
+        )
+        .unwrap()
+        .strokes;
+        let c = run_source(
+            "repeat 20 [fd random 10 rt random 360]",
+            HashMap::new(),
+            8,
+            Limits::default(),
+        )
+        .unwrap()
+        .strokes;
+        let flat = |s: &[Stroke]| {
+            s.iter()
+                .flat_map(|st| st.points.iter().map(|p| (p.x, p.y)))
+                .collect::<Vec<_>>()
+        };
         assert_eq!(flat(&a), flat(&b), "same seed must reproduce");
         assert_ne!(flat(&a), flat(&c), "different seed must differ");
     }
@@ -436,9 +509,17 @@ f 0";
     #[test]
     fn you_dont_say_and_didnt_output() {
         let e = run_err("sum 1 2");
-        assert!(e.message.contains("you don't say what to do with 3"), "{}", e.message);
+        assert!(
+            e.message.contains("you don't say what to do with 3"),
+            "{}",
+            e.message
+        );
         let e = run_err("fd fd 1");
-        assert!(e.message.contains("fd didn't output a value"), "{}", e.message);
+        assert!(
+            e.message.contains("fd didn't output a value"),
+            "{}",
+            e.message
+        );
     }
 
     #[test]
@@ -455,7 +536,9 @@ f 0";
 
     #[test]
     fn run_entry_point_json() {
-        let strokes = run(r#"{"source": "repeat 4 [fd 10 rt 90]", "args": {}, "seed": 1}"#).unwrap().strokes;
+        let strokes = run(r#"{"source": "repeat 4 [fd 10 rt 90]", "args": {}, "seed": 1}"#)
+            .unwrap()
+            .strokes;
         assert_eq!(strokes.len(), 1);
         let err = run(r#"{"source": "nope", "args": {}, "seed": 1}"#).unwrap_err();
         assert!(err.contains("I don't know how to nope"), "{}", err);

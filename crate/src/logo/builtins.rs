@@ -8,28 +8,105 @@
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum B {
     // turtle
-    Forward, Back, Right, Left, PenUp, PenDown, Home, SetXY, SetPos, SetX, SetY, SetHeading,
-    Arc, Arc2, XCor, YCor, Heading, Towards, Pos,
+    Forward,
+    Back,
+    Right,
+    Left,
+    PenUp,
+    PenDown,
+    Home,
+    SetXY,
+    SetPos,
+    SetX,
+    SetY,
+    SetHeading,
+    Arc,
+    Arc2,
+    XCor,
+    YCor,
+    Heading,
+    Towards,
+    Pos,
     // pen
-    SetPressure, Pressure, SetPen, Pen,
+    SetPressure,
+    Pressure,
+    SetPen,
+    Pen,
     // control
-    Repeat, RepCount, If, IfElse, For, While, Foreach, Map, Filter, Run, Output, Stop,
+    Repeat,
+    RepCount,
+    If,
+    IfElse,
+    For,
+    While,
+    Foreach,
+    Map,
+    Filter,
+    Run,
+    Output,
+    Stop,
     // variables
-    Make, Local, LocalMake, Thing, Param,
+    Make,
+    Local,
+    LocalMake,
+    Thing,
+    Param,
     // math
-    Sum, Difference, Product, Quotient, Remainder, Modulo, MinusFn, Abs, Int, Round, Sqrt,
-    Power, Exp, Ln, Log10, Sin, Cos, Tan, Arctan, Pi, Min, Max,
+    Sum,
+    Difference,
+    Product,
+    Quotient,
+    Remainder,
+    Modulo,
+    MinusFn,
+    Abs,
+    Int,
+    Round,
+    Sqrt,
+    Power,
+    Exp,
+    Ln,
+    Log10,
+    Sin,
+    Cos,
+    Tan,
+    Arctan,
+    Pi,
+    Min,
+    Max,
     // logic
-    And, Or, Not, True, False,
+    And,
+    Or,
+    Not,
+    True,
+    False,
     // words & lists
-    Word, List, Sentence, FPut, LPut, First, Last, ButFirst, ButLast, Item, Count,
-    EmptyP, ListP, NumberP, WordP, MemberP, Reverse,
+    Word,
+    List,
+    Sentence,
+    FPut,
+    LPut,
+    First,
+    Last,
+    ButFirst,
+    ButLast,
+    Item,
+    Count,
+    EmptyP,
+    ListP,
+    NumberP,
+    WordP,
+    MemberP,
+    Reverse,
     // random
-    Random, Pick, ReRandom,
+    Random,
+    Pick,
+    ReRandom,
     // template
     Question,
     // io (accepted, ignored — there is no console surface; keeps textbook code running)
-    Print, Show,
+    Print,
+    Show,
 }
 
 pub struct BuiltinDef {
@@ -159,7 +236,9 @@ pub static BUILTINS: &[BuiltinDef] = &[
 
 /// Look up a builtin by canonical name or alias (input must already be lowercase).
 pub fn lookup(name: &str) -> Option<&'static BuiltinDef> {
-    BUILTINS.iter().find(|b| b.name == name || b.aliases.contains(&name))
+    BUILTINS
+        .iter()
+        .find(|b| b.name == name || b.aliases.contains(&name))
 }
 
 #[cfg(test)]

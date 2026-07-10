@@ -25,7 +25,11 @@ pub fn scanlines(grid: &Grid, p: &Params) -> Vec<Stroke> {
             let ink = grid.ink_mm(x, y);
             phase += base_w * (0.4 + 1.6 * ink) * STEP;
             let off = amp_max * ink * phase.sin();
-            seg.push(Point { x, y: y + off, pressure: 1.0 });
+            seg.push(Point {
+                x,
+                y: y + off,
+                pressure: 1.0,
+            });
             x += STEP;
         }
         if seg.len() >= 2 {

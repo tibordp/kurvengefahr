@@ -72,7 +72,13 @@ pub fn apply(strokes: &[Stroke], s: &EffectSpec) -> Vec<Stroke> {
             // Ramp min_p → 1 over `start` from the head and over `end` toward the tail; the smaller
             // of the two wins (near a tip), and it multiplies the existing pressure.
             let (acc, len) = arclen(&pts);
-            let ramp = |d: f32, w: f32| if w <= 1e-4 { 1.0 } else { (d / w).clamp(0.0, 1.0) };
+            let ramp = |d: f32, w: f32| {
+                if w <= 1e-4 {
+                    1.0
+                } else {
+                    (d / w).clamp(0.0, 1.0)
+                }
+            };
             let out = pts
                 .iter()
                 .enumerate()
@@ -80,10 +86,19 @@ pub fn apply(strokes: &[Stroke], s: &EffectSpec) -> Vec<Stroke> {
                     let d = acc[i];
                     let f = (min_p + (1.0 - min_p) * ramp(d, start))
                         .min(min_p + (1.0 - min_p) * ramp(len - d, end));
-                    Point { x: p.x, y: p.y, pressure: p.pressure * f }
+                    Point {
+                        x: p.x,
+                        y: p.y,
+                        pressure: p.pressure * f,
+                    }
                 })
                 .collect();
-            Stroke { points: out, pen: stroke.pen, reversible: stroke.reversible, group: stroke.group }
+            Stroke {
+                points: out,
+                pen: stroke.pen,
+                reversible: stroke.reversible,
+                group: stroke.group,
+            }
         })
         .collect()
 }

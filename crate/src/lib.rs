@@ -69,7 +69,6 @@ pub fn model_ready() -> bool {
     MODEL.with(|m| m.borrow().is_some())
 }
 
-
 /// Positioned geometry for one word plus its advance width (mm). Exposes the same flat-buffer
 /// getters as `GeometryBuffers` so JS decodes the geometry identically, with `width` read separately
 /// for layout.
@@ -166,7 +165,13 @@ pub fn tessellate_ellipse(rx: f32, ry: f32) -> GeometryBuffers {
 /// Regular polygon / star, inscribed in radii (rx, ry), centred at the origin. `sides` ≥ 3 vertices;
 /// a star alternates the outer radius with `inner_ratio`×radius. Returns one closed stroke.
 #[wasm_bindgen]
-pub fn tessellate_polygon(rx: f32, ry: f32, sides: u32, star: bool, inner_ratio: f32) -> GeometryBuffers {
+pub fn tessellate_polygon(
+    rx: f32,
+    ry: f32,
+    sides: u32,
+    star: bool,
+    inner_ratio: f32,
+) -> GeometryBuffers {
     GeometryBuffers::from_strokes(&shapes::polygon(rx, ry, sides, star, inner_ratio))
 }
 
@@ -176,7 +181,12 @@ pub fn tessellate_polygon(rx: f32, ry: f32, sides: u32, star: bool, inner_ratio:
 /// contour `c` is closed. Returns **one stroke per contour, in order** (an empty stroke for a
 /// degenerate contour) so JS can keep its `contours[]` indexing aligned.
 #[wasm_bindgen]
-pub fn tessellate_path(nodes: &[f32], contour_starts: &[u32], closed: &[u8], tol: f32) -> GeometryBuffers {
+pub fn tessellate_path(
+    nodes: &[f32],
+    contour_starts: &[u32],
+    closed: &[u8],
+    tol: f32,
+) -> GeometryBuffers {
     let mut strokes: Vec<Stroke> = Vec::with_capacity(closed.len());
     for c in 0..closed.len() {
         let start = contour_starts[c] as usize * 6;
@@ -300,6 +310,7 @@ pub fn simplify_polyline(xy: &[f32], tol: f32) -> Vec<f32> {
 /// See `shapes::split_cubic`; returns 10 floats `[Sx,Sy, aHoutX,aHoutY, mHinX,mHinY, mHoutX,mHoutY,
 /// bHinX,bHinY]`.
 #[wasm_bindgen]
+#[allow(clippy::too_many_arguments)] // the wasm boundary passes plain floats, positional by design
 pub fn split_cubic(
     ax: f32,
     ay: f32,
@@ -311,7 +322,14 @@ pub fn split_cubic(
     by: f32,
     t: f32,
 ) -> Vec<f32> {
-    shapes::split_cubic((ax, ay), (a_hout_x, a_hout_y), (b_hin_x, b_hin_y), (bx, by), t).to_vec()
+    shapes::split_cubic(
+        (ax, ay),
+        (a_hout_x, a_hout_y),
+        (b_hin_x, b_hin_y),
+        (bx, by),
+        t,
+    )
+    .to_vec()
 }
 
 /// Hatch fill for one or more closed-polygon rings, filled together under **even-odd parity** so
@@ -319,7 +337,13 @@ pub fn split_cubic(
 /// `nrings+1` entries in **point units** (ring `r` is `xy[2*starts[r] .. 2*starts[r+1]]`). Pattern:
 /// 0 lines, 1 cross-hatch, 2 grid, 3 hilbert, 4 concentric.
 #[wasm_bindgen]
-pub fn hatch(xy: &[f32], ring_starts: &[u32], pattern: u32, spacing: f32, angle_deg: f32) -> GeometryBuffers {
+pub fn hatch(
+    xy: &[f32],
+    ring_starts: &[u32],
+    pattern: u32,
+    spacing: f32,
+    angle_deg: f32,
+) -> GeometryBuffers {
     GeometryBuffers::from_strokes(&hatch::fill(xy, ring_starts, pattern, spacing, angle_deg))
 }
 
@@ -340,7 +364,13 @@ pub fn boolean(
     clip_xy: &[f32],
     clip_starts: &[u32],
 ) -> GeometryBuffers {
-    GeometryBuffers::from_strokes(&boolean::combine(op, subj_xy, subj_starts, clip_xy, clip_starts))
+    GeometryBuffers::from_strokes(&boolean::combine(
+        op,
+        subj_xy,
+        subj_starts,
+        clip_xy,
+        clip_starts,
+    ))
 }
 
 /// Flood fill from a seed point (page mm): the given strokes (flat xy + CSR `offsets`, point
@@ -349,6 +379,7 @@ pub fn boolean(
 /// path element adopts as its even-odd contours; empty if the seed lands on a stroke or off the
 /// page. `res` is the fill grid's cell size (mm).
 #[wasm_bindgen]
+#[allow(clippy::too_many_arguments)] // the flat CSR boundary (serde.ts) is positional by design
 pub fn flood_fill(
     xy: &[f32],
     offsets: &[u32],
@@ -359,7 +390,16 @@ pub fn flood_fill(
     page_h: f32,
     res: f32,
 ) -> GeometryBuffers {
-    GeometryBuffers::from_strokes(&fill::flood(xy, offsets, seed_x, seed_y, stroke_width, page_w, page_h, res))
+    GeometryBuffers::from_strokes(&fill::flood(
+        xy,
+        offsets,
+        seed_x,
+        seed_y,
+        stroke_width,
+        page_w,
+        page_h,
+        res,
+    ))
 }
 
 /// Import an SVG (raw bytes) into native multi-contour geometry. `params` is JSON
@@ -427,7 +467,11 @@ impl MeshPreview {
 pub fn stl_mesh_preview(bytes: &[u8], max_tris: u32) -> Result<MeshPreview, JsValue> {
     let (positions, radius, total_tris) =
         wireframe::preview(bytes, max_tris).map_err(|e| JsValue::from_str(&e))?;
-    Ok(MeshPreview { positions, radius, total_tris })
+    Ok(MeshPreview {
+        positions,
+        radius,
+        total_tris,
+    })
 }
 
 /// Apply a stack of non-destructive geometry effects (roughen / wave / sketch / twist / bulge) to
@@ -451,6 +495,7 @@ pub fn apply_effects(
 /// Clip geometry to the reachable rectangle (computed JS-side). Strokes that leave and re-enter
 /// are split; pen/reversible/group are preserved so a clipped locked chain stays a chain.
 #[wasm_bindgen]
+#[allow(clippy::too_many_arguments)] // the flat CSR boundary (serde.ts) is positional by design
 pub fn clip(
     xy: &[f32],
     pressure: &[f32],
@@ -472,6 +517,7 @@ pub fn clip(
 /// clip-to-shape. Each stroke is split into the sub-polylines inside the mask; pen/reversible/group
 /// preserved.
 #[wasm_bindgen]
+#[allow(clippy::too_many_arguments)] // the flat CSR boundary (serde.ts) is positional by design
 pub fn clip_polygon(
     xy: &[f32],
     pressure: &[f32],
@@ -494,6 +540,7 @@ pub fn clip_polygon(
 /// `pen_order` is the document's pen palette as a list of pen ids; pen groups are plotted in that
 /// order (predictable manual swaps), with any stray pens not in the list appended last.
 #[wasm_bindgen]
+#[allow(clippy::too_many_arguments)] // the flat CSR boundary (serde.ts) is positional by design
 pub fn optimize(
     xy: &[f32],
     pressure: &[f32],
@@ -569,7 +616,12 @@ fn rotate_closed(s: &Stroke, start: usize) -> Stroke {
         points.push(pts[(start + off) % m]);
     }
     points.push(pts[start]); // re-close at the new start
-    Stroke { points, pen: s.pen, reversible: s.reversible, group: s.group }
+    Stroke {
+        points,
+        pen: s.pen,
+        reversible: s.reversible,
+        group: s.group,
+    }
 }
 
 /// Partition strokes into units: contiguous runs of equal nonzero group → one locked chain;
@@ -609,8 +661,8 @@ fn build_units(strokes: &[Stroke]) -> Vec<Unit> {
                     reversible: false, // a locked chain keeps its writing direction
                     entry: (fp[0].x, fp[0].y),
                     exit: (lp[lp.len() - 1].x, lp[lp.len() - 1].y),
-                    closed: false,             // chains are ordered, fixed-direction units
-                    pen: strokes[first].pen,   // a chain is single-pen (stamped at concatenation)
+                    closed: false, // chains are ordered, fixed-direction units
+                    pen: strokes[first].pen, // a chain is single-pen (stamped at concatenation)
                 });
             }
         }
@@ -647,8 +699,8 @@ fn reach(u: &Unit, strokes: &[Stroke], cursor: (f32, f32)) -> (Pick, f32) {
         let m = pts.len() - 1;
         let mut bk = 0;
         let mut bc = f32::INFINITY;
-        for k in 0..m {
-            let d = dist2(cursor, (pts[k].x, pts[k].y));
+        for (k, p) in pts[..m].iter().enumerate() {
+            let d = dist2(cursor, (p.x, p.y));
             if d < bc {
                 bc = d;
                 bk = k;
@@ -730,7 +782,7 @@ fn order_greedy(strokes: &[Stroke], start_x: f32, start_y: f32, pen_order: &[u16
                     continue;
                 }
                 let (pick, cost) = reach(u, strokes, cursor);
-                if best.map_or(true, |(_, _, bc)| cost < bc) {
+                if best.is_none_or(|(_, _, bc)| cost < bc) {
                     best = Some((i, pick, cost));
                 }
             }
@@ -771,7 +823,7 @@ fn unit_exit(u: &Unit, strokes: &[Stroke], pick: Pick) -> (f32, f32) {
 /// tour that respects unit directionality. Bounded so a huge job falls back to greedy-only.
 fn or_opt(seq: Vec<usize>, units: &[Unit], strokes: &[Stroke], start: (f32, f32)) -> Vec<usize> {
     let n = seq.len();
-    if n < 3 || n > 400 {
+    if !(3..=400).contains(&n) {
         return seq;
     }
     let cost = |order: &[usize]| -> f32 {
@@ -819,8 +871,16 @@ mod optimize_tests {
     fn seg(pen: u16, x0: f32, x1: f32) -> Stroke {
         Stroke {
             points: vec![
-                Point { x: x0, y: 0.0, pressure: 1.0 },
-                Point { x: x1, y: 0.0, pressure: 1.0 },
+                Point {
+                    x: x0,
+                    y: 0.0,
+                    pressure: 1.0,
+                },
+                Point {
+                    x: x1,
+                    y: 0.0,
+                    pressure: 1.0,
+                },
             ],
             pen,
             reversible: true,

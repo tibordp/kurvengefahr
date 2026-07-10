@@ -2,7 +2,7 @@ name: CI
 
 # Every push to main: full build (tsc + vite, catches what manual deploys would otherwise hit),
 # the vitest suite (live hardware tests self-skip without EBB_DEVICE/GRBL_DEVICE), and the
-# crate's native cargo tests. Deploys are manual (deploy.yml, workflow_dispatch).
+# crate's native cargo tests + rustfmt/clippy. Deploys are manual (deploy.yml, workflow_dispatch).
 on:
   push:
     branches: [main]
@@ -26,6 +26,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown
+          components: rustfmt, clippy
 
       - name: Cache cargo build
         uses: Swatinem/rust-cache@v2
@@ -38,4 +39,6 @@ jobs:
       - run: npm ci
       - run: npm run build # prebuild → build:wasm, then tsc + vite build
       - run: npm test # vitest; needs crate/pkg from the build step
+      - run: cargo fmt --manifest-path crate/Cargo.toml --check
+      - run: cargo clippy --manifest-path crate/Cargo.toml --all-targets -- -D warnings
       - run: cargo test --manifest-path crate/Cargo.toml

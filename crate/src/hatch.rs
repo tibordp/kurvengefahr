@@ -8,7 +8,12 @@ use crate::poly::{crossings, inside_multi, parse_polys, pt, P};
 const ELLIPSE_TOL: f32 = crate::tess::ELLIPSE_FILL_TOL;
 
 fn stroke(points: Vec<Point>) -> Stroke {
-    Stroke { points, pen: 0, reversible: true, group: 0 }
+    Stroke {
+        points,
+        pen: 0,
+        reversible: true,
+        group: 0,
+    }
 }
 fn seg(a: P, b: P) -> Stroke {
     stroke(vec![pt(a.0, a.1), pt(b.0, b.1)])
@@ -16,8 +21,12 @@ fn seg(a: P, b: P) -> Stroke {
 
 /// Bounding box over all rings' vertices.
 fn bbox(rings: &[Vec<P>]) -> (f32, f32, f32, f32) {
-    let (mut xmin, mut ymin, mut xmax, mut ymax) =
-        (f32::INFINITY, f32::INFINITY, f32::NEG_INFINITY, f32::NEG_INFINITY);
+    let (mut xmin, mut ymin, mut xmax, mut ymax) = (
+        f32::INFINITY,
+        f32::INFINITY,
+        f32::NEG_INFINITY,
+        f32::NEG_INFINITY,
+    );
     for ring in rings {
         for &(x, y) in ring {
             xmin = xmin.min(x);
@@ -35,7 +44,7 @@ fn bbox(rings: &[Vec<P>]) -> (f32, f32, f32, f32) {
 /// rotate the segments back.
 fn lines(rings: &[Vec<P>], spacing: f32, angle_deg: f32, out: &mut Vec<Stroke>) {
     if rings.iter().all(|r| r.len() < 3) || spacing <= 1e-3 {
-        return
+        return;
     }
     let th = angle_deg.to_radians();
     let (fc, fs) = ((-th).cos(), (-th).sin()); // forward: rotate by −θ (lines → horizontal)
@@ -43,7 +52,10 @@ fn lines(rings: &[Vec<P>], spacing: f32, angle_deg: f32, out: &mut Vec<Stroke>) 
     let fwd = |p: P| (p.0 * fc - p.1 * fs, p.0 * fs + p.1 * fc);
     let inv = |p: P| (p.0 * rc - p.1 * rs, p.0 * rs + p.1 * rc);
 
-    let rr: Vec<Vec<P>> = rings.iter().map(|r| r.iter().map(|&p| fwd(p)).collect()).collect();
+    let rr: Vec<Vec<P>> = rings
+        .iter()
+        .map(|r| r.iter().map(|&p| fwd(p)).collect())
+        .collect();
     let (mut ymin, mut ymax) = (f32::INFINITY, f32::NEG_INFINITY);
     for ring in &rr {
         for &(_, y) in ring {
@@ -57,7 +69,7 @@ fn lines(rings: &[Vec<P>], spacing: f32, angle_deg: f32, out: &mut Vec<Stroke>) 
         for rp in &rr {
             let n = rp.len();
             if n < 3 {
-                continue
+                continue;
             }
             let mut j = n - 1;
             for i in 0..n {
@@ -106,7 +118,7 @@ fn d2xy(side: u32, d: u32) -> (u32, u32) {
 /// fill reaches the edges while staying continuous. Density set by `spacing` (the cell size).
 fn hilbert(rings: &[Vec<P>], spacing: f32, out: &mut Vec<Stroke>) {
     if rings.iter().all(|r| r.len() < 3) || spacing <= 1e-3 {
-        return
+        return;
     }
     let (xmin, ymin, xmax, ymax) = bbox(rings);
     let dim = (xmax - xmin).max(ymax - ymin).max(1e-3);
@@ -119,12 +131,19 @@ fn hilbert(rings: &[Vec<P>], spacing: f32, out: &mut Vec<Stroke>) {
     let needed = (dim / spacing).ceil().max(1.0);
     let order = (needed.log2().ceil() as i32).clamp(1, 9) as u32;
     let side = 1u32 << order;
-    let step = if side as f32 >= needed { spacing } else { dim / side as f32 };
+    let step = if side as f32 >= needed {
+        spacing
+    } else {
+        dim / side as f32
+    };
 
     let pts: Vec<P> = (0..side * side)
         .map(|d| {
             let (gx, gy) = d2xy(side, d);
-            (xmin + (gx as f32 + 0.5) * step, ymin + (gy as f32 + 0.5) * step)
+            (
+                xmin + (gx as f32 + 0.5) * step,
+                ymin + (gy as f32 + 0.5) * step,
+            )
         })
         .collect();
     let lerp = |a: P, b: P, t: f32| (a.0 + (b.0 - a.0) * t, a.1 + (b.1 - a.1) * t);
@@ -148,7 +167,7 @@ fn hilbert(rings: &[Vec<P>], spacing: f32, out: &mut Vec<Stroke>) {
         // (grid starts at xmin/ymin), so only the max sides overflow.
         if (a.0 > xmax && b.0 > xmax) || (a.1 > ymax && b.1 > ymax) {
             close(&mut run, out);
-            continue
+            continue;
         }
         let mut bounds = vec![0.0_f32];
         bounds.extend(crossings(rings, a, b));
@@ -156,13 +175,15 @@ fn hilbert(rings: &[Vec<P>], spacing: f32, out: &mut Vec<Stroke>) {
         for k in 0..bounds.len() - 1 {
             let (t0, t1) = (bounds[k], bounds[k + 1]);
             if t1 - t0 < 1e-9 {
-                continue
+                continue;
             }
             let mid = lerp(a, b, 0.5 * (t0 + t1));
             if inside_multi(rings, mid.0, mid.1) {
                 let p0 = lerp(a, b, t0);
                 let p1 = lerp(a, b, t1);
-                let joins = run.last().is_some_and(|q| (q.x - p0.0).abs() < 1e-6 && (q.y - p0.1).abs() < 1e-6);
+                let joins = run
+                    .last()
+                    .is_some_and(|q| (q.x - p0.0).abs() < 1e-6 && (q.y - p0.1).abs() < 1e-6);
                 if !joins {
                     run.push(pt(p0.0, p0.1));
                 }
@@ -179,7 +200,11 @@ fn hilbert(rings: &[Vec<P>], spacing: f32, out: &mut Vec<Stroke>) {
 fn pt_seg_dist2(px: f32, py: f32, a: P, b: P) -> f32 {
     let (dx, dy) = (b.0 - a.0, b.1 - a.1);
     let l2 = dx * dx + dy * dy;
-    let t = if l2 <= 1e-12 { 0.0 } else { (((px - a.0) * dx + (py - a.1) * dy) / l2).clamp(0.0, 1.0) };
+    let t = if l2 <= 1e-12 {
+        0.0
+    } else {
+        (((px - a.0) * dx + (py - a.1) * dy) / l2).clamp(0.0, 1.0)
+    };
     let (cx, cy) = (a.0 + t * dx, a.1 + t * dy);
     let (ex, ey) = (px - cx, py - cy);
     ex * ex + ey * ey
@@ -191,7 +216,7 @@ fn signed_dist(rings: &[Vec<P>], x: f32, y: f32) -> f32 {
     for poly in rings {
         let n = poly.len();
         if n < 3 {
-            continue
+            continue;
         }
         let mut j = n - 1;
         for i in 0..n {
@@ -203,20 +228,43 @@ fn signed_dist(rings: &[Vec<P>], x: f32, y: f32) -> f32 {
         }
     }
     let d = best.sqrt();
-    if inside_multi(rings, x, y) { d } else { -d }
+    if inside_multi(rings, x, y) {
+        d
+    } else {
+        -d
+    }
 }
 
 /// Marching-squares cell at iso-level `l`. Corners are bottom-left/right, top-right/left distance
 /// values; emits the 0–2 contour segments crossing the cell, with saddles resolved by the centre.
 #[allow(clippy::too_many_arguments)]
-fn march_cell(l: f32, bl: f32, br: f32, tr: f32, tl: f32, x0: f32, y0: f32, x1: f32, y1: f32, out: &mut Vec<(P, P)>) {
+fn march_cell(
+    l: f32,
+    bl: f32,
+    br: f32,
+    tr: f32,
+    tl: f32,
+    x0: f32,
+    y0: f32,
+    x1: f32,
+    y1: f32,
+    out: &mut Vec<(P, P)>,
+) {
     let mut idx = 0u8;
-    if bl >= l { idx |= 1 }
-    if br >= l { idx |= 2 }
-    if tr >= l { idx |= 4 }
-    if tl >= l { idx |= 8 }
+    if bl >= l {
+        idx |= 1
+    }
+    if br >= l {
+        idx |= 2
+    }
+    if tr >= l {
+        idx |= 4
+    }
+    if tl >= l {
+        idx |= 8
+    }
     if idx == 0 || idx == 15 {
-        return
+        return;
     }
     // Linear interpolation of the iso-crossing along each cell edge.
     let e_bottom = || (x0 + (l - bl) / (br - bl) * (x1 - x0), y0);
@@ -273,7 +321,7 @@ fn stitch(segs: &[(P, P)], tol: f32) -> Vec<Vec<P>> {
             if !used[i] {
                 used[i] = true;
                 let (a, b) = segs[i];
-                return Some(if key(a) == key(p) { b } else { a })
+                return Some(if key(a) == key(p) { b } else { a });
             }
         }
         None
@@ -281,7 +329,7 @@ fn stitch(segs: &[(P, P)], tol: f32) -> Vec<Vec<P>> {
     let mut polylines = Vec::new();
     for s in 0..segs.len() {
         if used[s] {
-            continue
+            continue;
         }
         used[s] = true;
         let (a, b) = segs[s];
@@ -302,7 +350,7 @@ fn stitch(segs: &[(P, P)], tol: f32) -> Vec<Vec<P>> {
 /// rings where the medial axis branches. (Rect/ellipse use the exact parametric `concentric`.)
 fn concentric_poly(rings: &[Vec<P>], spacing: f32, out: &mut Vec<Stroke>) {
     if rings.iter().all(|r| r.len() < 3) || spacing <= 1e-3 {
-        return
+        return;
     }
     const MAX_CELLS: usize = 400;
     let (xmin, ymin, xmax, ymax) = bbox(rings);
@@ -370,7 +418,7 @@ fn rand01(x: i32, y: i32) -> f32 {
 /// each as a stroke. (Same clip the Hilbert fill uses, factored out for the line-art fills.)
 fn clip_to_rings(rings: &[Vec<P>], pts: &[P], out: &mut Vec<Stroke>) {
     if pts.len() < 2 {
-        return
+        return;
     }
     let lerp = |a: P, b: P, t: f32| (a.0 + (b.0 - a.0) * t, a.1 + (b.1 - a.1) * t);
     let mut run: Vec<Point> = Vec::new();
@@ -389,13 +437,15 @@ fn clip_to_rings(rings: &[Vec<P>], pts: &[P], out: &mut Vec<Stroke>) {
         for k in 0..bounds.len() - 1 {
             let (t0, t1) = (bounds[k], bounds[k + 1]);
             if t1 - t0 < 1e-9 {
-                continue
+                continue;
             }
             let mid = lerp(a, b, 0.5 * (t0 + t1));
             if inside_multi(rings, mid.0, mid.1) {
                 let p0 = lerp(a, b, t0);
                 let p1 = lerp(a, b, t1);
-                let joins = run.last().is_some_and(|q| (q.x - p0.0).abs() < 1e-6 && (q.y - p0.1).abs() < 1e-6);
+                let joins = run
+                    .last()
+                    .is_some_and(|q| (q.x - p0.0).abs() < 1e-6 && (q.y - p0.1).abs() < 1e-6);
                 if !joins {
                     run.push(pt(p0.0, p0.1));
                 }
@@ -411,7 +461,7 @@ fn clip_to_rings(rings: &[Vec<P>], pts: &[P], out: &mut Vec<Stroke>) {
 /// Stipple: jittered dots (tiny circles) on a grid, kept where inside the region.
 fn stipple(rings: &[Vec<P>], spacing: f32, out: &mut Vec<Stroke>) {
     if spacing <= 1e-3 {
-        return
+        return;
     }
     let (x0, y0, x1, y1) = bbox(rings);
     let r = (spacing * 0.16).max(0.05);
@@ -421,7 +471,10 @@ fn stipple(rings: &[Vec<P>], spacing: f32, out: &mut Vec<Stroke>) {
         let mut gx = 0;
         let mut x = x0;
         while x <= x1 {
-            let (px, py) = (x + (rand01(gx, gy * 7 + 1) - 0.5) * spacing * 0.6, y + (rand01(gx * 7 + 3, gy) - 0.5) * spacing * 0.6);
+            let (px, py) = (
+                x + (rand01(gx, gy * 7 + 1) - 0.5) * spacing * 0.6,
+                y + (rand01(gx * 7 + 3, gy) - 0.5) * spacing * 0.6,
+            );
             if inside_multi(rings, px, py) {
                 let n = 8;
                 let pts = (0..=n).map(|i| {
@@ -443,14 +496,21 @@ fn rotated(rings: &[Vec<P>], angle_deg: f32) -> (Vec<Vec<P>>, impl Fn(P) -> P) {
     let th = angle_deg.to_radians();
     let (fc, fs) = ((-th).cos(), (-th).sin());
     let (rc, rs) = (th.cos(), th.sin());
-    let rr = rings.iter().map(|r| r.iter().map(|&p| (p.0 * fc - p.1 * fs, p.0 * fs + p.1 * fc)).collect()).collect();
+    let rr = rings
+        .iter()
+        .map(|r| {
+            r.iter()
+                .map(|&p| (p.0 * fc - p.1 * fs, p.0 * fs + p.1 * fc))
+                .collect()
+        })
+        .collect();
     (rr, move |p: P| (p.0 * rc - p.1 * rs, p.0 * rs + p.1 * rc))
 }
 
 /// Scribble: sinusoidally-wiggled scanlines, clipped to the region (hand-drawn shading).
 fn scribble(rings: &[Vec<P>], spacing: f32, angle_deg: f32, out: &mut Vec<Stroke>) {
     if spacing <= 1e-3 {
-        return
+        return;
     }
     let (rr, inv) = rotated(rings, angle_deg);
     let (x0, y0, x1, y1) = bbox(&rr);
@@ -476,12 +536,12 @@ fn scribble(rings: &[Vec<P>], spacing: f32, angle_deg: f32, out: &mut Vec<Stroke
 /// Variable-density hatch: parallel lines whose spacing grows across the sweep, a tonal gradient.
 fn gradient(rings: &[Vec<P>], spacing: f32, angle_deg: f32, out: &mut Vec<Stroke>) {
     if spacing <= 1e-3 {
-        return
+        return;
     }
     let (rr, inv) = rotated(rings, angle_deg);
     let (_, ymin, _, ymax) = bbox(&rr);
     if ymax <= ymin {
-        return
+        return;
     }
     let mut tmp: Vec<Stroke> = Vec::new();
     let mut y = ymin + spacing * 0.5;
@@ -492,7 +552,7 @@ fn gradient(rings: &[Vec<P>], spacing: f32, angle_deg: f32, out: &mut Vec<Stroke
         for ring in &rr {
             let n = ring.len();
             if n < 3 {
-                continue
+                continue;
             }
             let mut j = n - 1;
             for i in 0..n {
@@ -507,7 +567,10 @@ fn gradient(rings: &[Vec<P>], spacing: f32, angle_deg: f32, out: &mut Vec<Stroke
         xs.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
         let mut k = 0;
         while k + 1 < xs.len() {
-            tmp.push(stroke(vec![pt_p(inv((xs[k], y))), pt_p(inv((xs[k + 1], y)))]));
+            tmp.push(stroke(vec![
+                pt_p(inv((xs[k], y))),
+                pt_p(inv((xs[k + 1], y))),
+            ]));
             k += 2;
         }
         y += spacing * (0.45 + 2.6 * f); // dense at one end, sparse at the other
@@ -522,7 +585,7 @@ fn pt_p(p: P) -> Point {
 /// Voronoi fill: jittered seeds over the bbox, Delaunay dual edges clipped to the region.
 fn voronoi_fill(rings: &[Vec<P>], spacing: f32, out: &mut Vec<Stroke>) {
     if spacing <= 1e-3 {
-        return
+        return;
     }
     let (x0, y0, x1, y1) = bbox(rings);
     let cols = ((x1 - x0) / spacing).max(1.0).ceil() as i32;
@@ -532,26 +595,42 @@ fn voronoi_fill(rings: &[Vec<P>], spacing: f32, out: &mut Vec<Stroke>) {
         for gx in 0..=cols {
             let sx = x0 + (gx as f32 + rand01(gx, gy * 13 + 1) - 0.5) * spacing;
             let sy = y0 + (gy as f32 + rand01(gx * 13 + 7, gy) - 0.5) * spacing;
-            seeds.push(delaunator::Point { x: sx as f64, y: sy as f64 });
+            seeds.push(delaunator::Point {
+                x: sx as f64,
+                y: sy as f64,
+            });
         }
     }
     if seeds.len() < 3 {
-        return
+        return;
     }
     let tri = delaunator::triangulate(&seeds);
     let ntri = tri.triangles.len() / 3;
     let circ = |a: &delaunator::Point, b: &delaunator::Point, c: &delaunator::Point| -> P {
         let d = 2.0 * (a.x * (b.y - c.y) + b.x * (c.y - a.y) + c.x * (a.y - b.y));
         if d.abs() < 1e-12 {
-            return (((a.x + b.x + c.x) / 3.0) as f32, ((a.y + b.y + c.y) / 3.0) as f32);
+            return (
+                ((a.x + b.x + c.x) / 3.0) as f32,
+                ((a.y + b.y + c.y) / 3.0) as f32,
+            );
         }
-        let (a2, b2, c2) = (a.x * a.x + a.y * a.y, b.x * b.x + b.y * b.y, c.x * c.x + c.y * c.y);
+        let (a2, b2, c2) = (
+            a.x * a.x + a.y * a.y,
+            b.x * b.x + b.y * b.y,
+            c.x * c.x + c.y * c.y,
+        );
         let ux = (a2 * (b.y - c.y) + b2 * (c.y - a.y) + c2 * (a.y - b.y)) / d;
         let uy = (a2 * (c.x - b.x) + b2 * (a.x - c.x) + c2 * (b.x - a.x)) / d;
         (ux as f32, uy as f32)
     };
     let cc: Vec<P> = (0..ntri)
-        .map(|t| circ(&seeds[tri.triangles[3 * t]], &seeds[tri.triangles[3 * t + 1]], &seeds[tri.triangles[3 * t + 2]]))
+        .map(|t| {
+            circ(
+                &seeds[tri.triangles[3 * t]],
+                &seeds[tri.triangles[3 * t + 1]],
+                &seeds[tri.triangles[3 * t + 2]],
+            )
+        })
         .collect();
     for e in 0..tri.halfedges.len() {
         let o = tri.halfedges[e];
@@ -568,19 +647,27 @@ fn truchet_fill(rings: &[Vec<P>], spacing: f32, out: &mut Vec<Stroke>) {
     let cols = (((x1 - x0) / s).ceil() as i32).max(1);
     let rows = (((y1 - y0) / s).ceil() as i32).max(1);
     let arc = |cx: f32, cy: f32, a0: f32, a1: f32| -> Vec<P> {
-        (0..=10).map(|i| {
-            let t = a0 + (a1 - a0) * i as f32 / 10.0;
-            (cx + s * 0.5 * t.cos(), cy + s * 0.5 * t.sin())
-        }).collect()
+        (0..=10)
+            .map(|i| {
+                let t = a0 + (a1 - a0) * i as f32 / 10.0;
+                (cx + s * 0.5 * t.cos(), cy + s * 0.5 * t.sin())
+            })
+            .collect()
     };
     use std::f32::consts::{FRAC_PI_2, PI};
     for gy in 0..rows {
         for gx in 0..cols {
             let (ox, oy) = (x0 + gx as f32 * s, y0 + gy as f32 * s);
             let (a, b) = if rand01(gx, gy) > 0.5 {
-                (arc(ox, oy, 0.0, FRAC_PI_2), arc(ox + s, oy + s, PI, PI + FRAC_PI_2))
+                (
+                    arc(ox, oy, 0.0, FRAC_PI_2),
+                    arc(ox + s, oy + s, PI, PI + FRAC_PI_2),
+                )
             } else {
-                (arc(ox + s, oy, FRAC_PI_2, PI), arc(ox, oy + s, -FRAC_PI_2, 0.0))
+                (
+                    arc(ox + s, oy, FRAC_PI_2, PI),
+                    arc(ox, oy + s, -FRAC_PI_2, 0.0),
+                )
             };
             clip_to_rings(rings, &a, out);
             clip_to_rings(rings, &b, out);
@@ -592,21 +679,24 @@ fn truchet_fill(rings: &[Vec<P>], spacing: f32, out: &mut Vec<Stroke>) {
 /// clipped to the region (a single-stroke tonal fill that plots with almost no pen-up travel).
 fn spiral_fill(rings: &[Vec<P>], spacing: f32, out: &mut Vec<Stroke>) {
     if spacing <= 1e-3 {
-        return
+        return;
     }
     let (x0, y0, x1, y1) = bbox(rings);
     let (cx, cy) = ((x0 + x1) * 0.5, (y0 + y1) * 0.5);
     // Reach the far corner so the spiral covers the whole shape.
-    let rmax = (x1 - cx).hypot(y1 - cy).max((cx - x0).hypot(cy - y0)).max(1e-3);
+    let rmax = (x1 - cx)
+        .hypot(y1 - cy)
+        .max((cx - x0).hypot(cy - y0))
+        .max(1e-3);
     let b = spacing / std::f32::consts::TAU; // radial growth per radian → `spacing` per turn
-    // Step the angle so the arc length between samples stays ~a quarter of the spacing (smooth arms).
+                                             // Step the angle so the arc length between samples stays ~a quarter of the spacing (smooth arms).
     let pts: Vec<P> = {
         let mut v = Vec::new();
         let mut th = 0.0f32;
         loop {
             let r = b * th;
             if r > rmax {
-                break
+                break;
             }
             v.push((cx + r * th.cos(), cy + r * th.sin()));
             // dθ so r·dθ ≈ spacing/4, clamped so the tight centre doesn't spin forever.
@@ -654,10 +744,11 @@ fn maze_fill(rings: &[Vec<P>], spacing: f32, out: &mut Vec<Stroke>) {
         }
         if nb.is_empty() {
             stack.pop();
-            continue
+            continue;
         }
         step += 1;
-        let pick = (rand01(step, (cx as i32) * 73856 ^ (cy as i32) * 19349) * nb.len() as f32) as usize;
+        let pick = (rand01(step, ((cx as i32) * 73856) ^ ((cy as i32) * 19349)) * nb.len() as f32)
+            as usize;
         let (nx, ny, dir) = nb[pick.min(nb.len() - 1)];
         match dir {
             0 => open_right[idx(cx, cy)] = true,
@@ -694,7 +785,13 @@ fn maze_fill(rings: &[Vec<P>], spacing: f32, out: &mut Vec<Stroke>) {
 /// Pattern dispatch over one or more rings (filled together, even-odd → holes). 0 lines,
 /// 1 cross-hatch, 2 grid, 3 hilbert, 4 concentric, 5 stipple, 6 scribble, 7 gradient, 8 voronoi,
 /// 9 truchet, 10 spiral, 11 maze.
-pub fn fill(xy: &[f32], ring_starts: &[u32], pattern: u32, spacing: f32, angle_deg: f32) -> Vec<Stroke> {
+pub fn fill(
+    xy: &[f32],
+    ring_starts: &[u32],
+    pattern: u32,
+    spacing: f32,
+    angle_deg: f32,
+) -> Vec<Stroke> {
     let rings = parse_polys(xy, ring_starts);
     let mut out = Vec::new();
     match pattern {
@@ -725,7 +822,7 @@ pub fn fill(xy: &[f32], ring_starts: &[u32], pattern: u32, spacing: f32, angle_d
 pub fn concentric(kind: u32, a: f32, b: f32, spacing: f32) -> Vec<Stroke> {
     let mut out = Vec::new();
     if spacing <= 1e-3 {
-        return out
+        return out;
     }
     let mut k = 1.0_f32;
     loop {
@@ -733,7 +830,7 @@ pub fn concentric(kind: u32, a: f32, b: f32, spacing: f32) -> Vec<Stroke> {
         if kind == 0 {
             let (w, h) = (a - 2.0 * d, b - 2.0 * d);
             if w <= spacing * 0.25 || h <= spacing * 0.25 {
-                break
+                break;
             }
             for mut s in crate::shapes::rect(w, h, 0.0) {
                 for p in &mut s.points {
@@ -745,7 +842,7 @@ pub fn concentric(kind: u32, a: f32, b: f32, spacing: f32) -> Vec<Stroke> {
         } else {
             let (rx, ry) = (a - d, b - d);
             if rx <= spacing * 0.25 || ry <= spacing * 0.25 {
-                break
+                break;
             }
             // Ring tessellation mirrors shapes::ellipse so density matches the outline.
             let r = rx.max(ry);
@@ -777,14 +874,24 @@ mod concentric_tests {
         for s in &out {
             // Closed loop: first ~ last.
             let (f, l) = (s.points.first().unwrap(), s.points.last().unwrap());
-            assert!((f.x - l.x).abs() < 0.5 && (f.y - l.y).abs() < 0.5, "ring not closed");
+            assert!(
+                (f.x - l.x).abs() < 0.5 && (f.y - l.y).abs() < 0.5,
+                "ring not closed"
+            );
             // Every ring point is strictly inside the square.
             for p in &s.points {
-                assert!(p.x > -0.1 && p.x < 20.1 && p.y > -0.1 && p.y < 20.1, "point outside");
+                assert!(
+                    p.x > -0.1 && p.x < 20.1 && p.y > -0.1 && p.y < 20.1,
+                    "point outside"
+                );
             }
         }
         // Innermost ring is well inside (>= ~2mm from edges given spacing 3).
-        let any_inner = out.iter().any(|s| s.points.iter().all(|p| p.x > 2.0 && p.x < 18.0 && p.y > 2.0 && p.y < 18.0));
+        let any_inner = out.iter().any(|s| {
+            s.points
+                .iter()
+                .all(|p| p.x > 2.0 && p.x < 18.0 && p.y > 2.0 && p.y < 18.0)
+        });
         assert!(any_inner, "no inset ring found");
     }
 
@@ -826,7 +933,10 @@ mod concentric_tests {
             let ymid = (a.y + b.y) * 0.5;
             if (ymid - 10.0).abs() < 1.0 {
                 let (lo, hi) = (a.x.min(b.x), a.x.max(b.x));
-                assert!(!(lo < 10.0 && hi > 10.0), "fill crosses the hole at y={ymid}");
+                assert!(
+                    !(lo < 10.0 && hi > 10.0),
+                    "fill crosses the hole at y={ymid}"
+                );
             }
         }
     }
@@ -836,13 +946,21 @@ mod concentric_tests {
         let rect = |w: f32, h: f32| -> Vec<P> { vec![(0.0, 0.0), (w, 0.0), (w, h), (0.0, h)] };
         // Square sizes, plus increasingly elongated boxes at a tight spacing — the long axis here
         // (up to 400mm) used to blow past the old side≤128 cap and inflate the pitch.
-        let cases: &[(f32, f32, f32)] =
-            &[(18.0, 18.0, 2.0), (73.0, 73.0, 2.0), (40.0, 8.0, 1.0), (200.0, 20.0, 1.0), (400.0, 20.0, 1.0)];
+        let cases: &[(f32, f32, f32)] = &[
+            (18.0, 18.0, 2.0),
+            (73.0, 73.0, 2.0),
+            (40.0, 8.0, 1.0),
+            (200.0, 20.0, 1.0),
+            (400.0, 20.0, 1.0),
+        ];
         for &(w, h, spacing) in cases {
             let mut out = Vec::new();
             hilbert(&[rect(w, h)], spacing, &mut out);
             let pitch = dominant_pitch(&out);
-            assert!((pitch - spacing).abs() < 1e-3, "{w}x{h} sp {spacing}: pitch {pitch} != {spacing}");
+            assert!(
+                (pitch - spacing).abs() < 1e-3,
+                "{w}x{h} sp {spacing}: pitch {pitch} != {spacing}"
+            );
         }
     }
 }
