@@ -51,6 +51,9 @@ registerElement('handwriting', {
   },
   isLocked: (p: HandwritingParams) => !p.globalOptimize,
   sanitizeParams: sanitizeHandwritingParams,
+  // Plot-order only (read at concatenation): toggling must not mark the ink dirty or re-run
+  // the model.
+  viewParams: ['globalOptimize'],
 })
 
 const numOr = (v: unknown, dflt: number) =>

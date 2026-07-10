@@ -622,6 +622,17 @@ export function LogoInspector({ id, params }: { id: string; params: LogoParams }
           </div>
         </Field>
       )}
+      <Field
+        label="Global optimize"
+        title="Off: plot strokes in the order the program drew them. On: let the optimizer reorder this element's strokes with everything else."
+      >
+        <input
+          type="checkbox"
+          className="h-4 w-4 justify-self-start"
+          checked={params.globalOptimize}
+          onChange={(e) => up({ globalOptimize: e.target.checked })}
+        />
+      </Field>
     </>
   )
 }

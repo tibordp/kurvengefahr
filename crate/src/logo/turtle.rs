@@ -3,10 +3,11 @@
 //! space (y-down), so on screen `fd` goes up and `rt 90` turns right — what every Logo user
 //! expects — while `setxy`/`ycor` keep textbook semantics.
 //!
-//! Strokes are free singletons (`reversible: true, group: 0`): a turtle pattern's drawing order
-//! is aesthetic, not semantic, and per-pen travel optimization is the product's core value.
-//! Pen-up moves, `setpen` (a stroke has one pen), and the end of the program flush the current
-//! polyline (kept if it has ≥ 2 points).
+//! Strokes emit as free singletons (`reversible: true, group: 0`); whether they stay free is
+//! decided at concatenation, where the element's `globalOptimize` param either locks them into
+//! program order (the default — drawing order is often part of the composition) or leaves them
+//! to per-pen travel optimization. Pen-up moves, `setpen` (a stroke has one pen), and the end of
+//! the program flush the current polyline (kept if it has ≥ 2 points).
 //!
 //! The per-stroke `pen` from `setpen n` is the pen's id in the machine profile's palette (which
 //! assigns ids 0, 1, 2 …). An id the palette doesn't have is tolerated downstream — default ink

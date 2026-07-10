@@ -29,8 +29,11 @@ import { applyDash } from './dash'
  *
  *  Pen assignment also happens here: each element's `pen` is stamped onto its strokes (so a pen
  *  change is a cheap re-place, never a regenerate). A natively multi-colour type (registry
- *  `multiPen`) keeps the per-stroke pens its generator produced. A locked chain is therefore
- *  single-pen — which is what the per-pen optimizer and the M0-per-pen emit assume. */
+ *  `multiPen`) keeps the per-stroke pens its generator produced. A chain must be single-pen (the
+ *  per-pen optimizer and the M0-per-pen emit assume it), so a locked multi-pen element (e.g. a
+ *  Logo program using `setpen`) becomes one chain per pen: drawing order is kept within each
+ *  pen, while pen groups still plot in palette order — a pen change is a physical pause
+ *  regardless, so cross-pen drawing order can't be honoured anyway. */
 export function buildPageGeometry(elements: DocElement[]): Geometry {
   const out: Geometry = []
   let chainId = 0
@@ -63,8 +66,18 @@ export function buildPageGeometry(elements: DocElement[]): Geometry {
     const styled = applyDash(place(effectedLocal(el), el.transform, elPressure), el)
     const stamp = isMultiPen(el.type) ? (s: (typeof styled)[number]) => s.pen : () => el.pen
     if (isElementLocked(el.type, el.params)) {
-      chainId++
-      for (const s of styled) out.push({ ...s, pen: stamp(s), group: chainId, reversible: false })
+      // One locked chain per pen (Map keeps insertion order, so in-pen drawing order is kept).
+      const byPen = new Map<number, Geometry>()
+      for (const s of styled) {
+        const p = stamp(s)
+        let run = byPen.get(p)
+        if (!run) byPen.set(p, (run = []))
+        run.push(s)
+      }
+      for (const [p, run] of byPen) {
+        chainId++
+        for (const s of run) out.push({ ...s, pen: p, group: chainId, reversible: false })
+      }
     } else {
       for (const s of styled) out.push({ ...s, pen: stamp(s) })
     }

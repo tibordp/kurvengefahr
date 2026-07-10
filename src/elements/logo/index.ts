@@ -6,8 +6,9 @@
 //
 // Programs declare inspector knobs with the `param` builtin (`param "size 40 [10 80]`); the
 // element stores only the user's overrides in `args`, so an untouched knob follows the source's
-// default. Everything in the params object is geometry-affecting (no viewParams): source, args,
-// and seed are exactly what the interpreter hashes on.
+// default. Source, args, and seed are exactly what the interpreter hashes on; `globalOptimize`
+// is a viewParam — it changes plot order at concatenation, not geometry, so toggling it never
+// re-runs the program.
 //
 // This is the app's first natively multi-colour generator: `setpen n` stamps per-stroke pens, so
 // it registers `multiPen` (concatenation must not overwrite them, and the inspector hides the
@@ -23,6 +24,10 @@ export interface LogoParams {
   args: Record<string, number>
   /** Seed for the program's `random`/`pick` (re-roll = new arrangement, deterministic). */
   seed: number
+  /** When false (default), strokes plot in the order the program drew them — one locked chain per
+   *  pen, since a chain is single-pen. When true, they go into the global optimization bag
+   *  (free reordering + reversal). */
+  globalOptimize: boolean
 }
 
 /** The starter program for a fresh element — small, parametric, and obviously editable. */
@@ -48,6 +53,7 @@ export const defaultLogoParams = (): LogoParams => ({
   source: DEFAULT_LOGO_SOURCE,
   args: {},
   seed: 1,
+  globalOptimize: false,
 })
 
 export function sanitizeLogoParams(raw: unknown): LogoParams {
@@ -63,16 +69,21 @@ export function sanitizeLogoParams(raw: unknown): LogoParams {
     source: typeof p.source === 'string' ? p.source : DEFAULT_LOGO_SOURCE,
     args,
     seed,
+    globalOptimize: typeof p.globalOptimize === 'boolean' ? p.globalOptimize : false,
   }
 }
 
 registerElement('logo', {
   label: 'Logo',
-  isLocked: () => false,
+  // Drawing order is part of the composition (spirals grow outward, layers stack) — locked into
+  // program order unless the element opts into global optimization, like handwriting.
+  isLocked: (p: LogoParams) => !p.globalOptimize,
   sanitizeParams: sanitizeLogoParams,
   // Live re-run on edits (raster-style): the interpreter is fast and hard-limited.
   autoRegenerate: () => true,
   // Program output is intrinsic mm (like handwriting): resize keeps scale in the transform.
   // Natively multi-colour via `setpen` — see the header comment.
   multiPen: true,
+  // Plot-order only (read at concatenation): toggling must not re-run the interpreter.
+  viewParams: ['globalOptimize'],
 })

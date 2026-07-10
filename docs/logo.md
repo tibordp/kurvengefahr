@@ -60,6 +60,9 @@ top-level to become knobs (anything else still runs, with a warning).
 - `random 10`, `pick [red green blue]`, and `rerandom` draw from a generator seeded by the
   element's seed knob (shown when the program uses randomness) -- re-roll for a new arrangement,
   same seed for the same one.
+- Strokes plot in the order the program drew them, pen by pen -- drawing order is part of the
+  composition. "Global optimize" in the inspector hands them to the travel optimizer instead,
+  which reorders (and reverses) them freely to minimize pen-up travel.
 
 ## Custom tools
 
