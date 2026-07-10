@@ -1,0 +1,41 @@
+name: CI
+
+# Every push to main: full build (tsc + vite, catches what manual deploys would otherwise hit),
+# the vitest suite (live hardware tests self-skip without EBB_DEVICE/GRBL_DEVICE), and the
+# crate's native cargo tests. Deploys are manual (deploy.yml, workflow_dispatch).
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # Latest LTS: keeps CI's npm in step with the npm that writes package-lock.json
+          # (an older npm can reject a lockfile a newer one wrote — that broke npm ci on node 20).
+          node-version: lts/*
+          cache: npm
+
+      # `prebuild` compiles the Rust crate to WASM, so the toolchain is required.
+      - name: Install Rust (wasm32 target)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Cache cargo build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: crate
+
+      - name: Install wasm-pack
+        uses: jetli/wasm-pack-action@v0.4.0
+
+      - run: npm ci
+      - run: npm run build # prebuild → build:wasm, then tsc + vite build
+      - run: npm test # vitest; needs crate/pkg from the build step
+      - run: cargo test --manifest-path crate/Cargo.toml

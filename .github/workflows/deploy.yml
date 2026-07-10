@@ -1,8 +1,8 @@
 name: Deploy to GitHub Pages
 
+# Manual-only: CI (ci.yml) runs on every push to main; publishing to kurvengefahr.org is a
+# deliberate act via the Actions "Run workflow" button.
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 # Allow the deploy job to publish to Pages via OIDC.
