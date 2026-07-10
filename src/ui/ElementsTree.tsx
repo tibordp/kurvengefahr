@@ -27,6 +27,7 @@ import {
   EyeOff,
   Spline,
   Sparkles,
+  Pencil,
   Turtle,
   Image as ImageIcon,
   Scissors,
@@ -121,6 +122,7 @@ const ElementRow = memo(function ElementRow(p: RowProps) {
           autoFocus
           defaultValue={p.label}
           className="min-w-0 flex-1 select-text rounded bg-surface px-1 text-sm text-text outline-none ring-1 ring-accent/50"
+          onFocus={(e) => e.currentTarget.select()}
           onClick={(e) => e.stopPropagation()}
           onBlur={(e) => p.onCommitName(el.id, e.target.value)}
           onKeyDown={(e) => {
@@ -131,6 +133,7 @@ const ElementRow = memo(function ElementRow(p: RowProps) {
       ) : (
         <span
           className={cx('min-w-0 flex-1 truncate', el.hidden && 'opacity-50')}
+          title="Double-click to rename"
           onDoubleClick={(e) => {
             e.stopPropagation()
             p.onStartRename(el.id)
@@ -146,6 +149,19 @@ const ElementRow = memo(function ElementRow(p: RowProps) {
         >
           {p.badgeText}
         </span>
+      )}
+      {!p.editing && (
+        <button
+          className="rounded p-1 text-faint opacity-60 transition-colors hover:bg-surface hover:text-text sm:opacity-0 sm:group-hover:opacity-100"
+          title="Rename"
+          aria-label="Rename element"
+          onClick={(e) => {
+            e.stopPropagation()
+            p.onStartRename(el.id)
+          }}
+        >
+          <Pencil size={14} />
+        </button>
       )}
       <button
         className={cx(
@@ -352,6 +368,7 @@ export function ElementsTree() {
               autoFocus
               defaultValue={labelOf(el)}
               className="min-w-0 flex-1 select-text rounded bg-surface px-1 text-sm text-text outline-none ring-1 ring-accent/50"
+              onFocus={(e) => e.currentTarget.select()}
               onClick={(e) => e.stopPropagation()}
               onBlur={(e) => onCommitName(el.id, e.target.value)}
               onKeyDown={(e) => {
@@ -362,6 +379,7 @@ export function ElementsTree() {
           ) : (
             <span
               className={cx('min-w-0 flex-1 truncate', el.hidden && 'opacity-50')}
+              title="Double-click to rename"
               onDoubleClick={(e) => {
                 e.stopPropagation()
                 onStartRename(el.id)
@@ -371,6 +389,19 @@ export function ElementsTree() {
             </span>
           )}
           <span className="shrink-0 text-2xs text-faint">{members.length}</span>
+          {!isEditing && (
+            <button
+              className="rounded p-1 text-faint opacity-60 transition-colors hover:bg-surface hover:text-text sm:opacity-0 sm:group-hover:opacity-100"
+              title="Rename"
+              aria-label="Rename container"
+              onClick={(e) => {
+                e.stopPropagation()
+                onStartRename(el.id)
+              }}
+            >
+              <Pencil size={14} />
+            </button>
+          )}
           <button
             className={cx(
               'rounded p-1 text-faint transition-colors hover:bg-surface hover:text-text',
