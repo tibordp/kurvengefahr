@@ -9,6 +9,7 @@
 //! [`apply`], the relevant fields on [`EffectSpec`], and the TS registry entry + inspector control.
 
 mod bulge;
+mod offset;
 mod roughen;
 mod sketch;
 mod smooth;
@@ -46,7 +47,7 @@ pub struct EffectSpec {
     pub harmonics: u32,
     /// Sketch: number of overdrawn passes per stroke.
     pub passes: u32,
-    /// Sketch: per-pass wander amount, mm.
+    /// Sketch: per-pass wander amount, mm. Offset: signed inset(−)/outset(+) distance, mm.
     pub offset_mm: f32,
     /// Twist/bulge: falloff radius from the geometry centre, mm.
     pub radius_mm: f32,
@@ -82,6 +83,7 @@ pub fn apply(strokes: &[Stroke], params_json: &str) -> Vec<Stroke> {
             "twist" => twist::apply(&cur, spec),
             "bulge" => bulge::apply(&cur, spec),
             "taper" => taper::apply(&cur, spec),
+            "offset" => offset::apply(&cur, spec),
             _ => cur,
         };
     }

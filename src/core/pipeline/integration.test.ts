@@ -8,6 +8,7 @@ import { defaultRectParams } from '../../elements/shapes'
 import { IDENTITY_TRANSFORM, type DocElement, type Geometry, type PrusaProfile, type Stroke } from '../types'
 import { PRUSA_MK4 } from '../../store/profiles'
 import { buildPageGeometry } from './index'
+import { applyEffectsWasm } from '../wasm/effects'
 import { clipToRegion, drawableRegion } from './clip'
 import { optimizeGeometry } from './optimize'
 import { plotStartInPage } from './toMachine'
@@ -98,6 +99,18 @@ describe('optimize', () => {
   it('reorders and flips but never adds, drops, or moves ink', async () => {
     const out = await optimizeGeometry(scattered, plotStartInPage(profile()), [0, 1])
     expect(inkKeys(out)).toEqual(inkKeys(scattered))
+  })
+})
+
+describe('effects', () => {
+  it('carries a TS effect spec across the JSON seam to the Rust dispatch', () => {
+    // A closed 10mm square, outset by 2mm — guards the camelCase field naming and the match arm.
+    const square: Geometry = [stroke([[0, 0], [10, 0], [10, 10], [0, 10], [0, 0]])]
+    const out = applyEffectsWasm(square, [{ type: 'offset', enabled: true, offsetMm: 2 }])
+    expect(out.length).toBeGreaterThan(0)
+    const xs = out.flatMap((s) => s.points.map((p) => p.x))
+    expect(Math.min(...xs)).toBeCloseTo(-2, 1)
+    expect(Math.max(...xs)).toBeCloseTo(12, 1)
   })
 })
 

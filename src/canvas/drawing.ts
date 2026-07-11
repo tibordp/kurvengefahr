@@ -180,10 +180,9 @@ export function drawPointerDown(p: Pt, mods: Mods): void {
     useTools.getState().setTool('select')
   } else if (tool === 'fill') {
     // Flood fill seeds from the raw pointer position — grid-snapping could hop the seed across a
-    // boundary stroke into a different region than the one clicked. Stays armed on a miss (with a
-    // hint) so a slightly-off click can just be retried.
-    if (useDoc.getState().floodFillAt(p)) useTools.getState().setTool('select')
-    else toast.info('Nothing to fill there — click an empty spot on the page.')
+    // boundary stroke into a different region than the one clicked. The tool stays armed after a
+    // fill (regions often come in batches) and on a miss, so the next click just fills or retries.
+    if (!useDoc.getState().floodFillAt(p)) toast.info('Nothing to fill there — click an empty spot on the page.')
   } else if (tool === 'fiducial') {
     // Singleton: placing simply sets (or moves) the one document fiducial.
     useDoc.getState().setFiducial(sp)

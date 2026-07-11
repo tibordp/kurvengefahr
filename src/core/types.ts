@@ -38,7 +38,7 @@ export type Geometry = Stroke[]
  *  see `src/effects`. Effects stack in order, run in Rust (local space, before `place`), and are
  *  NOT geometry-affecting params: like `pen`, changing them is a cheap re-place, never a regenerate.
  *  Field names mirror the Rust `effects::EffectSpec` (camelCase); the discriminant is `type`. */
-export type EffectType = 'roughen' | 'smooth' | 'wave' | 'sketch' | 'twist' | 'bulge' | 'taper'
+export type EffectType = 'roughen' | 'smooth' | 'wave' | 'sketch' | 'twist' | 'bulge' | 'taper' | 'offset'
 
 interface EffectCommon {
   enabled: boolean
@@ -95,6 +95,13 @@ export interface TaperEffect extends EffectCommon {
   endMm: number
   minPressure: number
 }
+/** Inset (−) / outset (+) the element's stroke region by a signed distance. Open strokes are
+ *  silently closed end-to-start (the Inkscape convention), then everything offsets as one
+ *  even-odd region per pen (nested rings are holes — text bolds, a donut's wall thickens). */
+export interface OffsetEffect extends EffectCommon {
+  type: 'offset'
+  offsetMm: number
+}
 export type EffectSpec =
   | RoughenEffect
   | SmoothEffect
@@ -103,6 +110,7 @@ export type EffectSpec =
   | TwistEffect
   | BulgeEffect
   | TaperEffect
+  | OffsetEffect
 
 /** Affine local→page transform, decomposed to match Konva's node model and the inspector.
  *  Translation is millimetres in page space; rotation is degrees. */

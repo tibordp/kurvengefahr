@@ -100,6 +100,13 @@ const DEFS: Record<EffectType, EffectDef> = {
       { key: 'minPressure', label: 'Tip pressure', min: 0, max: 1, step: 0.05 },
     ],
   },
+  offset: {
+    type: 'offset',
+    label: 'Offset (inset / outset)',
+    seeded: false,
+    defaults: () => ({ type: 'offset', enabled: true, offsetMm: 2 }),
+    controls: [{ key: 'offsetMm', label: 'Distance (mm)', min: -20, max: 20, step: 0.1 }],
+  },
 }
 
 export const EFFECT_DEFS: EffectDef[] = Object.values(DEFS)
