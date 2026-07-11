@@ -58,7 +58,7 @@ describe('runShare', () => {
     expect(phases).toEqual(['exporting', 'encrypting', 'preflight', 'uploading'])
     expect(res.reused).toBe(false)
     expect(res.retentionDays).toBe(7)
-    expect(res.url).toMatch(/#s=[A-Za-z0-9_-]{43}\.[A-Za-z0-9_-]{22}$/)
+    expect(res.url).toMatch(/#s=[A-Za-z0-9_-]{22}\.[A-Za-z0-9_-]{22}$/)
     const [hash, stored, nonce] = service.uploadBlob.mock.calls[0] as [string, Uint8Array, bigint]
     expect(res.url).toContain(hash)
     expect(stored.length).toBe(1 + 12 + 100 + 16)

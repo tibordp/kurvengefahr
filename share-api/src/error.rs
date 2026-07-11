@@ -30,7 +30,7 @@ impl ApiError {
         Self::new(
             StatusCode::BAD_REQUEST,
             "invalid_id",
-            "blob id must be the unpadded base64url SHA-256 of the body (43 chars)",
+            "blob id must be the unpadded base64url of the body's first 16 SHA-256 bytes (22 chars)",
         )
     }
 

@@ -3,13 +3,18 @@
 //
 // Stored blob layout (pinned; version byte buys format agility):
 //   0x01 || iv (12 bytes) || AES-GCM ciphertext+tag
-// The blob's content address is the SHA-256 of that whole stored blob, so the server can verify
-// what it stores and the viewer can verify what it fetched — before touching the key at all.
+// The blob's id is the first 16 bytes of the SHA-256 of that whole stored blob (22 chars in the
+// link), so the server can verify what it stores and the viewer can verify what it fetched —
+// before touching the key at all. Truncation is safe here: the id needs unguessability and
+// second-preimage resistance (fully intact at 128 bits), not collision resistance — uploads are
+// first-come-permanent and GCM authenticates the content against the link's key anyway. The
+// upload proof-of-work binds to the FULL digest (share-api/testdata/pow_vectors.json).
 
 export const STORED_VERSION = 0x01
 const IV_BYTES = 12
 const KEY_BYTES = 16
 const GCM_TAG_BYTES = 16
+const ID_BYTES = 16
 
 export function toBase64Url(bytes: Uint8Array): string {
   let bin = ''
@@ -34,11 +39,16 @@ export async function sha256(bytes: Uint8Array): Promise<Uint8Array> {
   return new Uint8Array(await crypto.subtle.digest('SHA-256', bytes as BufferSource))
 }
 
-/** Encrypt a plaintext `.kgz`: fresh random key + IV, returns the stored blob, its content
- *  address, and the key — both already in link form (unpadded base64url). */
+/** A stored blob's id: the truncated digest in link form. */
+export async function blobIdOf(stored: Uint8Array): Promise<string> {
+  return toBase64Url((await sha256(stored)).subarray(0, ID_BYTES))
+}
+
+/** Encrypt a plaintext `.kgz`: fresh random key + IV. Returns the stored blob, its id and key
+ *  (both in link form, unpadded base64url), and the full digest the PoW solver mines against. */
 export async function encryptContainer(
   plain: Uint8Array,
-): Promise<{ stored: Uint8Array; hash: string; key: string }> {
+): Promise<{ stored: Uint8Array; id: string; key: string; fullHash: Uint8Array }> {
   const rawKey = crypto.getRandomValues(new Uint8Array(KEY_BYTES))
   const iv = crypto.getRandomValues(new Uint8Array(IV_BYTES))
   const cryptoKey = await crypto.subtle.importKey('raw', rawKey as BufferSource, 'AES-GCM', false, ['encrypt'])
@@ -49,7 +59,13 @@ export async function encryptContainer(
   stored[0] = STORED_VERSION
   stored.set(iv, 1)
   stored.set(ct, 1 + IV_BYTES)
-  return { stored, hash: toBase64Url(await sha256(stored)), key: toBase64Url(rawKey) }
+  const fullHash = await sha256(stored)
+  return {
+    stored,
+    id: toBase64Url(fullHash.subarray(0, ID_BYTES)),
+    key: toBase64Url(rawKey),
+    fullHash,
+  }
 }
 
 export type DecryptResult =

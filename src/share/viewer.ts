@@ -17,7 +17,7 @@ import { useDoc } from '../store/document'
 import { CURRENT_DOC_SCHEMA, type DocSnapshot, type StoredDoc } from '../store/persistence/schema'
 import { docPayload, readIndex, setActiveId, writeDocRaw, writeIndex } from '../store/persistence/storage'
 import { SHARE_API_URL } from './config'
-import { decryptContainer, sha256, toBase64Url } from './crypto'
+import { blobIdOf, decryptContainer } from './crypto'
 import type { ShareRef } from './link'
 import { ShareApiError, fetchBlob } from './service'
 
@@ -58,14 +58,14 @@ export async function bootViewer(ref: ShareRef | 'invalid'): Promise<void> {
   set({ phase: 'loading', step: 'fetching' })
   let stored: Uint8Array
   try {
-    stored = await fetchBlob(ref.hash)
+    stored = await fetchBlob(ref.id)
   } catch (err) {
     return fail(err instanceof ShareApiError && err.kind === 'not-found' ? 'not-found' : 'network')
   }
 
   set({ phase: 'loading', step: 'decrypting' })
   // Content addressing means we can verify the server's bytes before trusting them at all.
-  if (toBase64Url(await sha256(stored)) !== ref.hash) return fail('corrupt')
+  if ((await blobIdOf(stored)) !== ref.id) return fail('corrupt')
   const dec = await decryptContainer(stored, ref.key)
   if (dec.status !== 'ok') return fail(dec.status)
   const parsed = await parseDocumentContainer(new Blob([dec.plain as BlobPart]))

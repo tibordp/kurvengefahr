@@ -68,7 +68,7 @@ mod tests {
     use super::*;
 
     fn id(n: u8) -> BlobId {
-        BlobId([n; 32])
+        BlobId([n; crate::id::ID_BYTES])
     }
 
     fn body(n: usize) -> Bytes {

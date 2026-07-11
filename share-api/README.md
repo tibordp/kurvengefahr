@@ -78,14 +78,15 @@ All error responses are JSON `{"code": "...", "message": "..."}`.
 
 | Method and path | Behavior |
 | --- | --- |
-| `PUT /v1/blob/{id}` | Body is the blob (max `KG_MAX_BLOB_BYTES`); `id` must be its unpadded base64url SHA-256; header `X-KG-PoW` carries the proof-of-work nonce (decimal u64). `201` stored, `200` already existed. Errors: `400 invalid_id` / `400 pow_required`, `403 pow_invalid`, `413 too_large`, `422 hash_mismatch`, `429 rate_limited` |
+| `PUT /v1/blob/{id}` | Body is the blob (max `KG_MAX_BLOB_BYTES`); `id` must be the unpadded base64url of the body's first 16 SHA-256 bytes (22 chars -- truncation keeps links short; the id needs unguessability and second-preimage resistance, not collision resistance, since writes are first-come-permanent and content is authenticated client-side). Header `X-KG-PoW` carries the proof-of-work nonce (decimal u64). `201` stored, `200` already existed. Errors: `400 invalid_id` / `400 pow_required`, `403 pow_invalid`, `413 too_large`, `422 hash_mismatch`, `429 rate_limited` |
 | `GET /v1/blob/{id}` | The blob, `Cache-Control: immutable`, download-only headers. `404 not_found` covers expired |
 | `HEAD /v1/blob/{id}` | Existence + `Content-Length` without a body (clients use it to skip re-uploads) |
 | `GET /v1/info` | Service parameters for clients: `max_blob_bytes`, `pow` (`base_bits`, `size_step`, `max_bits`), `retention_days` (or null) |
 | `GET /healthz` | Shallow liveness for the reverse proxy; never rate-limited |
 
 Proof-of-work contract (`sha256-lz-v1`): find a u64 `nonce` such that
-`SHA-256(blob_sha256 || nonce_le)` has at least `d` leading zero bits, where
+`SHA-256(blob_sha256 || nonce_le)` has at least `d` leading zero bits -- `blob_sha256` is the
+**full** 32-byte digest, not the truncated id -- where
 `d = min(max_bits, base_bits + floor(log2(max(1, ceil(len / size_step)))))`. The normative test
 vectors live in [`testdata/pow_vectors.json`](testdata/pow_vectors.json), shared bit-for-bit
 with the app's solver and test suites.

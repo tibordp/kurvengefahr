@@ -44,10 +44,17 @@ fn make_app(config: Config) -> (Router, Arc<InMemory>) {
     (app(build_state(config, store.clone())), store)
 }
 
-/// Brute-force solver mirroring the contract; fine at 8 bits.
-fn solve(id: &BlobId, params: &PowParams, len: u64) -> u64 {
-    let bits = difficulty(len, params);
-    (0u64..).find(|&n| verify(&id.0, n, bits)).unwrap()
+/// Brute-force solver mirroring the contract (PoW binds to the FULL digest, not the truncated
+/// id); fine at 8 bits.
+fn solve(body: &[u8], params: &PowParams) -> u64 {
+    let digest = full_digest(body);
+    let bits = difficulty(body.len() as u64, params);
+    (0u64..).find(|&n| verify(&digest, n, bits)).unwrap()
+}
+
+fn full_digest(body: &[u8]) -> [u8; 32] {
+    use sha2::Digest as _;
+    sha2::Sha256::digest(body).into()
 }
 
 fn with_ip(mut req: Request<Body>, ip: &str) -> Request<Body> {
@@ -100,7 +107,7 @@ async fn put_blob(
     ip: &str,
 ) -> (String, Response<Body>) {
     let id = BlobId::of(body);
-    let nonce = solve(&id, &config.pow, body.len() as u64);
+    let nonce = solve(body, &config.pow);
     let resp = send(app, put_request(&id.to_string(), body.to_vec(), nonce, ip)).await;
     (id.to_string(), resp)
 }
@@ -171,7 +178,7 @@ async fn put_rejections() {
     let (app, _) = make_app(config.clone());
     let body = b"some body".to_vec();
     let id = BlobId::of(&body);
-    let nonce = solve(&id, &config.pow, body.len() as u64);
+    let nonce = solve(&body, &config.pow);
 
     // Bad id in the path.
     let resp = send(
@@ -202,7 +209,9 @@ async fn put_rejections() {
     assert_eq!(body_json(resp).await["code"], "pow_required");
 
     // A nonce that fails the bits requirement. 8 bits leaves plenty of failing nonces; find one.
-    let bad = (0u64..).find(|&n| !verify(&id.0, n, 8)).unwrap();
+    let bad = (0u64..)
+        .find(|&n| !verify(&full_digest(&body), n, 8))
+        .unwrap();
     let resp = send(
         &app,
         put_request(&id.to_string(), body.clone(), bad, "1.1.1.1"),

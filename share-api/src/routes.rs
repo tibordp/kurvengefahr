@@ -97,15 +97,17 @@ pub async fn put_blob(
         hasher.update(&chunk);
         buf.extend_from_slice(&chunk);
     }
+    // The id is the digest's 16-byte truncation; PoW binds to the FULL digest (the contract in
+    // `pow` — the client had the whole hash in hand when it mined).
     let digest: [u8; 32] = hasher.finalize().into();
-    if digest != id.0 {
+    if BlobId::from_digest(&digest) != id {
         return Err(ApiError::hash_mismatch());
     }
 
     // PoW is verified even when the object already exists: it costs one hash and keeps an
     // unpowered PUT from doubling as a cheap existence oracle.
     let required = pow::difficulty(buf.len() as u64, &state.config.pow);
-    if !pow::verify(&id.0, nonce, required) {
+    if !pow::verify(&digest, nonce, required) {
         metrics::counter!("kg_share_pow_failures_total", "reason" => "invalid").increment(1);
         return Err(ApiError::pow_invalid(required));
     }

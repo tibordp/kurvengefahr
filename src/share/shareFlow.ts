@@ -14,7 +14,7 @@
 import { exportActiveDocument } from '../output/documentContainer'
 import { useDoc } from '../store/document'
 import { useDocuments } from '../store/documents'
-import { encryptContainer, fromBase64Url } from './crypto'
+import { encryptContainer } from './crypto'
 import { buildShareUrl, type ShareRef } from './link'
 import { difficultyBits, solvePow, type PowProgress } from './pow'
 import { blobExists, fetchShareInfo, uploadBlob } from './service'
@@ -37,6 +37,8 @@ interface PendingShare {
   fingerprint: string
   stored: Uint8Array
   ref: ShareRef
+  /** Full 32-byte digest — what the PoW mines against (the link carries only the truncation). */
+  fullHash: Uint8Array
   nonce?: bigint
 }
 
@@ -72,13 +74,13 @@ export async function runShare(
   const prior = shared.get(fp)
   if (prior) {
     onPhase({ step: 'preflight' })
-    if (await blobExists(prior.hash)) {
+    if (await blobExists(prior.id)) {
       return { url: buildShareUrl(prior), retentionDays: info.retentionDays, reused: true }
     }
     shared.delete(fp) // expired server-side — fall through to a fresh upload
   }
 
-  // Resume a failed attempt for the same content (same ciphertext → same hash → the PoW and any
+  // Resume a failed attempt for the same content (same ciphertext → same id → the PoW and any
   // partially-successful upload still count); otherwise export + encrypt fresh.
   let attempt: PendingShare
   if (pending && pending.fingerprint === fp) {
@@ -89,25 +91,24 @@ export async function runShare(
     const plain = new Uint8Array(await container.arrayBuffer())
     throwIfAborted()
     onPhase({ step: 'encrypting' })
-    const { stored, hash, key } = await encryptContainer(plain)
+    const { stored, id, key, fullHash } = await encryptContainer(plain)
     if (stored.length > info.maxBytes) throw new ShareTooLargeError(stored.length, info.maxBytes)
-    attempt = { fingerprint: fp, stored, ref: { hash, key } }
+    attempt = { fingerprint: fp, stored, ref: { id, key }, fullHash }
     pending = attempt
   }
   throwIfAborted()
 
   onPhase({ step: 'preflight' })
-  if (!(await blobExists(attempt.ref.hash))) {
+  if (!(await blobExists(attempt.ref.id))) {
     if (attempt.nonce === undefined) {
       const bits = difficultyBits(attempt.stored.length, info.pow)
-      const hashBytes = fromBase64Url(attempt.ref.hash)!
-      attempt.nonce = await solvePow(hashBytes, bits, {
+      attempt.nonce = await solvePow(attempt.fullHash, bits, {
         signal,
         onProgress: (p: PowProgress) => onPhase({ step: 'pow', ...p }),
       })
     }
     onPhase({ step: 'uploading' })
-    await uploadBlob(attempt.ref.hash, attempt.stored, attempt.nonce)
+    await uploadBlob(attempt.ref.id, attempt.stored, attempt.nonce)
   }
 
   shared.set(fp, attempt.ref)

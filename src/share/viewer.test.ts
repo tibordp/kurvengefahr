@@ -87,9 +87,9 @@ const state = () => useViewer.getState().state
 
 describe('bootViewer', () => {
   it('happy path: loads the doc read-only, selection cleared, zero localStorage writes', async () => {
-    const { stored, hash, key } = await makeShare()
+    const { stored, id, key } = await makeShare()
     fetchBlob.mockResolvedValue(stored)
-    await bootViewer({ hash, key })
+    await bootViewer({ id, key })
     expect(state()).toEqual({ phase: 'ready', name: 'Shared masterpiece' })
     const doc = useDoc.getState()
     expect(doc.elements).toHaveLength(1)
@@ -107,18 +107,18 @@ describe('bootViewer', () => {
 
   it('missing blob → not-found; dead network → network', async () => {
     fetchBlob.mockRejectedValueOnce(new ShareApiError('not-found', 'gone'))
-    await bootViewer({ hash: 'A'.repeat(43), key: 'B'.repeat(22) })
+    await bootViewer({ id: 'A'.repeat(22), key: 'B'.repeat(22) })
     expect(state()).toEqual({ phase: 'error', kind: 'not-found' })
 
     fetchBlob.mockRejectedValueOnce(new ShareApiError('network', 'offline'))
-    await bootViewer({ hash: 'A'.repeat(43), key: 'B'.repeat(22) })
+    await bootViewer({ id: 'A'.repeat(22), key: 'B'.repeat(22) })
     expect(state()).toEqual({ phase: 'error', kind: 'network' })
   })
 
   it('server bytes that do not match the id → corrupt (never decrypted)', async () => {
-    const { hash, key } = await makeShare()
+    const { id, key } = await makeShare()
     fetchBlob.mockResolvedValue(new Uint8Array([1, 2, 3, 4]))
-    await bootViewer({ hash, key })
+    await bootViewer({ id, key })
     expect(state()).toEqual({ phase: 'error', kind: 'corrupt' })
   })
 
@@ -126,16 +126,16 @@ describe('bootViewer', () => {
     const share = await makeShare()
     const other = await makeShare() // different random key
     fetchBlob.mockResolvedValue(share.stored)
-    await bootViewer({ hash: share.hash, key: other.key })
+    await bootViewer({ id: share.id, key: other.key })
     expect(state()).toEqual({ phase: 'error', kind: 'wrong-key' })
   })
 })
 
 describe('saveViewerCopy', () => {
   it('persists a real document, binds the tab, and reloads without the fragment', async () => {
-    const { stored, hash, key } = await makeShare()
+    const { stored, id, key } = await makeShare()
     fetchBlob.mockResolvedValue(stored)
-    await bootViewer({ hash, key })
+    await bootViewer({ id, key })
 
     await saveViewerCopy()
     const index = JSON.parse(localStore.getItem(INDEX_KEY)!) as { id: string; name: string }[]

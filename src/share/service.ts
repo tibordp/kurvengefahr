@@ -89,10 +89,10 @@ export function fetchShareInfo(): Promise<ShareInfo> {
   return infoPromise
 }
 
-/** `HEAD /v1/blob/{hash}` — lets the client skip re-encrypt/PoW/upload for content already up. */
-export async function blobExists(hash: string): Promise<boolean> {
+/** `HEAD /v1/blob/{id}` — lets the client skip re-encrypt/PoW/upload for content already up. */
+export async function blobExists(id: string): Promise<boolean> {
   try {
-    await request(`/v1/blob/${hash}`, { method: 'HEAD' })
+    await request(`/v1/blob/${id}`, { method: 'HEAD' })
     return true
   } catch (err) {
     if (err instanceof ShareApiError && err.kind === 'not-found') return false
@@ -100,18 +100,18 @@ export async function blobExists(hash: string): Promise<boolean> {
   }
 }
 
-/** `PUT /v1/blob/{hash}` with the solved proof-of-work nonce. */
-export async function uploadBlob(hash: string, stored: Uint8Array, nonce: bigint): Promise<void> {
-  await request(`/v1/blob/${hash}`, {
+/** `PUT /v1/blob/{id}` with the solved proof-of-work nonce. */
+export async function uploadBlob(id: string, stored: Uint8Array, nonce: bigint): Promise<void> {
+  await request(`/v1/blob/${id}`, {
     method: 'PUT',
     headers: { [POW_HEADER]: nonce.toString(10), 'Content-Type': 'application/octet-stream' },
     body: stored as BodyInit,
   })
 }
 
-/** `GET /v1/blob/{hash}` — the encrypted stored blob. */
-export async function fetchBlob(hash: string, signal?: AbortSignal): Promise<Uint8Array> {
-  const res = await request(`/v1/blob/${hash}`, { signal })
+/** `GET /v1/blob/{id}` — the encrypted stored blob. */
+export async function fetchBlob(id: string, signal?: AbortSignal): Promise<Uint8Array> {
+  const res = await request(`/v1/blob/${id}`, { signal })
   return new Uint8Array(await res.arrayBuffer())
 }
 
