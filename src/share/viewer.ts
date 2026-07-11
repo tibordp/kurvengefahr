@@ -1,12 +1,12 @@
 // Share-viewer boot: fetch → verify hash → decrypt → parse → stage → load into `useDoc`, plus
-// "Save a copy". The viewer deliberately never calls initDocuments()/loadImported() — no
+// "Edit a copy". The viewer deliberately never calls initDocuments()/loadImported() — no
 // autosave wiring, no index entry, zero localStorage writes — so opening a link can't litter the
 // visitor's browser. `useDoc.loadDocument` alone persists nothing; the generation manager then
 // regenerates worker-backed elements exactly as it would for a freshly opened document.
 //
 // Images are the one unavoidable side effect: the vectorize/model workers fetch blobs from
 // IndexedDB by id, so a shared doc's images must be staged there (freshly minted ids, like
-// import). Until "Save a copy" they're referenced by no stored document, which makes them
+// import). Until "Edit a copy" they're referenced by no stored document, which makes them
 // orphans to `documents.ts`'s boot-time image sweep — the *next* editor boot GCs them. Known
 // race we accept: another tab booting the editor mid-viewing can sweep them early; geometry
 // already on canvas survives, only a re-trace would fail.

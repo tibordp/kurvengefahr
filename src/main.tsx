@@ -13,8 +13,16 @@ import './index.css'
 // A `#s=<hash>.<key>` fragment boots the read-only share viewer instead of the editor. Parsed
 // up front (before any async work can see a mutated URL); the fragment is deliberately KEPT in
 // the address bar while viewing — it never leaves the browser, and keeping it makes reload,
-// bookmark and re-share work for free. It drops naturally on "Save a copy"'s reload.
+// bookmark and re-share work for free. It drops naturally on "Edit a copy"'s reload.
 const shareRef = parseShareFragment(location.hash)
+
+// Opening a share link in an already-running tab is just a fragment change — no navigation, no
+// new boot. Reload deliberately: into the viewer when a share fragment arrives, and out of (or
+// between) share views when the viewer's fragment changes. Editor-mode fragment noise stays
+// inert. Autosave makes the editor reload lossless.
+window.addEventListener('hashchange', () => {
+  if (shareRef !== null || parseShareFragment(location.hash) !== null) location.reload()
+})
 
 // Instantiate WASM before the first render. After this resolves, the crate's exported
 // functions are synchronous, so element generation and the canvas stay synchronous.

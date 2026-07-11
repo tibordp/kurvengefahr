@@ -129,7 +129,7 @@ function ShareDialogBody() {
             </Button>
           </div>
           <p className="text-2xs text-faint">
-            Opening the link shows a read-only view with a "Save a copy" option.{' '}
+            Opening the link shows a read-only view with an "Edit a copy" option.{' '}
             {retentionLine(state.result.retentionDays)}
           </p>
         </div>

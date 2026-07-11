@@ -1,5 +1,5 @@
 // Viewer boot machine: every error kind lands on its screen state, the happy path loads the
-// document into `useDoc` without touching localStorage, and "Save a copy" persists through the
+// document into `useDoc` without touching localStorage, and "Edit a copy" persists through the
 // real storage layer then reloads. Fetch is mocked; crypto, container format and stores are real.
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 

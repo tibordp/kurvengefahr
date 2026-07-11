@@ -1,5 +1,5 @@
 // The share-link app shell: a read-only view of a shared snapshot (see share/viewer.ts for the
-// boot machine). Minimal chrome — branding, doc name, a "Save a copy" action — over the
+// boot machine). Minimal chrome — branding, doc name, an "Edit a copy" action — over the
 // ViewerCanvas. Rendered by main.tsx *instead of* App when the URL carries a share fragment;
 // worker-backed elements regenerate through the same generation manager the editor uses.
 import { useState } from 'react'
@@ -58,7 +58,7 @@ function CenteredScreen({ children }: { children: React.ReactNode }) {
   )
 }
 
-function SaveCopyButton() {
+function EditCopyButton() {
   const [busy, setBusy] = useState(false)
   return (
     <Button
@@ -72,7 +72,7 @@ function SaveCopyButton() {
         })
       }}
     >
-      {busy ? 'Saving…' : 'Save a copy'}
+      {busy ? 'Opening…' : 'Edit a copy'}
     </Button>
   )
 }
@@ -153,7 +153,7 @@ export function ShareViewer() {
         </span>
         <div className="flex-1" />
         <RenderingIndicator />
-        <SaveCopyButton />
+        <EditCopyButton />
       </header>
       <main className="relative flex min-h-0 min-w-0 flex-col">
         <GenerationErrorBanner />

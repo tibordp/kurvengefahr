@@ -51,7 +51,7 @@ machine), AxiDraw-style EBB plotters, and GRBL machines, with presets for popula
 - **A real editor** -- autosaved multi-document tabs with cross-tab sync, undo/redo that survives a
   refresh, an elements tree, a command palette, clipboard across tabs, light/dark themes.
 - **Share a link** -- turn a document into a link that opens a read-only view of that snapshot,
-  with a "Save a copy" action to keep editing. The document is encrypted in your browser before
+  with an "Edit a copy" action to keep editing. The document is encrypted in your browser before
   upload; the key rides in the link itself and never reaches the server. Self-hosters can run
   their own [share service](share-api/) or simply build without one.
 
