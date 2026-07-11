@@ -29,7 +29,10 @@ pub struct Config {
 
 #[derive(Clone, Debug)]
 pub struct S3Config {
-    pub endpoint: String,
+    /// Custom endpoint for S3-compatibles (MinIO, Garage, Hetzner, R2). Unset = real AWS S3,
+    /// where the SDK derives the endpoint from region + bucket; `allow_http`/`virtual_hosted`
+    /// only apply alongside a custom endpoint.
+    pub endpoint: Option<String>,
     pub bucket: String,
     pub region: String,
     pub access_key_id: String,
@@ -109,7 +112,7 @@ impl Config {
                 "host:port",
             )?,
             s3: S3Config {
-                endpoint: required(vars, "KG_S3_ENDPOINT")?,
+                endpoint: optional(vars, "KG_S3_ENDPOINT", "endpoint URL")?,
                 bucket: required(vars, "KG_S3_BUCKET")?,
                 region: parsed(vars, "KG_S3_REGION", "us-east-1".to_string(), "region name")?,
                 access_key_id: required(vars, "KG_S3_ACCESS_KEY_ID")?,
@@ -164,6 +167,14 @@ mod tests {
         assert!(c.cors_origins.is_none());
         assert!(!c.trust_proxy);
         assert_eq!(c.s3.prefix, "blobs/");
+        assert_eq!(c.s3.endpoint.as_deref(), Some("http://localhost:9000"));
+    }
+
+    #[test]
+    fn endpoint_is_optional_for_real_aws() {
+        let mut vars = base();
+        vars.remove("KG_S3_ENDPOINT");
+        assert_eq!(Config::from_map(&vars).unwrap().s3.endpoint, None);
     }
 
     #[test]

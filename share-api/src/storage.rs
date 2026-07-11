@@ -76,17 +76,21 @@ fn record<T>(op: &'static str, start: Instant, res: &Result<T, object_store::Err
     }
 }
 
-/// The production store from config. Path-style requests by default (what S3-compatibles
-/// expect); `allow_http` is for local MinIO development only.
+/// The production store from config. Real AWS S3 needs only region + bucket (the SDK derives
+/// the endpoint); a custom endpoint is for S3-compatibles, path-style by default (what they
+/// expect — with `virtual_hosted` the endpoint must be the bucket-qualified URL), and
+/// `allow_http` is for local development only.
 pub fn s3_store(cfg: &S3Config) -> Result<Arc<dyn ObjectStore>, object_store::Error> {
-    let store = AmazonS3Builder::new()
-        .with_endpoint(&cfg.endpoint)
+    let mut builder = AmazonS3Builder::new()
         .with_bucket_name(&cfg.bucket)
         .with_region(&cfg.region)
         .with_access_key_id(&cfg.access_key_id)
-        .with_secret_access_key(&cfg.secret_access_key)
-        .with_allow_http(cfg.allow_http)
-        .with_virtual_hosted_style_request(cfg.virtual_hosted)
-        .build()?;
-    Ok(Arc::new(store))
+        .with_secret_access_key(&cfg.secret_access_key);
+    if let Some(endpoint) = &cfg.endpoint {
+        builder = builder
+            .with_endpoint(endpoint)
+            .with_allow_http(cfg.allow_http)
+            .with_virtual_hosted_style_request(cfg.virtual_hosted);
+    }
+    Ok(Arc::new(builder.build()?))
 }

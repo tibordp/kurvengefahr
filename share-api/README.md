@@ -51,14 +51,14 @@ Everything is environment variables; only the four `KG_S3_*` credentials/locator
 | --- | --- | --- |
 | `KG_LISTEN_ADDR` | `0.0.0.0:8080` | API listener; use `[::]:8080` for dual-stack (in Docker, IPv6 traffic to a published port reaches the container directly, and a v4-only bind resets it -- notably `localhost` on macOS resolves to `::1` first) |
 | `KG_METRICS_ADDR` | `127.0.0.1:9464` | Prometheus listener (keep it private) |
-| `KG_S3_ENDPOINT` | required | S3-compatible endpoint URL |
+| `KG_S3_ENDPOINT` | unset | Custom endpoint for S3-compatibles (MinIO, Garage, ...); leave unset for real AWS S3, where region + bucket suffice |
 | `KG_S3_BUCKET` | required | Bucket name |
-| `KG_S3_REGION` | `us-east-1` | Region string (S3-compatibles usually ignore it) |
+| `KG_S3_REGION` | `us-east-1` | Region string (S3-compatibles usually ignore it; real AWS needs it right) |
 | `KG_S3_ACCESS_KEY_ID` | required | |
 | `KG_S3_SECRET_ACCESS_KEY` | required | |
 | `KG_S3_PREFIX` | `blobs/` | Object key prefix |
 | `KG_S3_ALLOW_HTTP` | `false` | Allow a plain-HTTP endpoint (local MinIO only) |
-| `KG_S3_VIRTUAL_HOSTED` | `false` | Virtual-hosted-style requests (default is path-style) |
+| `KG_S3_VIRTUAL_HOSTED` | `false` | For custom endpoints: virtual-hosted-style requests instead of path-style. The endpoint must then be the bucket-qualified URL -- the bucket is not prepended for you |
 | `KG_MAX_BLOB_BYTES` | `5242880` | Hard upload cap |
 | `KG_POW_BASE_BITS` | `13` | Proof-of-work base difficulty |
 | `KG_POW_SIZE_STEP` | `1024` | Bytes per difficulty-scaling step |
