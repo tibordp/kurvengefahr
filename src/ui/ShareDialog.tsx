@@ -116,16 +116,18 @@ function ShareDialogBody() {
 
       {state.kind === 'done' && (
         <div className="mt-3 flex flex-col gap-2">
-          {state.result.reused && (
-            <Banner>This exact snapshot was already shared — same link.</Banner>
-          )}
-          <input
-            className={cx(controlClass, 'font-mono text-xs')}
-            readOnly
-            value={state.result.url}
-            aria-label="Share link"
-            onFocus={(e) => e.target.select()}
-          />
+          <div className="flex items-center gap-2">
+            <input
+              className={cx(controlClass, 'min-w-0 flex-1 font-mono text-xs')}
+              readOnly
+              value={state.result.url}
+              aria-label="Share link"
+              onFocus={(e) => e.target.select()}
+            />
+            <Button variant="primary" onClick={() => copy(state.result.url)}>
+              Copy
+            </Button>
+          </div>
           <p className="text-2xs text-faint">
             Opening the link shows a read-only view with a "Save a copy" option.{' '}
             {retentionLine(state.result.retentionDays)}
@@ -143,18 +145,9 @@ function ShareDialogBody() {
               Try again
             </Button>
           </>
-        ) : state.kind === 'done' ? (
-          <>
-            <Button variant="ghost" onClick={close}>
-              Close
-            </Button>
-            <Button variant="primary" onClick={() => copy(state.result.url)}>
-              Copy link
-            </Button>
-          </>
         ) : (
           <Button variant="ghost" onClick={close}>
-            Cancel
+            {state.kind === 'done' ? 'Close' : 'Cancel'}
           </Button>
         )}
       </div>

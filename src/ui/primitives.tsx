@@ -273,6 +273,10 @@ export function Modal({
   className?: string
 }) {
   const panel = useRef<HTMLDivElement>(null)
+  // Backdrop close must see the press AND the release on the backdrop itself: a text-selection
+  // drag that starts inside the panel and releases outside dispatches its click on the backdrop
+  // (the common ancestor), and closing on that throws away the user's dialog state.
+  const closeArmed = useRef(false)
   const titleId = `dlg-${title.replace(/\W+/g, '-').toLowerCase()}`
 
   useEffect(() => {
@@ -312,7 +316,16 @@ export function Modal({
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-[1px]"
-      onClick={onClose}
+      onPointerDown={(e) => {
+        closeArmed.current = e.target === e.currentTarget
+      }}
+      onPointerUp={(e) => {
+        closeArmed.current &&= e.target === e.currentTarget
+      }}
+      onClick={(e) => {
+        if (closeArmed.current && e.target === e.currentTarget) onClose()
+        closeArmed.current = false
+      }}
     >
       <div
         ref={panel}
