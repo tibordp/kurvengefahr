@@ -49,7 +49,7 @@ Everything is environment variables; only the four `KG_S3_*` credentials/locator
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
-| `KG_LISTEN_ADDR` | `0.0.0.0:8080` | API listener |
+| `KG_LISTEN_ADDR` | `0.0.0.0:8080` | API listener; use `[::]:8080` for dual-stack (in Docker, IPv6 traffic to a published port reaches the container directly, and a v4-only bind resets it -- notably `localhost` on macOS resolves to `::1` first) |
 | `KG_METRICS_ADDR` | `127.0.0.1:9464` | Prometheus listener (keep it private) |
 | `KG_S3_ENDPOINT` | required | S3-compatible endpoint URL |
 | `KG_S3_BUCKET` | required | Bucket name |

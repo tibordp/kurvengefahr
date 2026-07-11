@@ -48,7 +48,11 @@ services:
       KG_S3_ACCESS_KEY_ID: GK0123456789abcdef01234567
       KG_S3_SECRET_ACCESS_KEY: b892c8a0e5b3c0d9a1f2e3d4c5b6a7980112233445566778899aabbccddeeff0
       KG_S3_ALLOW_HTTP: "true"
-      KG_METRICS_ADDR: 0.0.0.0:9464
+      # Dual-stack binds: Docker forwards the host's IPv6 side of a published port straight to
+      # the container, and macOS resolves `localhost` to ::1 first — a v4-only bind answers
+      # that with a connection reset.
+      KG_LISTEN_ADDR: "[::]:8080"
+      KG_METRICS_ADDR: "[::]:9464"
       KG_LOG: info
 
 volumes:
