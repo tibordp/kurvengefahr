@@ -116,6 +116,11 @@ or the equivalent in your provider's console.)
 
 - Have the proxy set `X-Forwarded-For`, then set `KG_TRUST_PROXY=true`. Never set it without a
   sanitizing proxy in front -- clients could spoof their rate-limit identity.
+- The rate limiter is only as good as the proxy's own view of the client. On Kubernetes the
+  ingress (Traefik, nginx-ingress, ...) usually sits behind a cloud load balancer and kube-proxy
+  SNAT: without PROXY protocol enabled on the LB (and consumed by the ingress entrypoint) or
+  `externalTrafficPolicy: Local`, every visitor arrives as a node IP and the per-IP limits
+  silently collapse into a handful of shared buckets.
 - Allow request bodies of at least `KG_MAX_BLOB_BYTES` plus a little (nginx
   `client_max_body_size 6m;`, Caddy `request_body { max_size 6MB }`).
 - Route `/healthz` for load-balancer checks.
