@@ -1,0 +1,65 @@
+name: share-api
+
+# The share service is independent of the app build: its own gate (fmt/clippy/test, mirroring
+# ci.yml's conventions) and, on main, a container image published to GHCR. Deploying the image
+# to the box stays a manual act (docker pull), consistent with the manual Pages deploys.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'share-api/**'
+      - '.github/workflows/share-api.yml'
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache cargo build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: share-api
+
+      - run: cargo fmt --manifest-path share-api/Cargo.toml --check
+      - run: cargo clippy --manifest-path share-api/Cargo.toml --all-targets -- -D warnings
+      - run: cargo test --manifest-path share-api/Cargo.toml
+
+  publish:
+    needs: test
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/metadata-action@v5
+        id: meta
+        with:
+          images: ghcr.io/${{ github.repository }}/share-api
+          tags: |
+            type=raw,value=latest
+            type=sha,format=long
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: share-api
+          file: share-api/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

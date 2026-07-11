@@ -45,6 +45,10 @@ jobs:
 
       - run: npm ci
       - run: npm run build # prebuild → build:wasm, then tsc + vite build
+        env:
+          # Repo variable; this is what turns sharing on at kurvengefahr.org — unset, the built
+          # app has no share UI at all (src/share/config.ts).
+          VITE_SHARE_API_URL: ${{ vars.SHARE_API_URL }}
 
       - uses: actions/upload-pages-artifact@v3
         with:

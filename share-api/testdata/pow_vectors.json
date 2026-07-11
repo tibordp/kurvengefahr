@@ -1,0 +1,121 @@
+{
+  "algorithm": "sha256-lz-v1",
+  "params": {
+    "base_bits": 13,
+    "size_step": 1024,
+    "max_bits": 30
+  },
+  "sha256": [
+    {
+      "comment": "empty message",
+      "msg_hex": "",
+      "digest_hex": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "comment": "FIPS 180-4 one-block",
+      "msg_hex": "616263",
+      "digest_hex": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+    },
+    {
+      "comment": "app name",
+      "msg_hex": "6b757276656e676566616872",
+      "digest_hex": "3459ed9a361d524c7e994ab684277f25e58a8ed924bac53bb68eab1d7768be16"
+    },
+    {
+      "comment": "600 bytes, multi-block",
+      "msg_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f606162636465666768696a6b6c6d6e6f707172737475767778797a7b7c7d7e7f808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9fa0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebfc0c1c2c3c4c5c6c7000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f606162636465666768696a6b6c6d6e6f707172737475767778797a7b7c7d7e7f808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9fa0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebfc0c1c2c3c4c5c6c7000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f606162636465666768696a6b6c6d6e6f707172737475767778797a7b7c7d7e7f808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9fa0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebfc0c1c2c3c4c5c6c7",
+      "digest_hex": "411de424aa2db318c26af0644e359ca350fa593ddaf437a7bedb8ed875d4a8ba"
+    }
+  ],
+  "difficulty_table": [
+    {
+      "len": 1,
+      "difficulty": 13
+    },
+    {
+      "len": 1023,
+      "difficulty": 13
+    },
+    {
+      "len": 1024,
+      "difficulty": 13
+    },
+    {
+      "len": 1025,
+      "difficulty": 14
+    },
+    {
+      "len": 2048,
+      "difficulty": 14
+    },
+    {
+      "len": 102400,
+      "difficulty": 19
+    },
+    {
+      "len": 1048576,
+      "difficulty": 23
+    },
+    {
+      "len": 5242880,
+      "difficulty": 25
+    },
+    {
+      "len": 1099511627776,
+      "difficulty": 30
+    }
+  ],
+  "vectors": [
+    {
+      "comment": "ascii app name",
+      "body_b64": "a3VydmVuZ2VmYWhy",
+      "blob_hash_hex": "3459ed9a361d524c7e994ab684277f25e58a8ed924bac53bb68eab1d7768be16",
+      "id": "NFntmjYdUkx-mUq2hCd_JeWKjtkkusU7to6rHXdovhY",
+      "cases": [
+        {
+          "nonce": 0,
+          "pow_digest_hex": "a3b722e919aabc0be4bcca6d6172ff392dc9b9dd6b20440de9f7e1b011124f14",
+          "leading_zero_bits": 0
+        },
+        {
+          "nonce": 1,
+          "pow_digest_hex": "82119490c1dbd7f95794cd81f48e3bc0f0097739aa65a4866c7ee78fef6d6057",
+          "leading_zero_bits": 0
+        },
+        {
+          "nonce": 6190,
+          "pow_digest_hex": "000080532925378f2aded51c7dfa38490b09b5a4a37fb3a40512e20727265a6e",
+          "leading_zero_bits": 16
+        }
+      ]
+    },
+    {
+      "comment": "bytes 0..64",
+      "body_b64": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gISIjJCUmJygpKissLS4vMDEyMzQ1Njc4OTo7PD0+Pw==",
+      "blob_hash_hex": "fdeab9acf3710362bd2658cdc9a29e8f9c757fcf9811603a8c447cd1d9151108",
+      "id": "_eq5rPNxA2K9JljNyaKej5x1f8-YEWA6jER80dkVEQg",
+      "cases": [
+        {
+          "nonce": 0,
+          "pow_digest_hex": "86c60b4ca99d5358bc6ef74e4d401aa63ee315e4a17e971671a585ac43638a88",
+          "leading_zero_bits": 0
+        },
+        {
+          "nonce": 1,
+          "pow_digest_hex": "ec2bd7a63f404c505c733e1937aa9e6e6453b5770a8b8a5ad8b16ea040a1ce18",
+          "leading_zero_bits": 0
+        },
+        {
+          "nonce": 4321,
+          "pow_digest_hex": "0005ba0b440887786220fa7c9bdaf26243764f7358f518bcfed1eda76fa8ce4d",
+          "leading_zero_bits": 13
+        },
+        {
+          "nonce": 24853,
+          "pow_digest_hex": "0000568316f3d04dfa8ee832dd576bc76d951fd24b4edd489910e06887fa98ed",
+          "leading_zero_bits": 17
+        }
+      ]
+    }
+  ]
+}

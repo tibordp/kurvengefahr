@@ -29,18 +29,30 @@ function remapImageIds(snapshot: DocSnapshot, idMap: Map<string, string>): DocSn
   }
 }
 
-/** Import a `.kgz` Blob as a new document bound to this tab. Total — never throws. */
-export async function importDocumentContainer(file: Blob): Promise<ImportDocumentResult> {
-  const res = await parseDocumentContainer(file)
-  if (res.status !== 'ok') return res
+/** Stage a parsed container's contents into the app: write its image blobs to IndexedDB under
+ *  freshly minted ids (so imports never clobber another document's blobs) and remap the
+ *  elements' blob references. Shared by file import and the share viewer — the caller decides
+ *  what to do with the staged snapshot (create a document vs. view it). */
+export async function stageContainerImport(parsed: {
+  name: string
+  snapshot: DocSnapshot
+  images: ContainerImage[]
+}): Promise<{ name: string; snapshot: DocSnapshot }> {
   const idMap = new Map<string, string>()
-  for (const img of res.value.images) {
+  for (const img of parsed.images) {
     const newId = crypto.randomUUID()
     idMap.set(img.imageId, newId)
     await putImageBlob(newId, img.blob)
   }
-  const snapshot = remapImageIds(res.value.snapshot, idMap)
-  useDocuments.getState().loadImported(res.value.name || 'Imported', snapshot)
+  return { name: parsed.name || 'Imported', snapshot: remapImageIds(parsed.snapshot, idMap) }
+}
+
+/** Import a `.kgz` Blob as a new document bound to this tab. Total — never throws. */
+export async function importDocumentContainer(file: Blob): Promise<ImportDocumentResult> {
+  const res = await parseDocumentContainer(file)
+  if (res.status !== 'ok') return res
+  const { name, snapshot } = await stageContainerImport(res.value)
+  useDocuments.getState().loadImported(name, snapshot)
   return { status: 'ok' }
 }
 

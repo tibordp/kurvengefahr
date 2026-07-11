@@ -24,8 +24,8 @@ machine), AxiDraw-style EBB plotters, and GRBL machines, with presets for popula
 - **Flood fill** -- click any enclosed region and every visible stroke acts as its boundary: the
   area becomes a regular hatch-filled path (holes included) you can edit like any other shape.
 - **Groups, clips, and effects** -- nest elements into containers, clip anything to a shape, and
-  stack non-destructive distortions (roughen, smooth, wave, sketch, twist, bulge, taper) on any of
-  it. The source stays editable throughout.
+  stack non-destructive distortions (roughen, smooth, wave, sketch, twist, bulge, taper, offset)
+  on any of it. The source stays editable throughout.
 - **Generative patterns** -- spirographs, L-system fractals, Truchet tiles, Voronoi diagrams, and
   flow fields, reproducible per seed.
 - **Logo programs** -- write turtle graphics in a real Logo (procedures, recursion, lists, seeded
@@ -50,6 +50,10 @@ machine), AxiDraw-style EBB plotters, and GRBL machines, with presets for popula
   exports as SVG, PNG, or PDF, and prints at true physical scale for a paper proof.
 - **A real editor** -- autosaved multi-document tabs with cross-tab sync, undo/redo that survives a
   refresh, an elements tree, a command palette, clipboard across tabs, light/dark themes.
+- **Share a link** -- turn a document into a link that opens a read-only view of that snapshot,
+  with a "Save a copy" action to keep editing. The document is encrypted in your browser before
+  upload; the key rides in the link itself and never reaches the server. Self-hosters can run
+  their own [share service](share-api/) or simply build without one.
 
 More detail lives in [docs/](docs/), including the [browser API](docs/browser-api.md) for
 userscripts and headless tooling.
@@ -79,7 +83,12 @@ Requires the Rust `wasm32-unknown-unknown` target and `wasm-pack`. After changin
 with `npm run build:wasm`. The Rust crate has tests (`cargo test`), including a NumPy reference that
 validates the handwriting model.
 
-Push to `main` and GitHub Actions deploys to GitHub Pages at kurvengefahr.org.
+Sharing is optional: set `VITE_SHARE_API_URL` at build time to the base URL of a
+[share service](share-api/) instance to enable it; leave it unset and the app builds with no
+share UI at all.
+
+CI runs on every push to `main`; publishing to GitHub Pages at kurvengefahr.org is a manual
+workflow run.
 
 ## Contributing and license
 

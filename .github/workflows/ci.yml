@@ -38,6 +38,9 @@ jobs:
 
       - run: npm ci
       - run: npm run build # prebuild → build:wasm, then tsc + vite build
+        env:
+          # Repo variable; unset builds with the share feature compiled out (src/share/config.ts).
+          VITE_SHARE_API_URL: ${{ vars.SHARE_API_URL }}
       - run: npm test # vitest; needs crate/pkg from the build step
       - run: cargo fmt --manifest-path crate/Cargo.toml --check
       - run: cargo clippy --manifest-path crate/Cargo.toml --all-targets -- -D warnings

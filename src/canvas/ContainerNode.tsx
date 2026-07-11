@@ -19,6 +19,8 @@ interface Props {
   membersOf: Map<string, DocElement[]>
   pxPerMm: number
   interactive?: boolean
+  /** Share viewer: full-opacity ink with zero interaction (see ElementNode). */
+  readOnly?: boolean
 }
 
 // Stable per-object ids so the fingerprint changes when a member's generated geometry is replaced
@@ -56,7 +58,7 @@ function containerFingerprint(containerId: string, membersOf: Map<string, DocEle
   return parts.join(';')
 }
 
-function ContainerNodeImpl({ element, membersOf, pxPerMm, interactive = true }: Props) {
+function ContainerNodeImpl({ element, membersOf, pxPerMm, interactive = true, readOnly = false }: Props) {
   const pens = useDoc((s) => s.profile.pens)
   const pressureOn = useDoc((s) => pressureEnabled(s.profile))
   const select = useDoc((s) => s.select)
@@ -86,11 +88,11 @@ function ContainerNodeImpl({ element, membersOf, pxPerMm, interactive = true }: 
       rotation={element.transform.rotation}
       scaleX={element.transform.scaleX}
       scaleY={element.transform.scaleY}
-      opacity={interactive ? 1 : 0.18}
-      listening={interactive}
-      draggable={interactive}
-      {...handlers}
-      {...(isClip ? { onDblClick: enter, onDblTap: enter } : {})}
+      opacity={readOnly || interactive ? 1 : 0.18}
+      listening={!readOnly && interactive}
+      draggable={!readOnly && interactive}
+      {...(readOnly ? {} : handlers)}
+      {...(isClip && !readOnly ? { onDblClick: enter, onDblTap: enter } : {})}
     >
       {/* Container geometry already has each member's pressure baked in (place gain in
           group/clipLocalGeometry) and carries per-stroke pens → gain 1, per-stroke colours. */}

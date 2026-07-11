@@ -22,12 +22,16 @@ interface Props {
   pxPerMm: number
   /** When false (preview mode), the element is dimmed and non-interactive. */
   interactive?: boolean
+  /** Share viewer: full-opacity ink with zero interaction — unlike `interactive={false}`, which
+   *  means "muted preview". Also suppresses the stale-params dimming (a viewer regenerates from
+   *  params, so what's on screen is never stale). */
+  readOnly?: boolean
   /** Override the on-canvas transform (its effective page transform) for a clip member being edited
    *  in place — the element's own `transform` is clip-local, so we render through the composed one. */
   effective?: Transform
 }
 
-function ElementNodeImpl({ element, pxPerMm, interactive = true, effective }: Props) {
+function ElementNodeImpl({ element, pxPerMm, interactive = true, readOnly = false, effective }: Props) {
   const pens = useDoc((s) => s.profile.pens)
   const pressureOn = useDoc((s) => pressureEnabled(s.profile))
   const handlers = useNodeInteraction(element)
@@ -69,12 +73,12 @@ function ElementNodeImpl({ element, pxPerMm, interactive = true, effective }: Pr
       rotation={t.rotation}
       scaleX={t.scaleX}
       scaleY={t.scaleY}
-      opacity={interactive ? (dirty ? 0.4 : 1) : 0.18}
-      listening={interactive}
-      draggable={interactive}
-      {...handlers}
+      opacity={readOnly ? 1 : interactive ? (dirty ? 0.4 : 1) : 0.18}
+      listening={!readOnly && interactive}
+      draggable={!readOnly && interactive}
+      {...(readOnly ? {} : handlers)}
       // Double-clicking a Logo program opens its code (the click already selected it).
-      {...(element.type === 'logo' && interactive
+      {...(element.type === 'logo' && interactive && !readOnly
         ? {
             onDblClick: () => useUI.getState().setCodeDockFor(element.id),
             onDblTap: () => useUI.getState().setCodeDockFor(element.id),

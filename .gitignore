@@ -2,6 +2,7 @@ node_modules/
 dist/
 crate/target/
 crate/pkg/
+share-api/target/
 *.local
 *.tsbuildinfo
 .DS_Store

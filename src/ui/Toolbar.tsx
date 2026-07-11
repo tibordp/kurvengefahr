@@ -38,8 +38,9 @@ function plotErrorMessage(code: string): string {
 }
 
 /** A curving trail with a gap + head — a nod to "Achtung, die Kurve!" (and to drawing one
- *  continuous line). `currentColor`, so it inherits the accent. */
-function LogoMark({ className }: { className?: string }) {
+ *  continuous line). `currentColor`, so it inherits the accent. Exported for the share viewer's
+ *  top bar (ui/ShareViewer.tsx). */
+export function LogoMark({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" width="22" height="22" fill="none" className={className} aria-hidden>
       <path

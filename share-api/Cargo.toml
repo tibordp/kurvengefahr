@@ -1,0 +1,29 @@
+[package]
+name = "kg-share-api"
+version = "0.1.0"
+edition = "2024"
+license = "GPL-2.0-only"
+description = "Content-addressed, E2E-encrypted share-blob store for Kurvengefahr"
+
+[dependencies]
+axum = "0.8"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["cors", "trace"] }
+object_store = { version = "0.12", features = ["aws"] }
+sha2 = "0.10"
+base64 = "0.22"
+bytes = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+lru = "0.14"
+metrics = "0.24"
+metrics-exporter-prometheus = { version = "0.17", default-features = false }
+thiserror = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+futures-util = "0.3"
+
+[dev-dependencies]
+http-body-util = "0.1"
+tower = { version = "0.5", features = ["util"] }

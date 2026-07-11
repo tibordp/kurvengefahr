@@ -6,6 +6,7 @@ import { HelpDialog } from './ui/HelpDialog'
 import { SvgImportDialog } from './ui/SvgImportDialog'
 import { DxfImportDialog } from './ui/DxfImportDialog'
 import { ExportDialog } from './ui/ExportDialog'
+import { ShareDialog } from './ui/ShareDialog'
 import { CommandPalette } from './ui/CommandPalette'
 import { Toaster } from './ui/Toaster'
 import { DialogHost } from './ui/DialogHost'
@@ -80,8 +81,9 @@ function useSystemClipboard() {
 
 /** Drive worker-backed generation (handwriting + raster): whenever the document changes, reconcile
  *  what needs (re)generating off the main thread — initial generation for new elements, and a
- *  debounced re-trace for edited "live" (auto-regenerate) elements. */
-function useGenerationManager() {
+ *  debounced re-trace for edited "live" (auto-regenerate) elements. Exported for the share
+ *  viewer (ui/ShareViewer.tsx), which renders the same document store without the editor shell. */
+export function useGenerationManager() {
   const elements = useDoc((s) => s.elements)
   useEffect(() => {
     syncGeneration(elements)
@@ -131,6 +133,7 @@ export function App() {
       <SvgImportDialog />
       <DxfImportDialog />
       <ExportDialog />
+      <ShareDialog />
       <CommandPalette />
       <Toaster />
       <DialogHost />

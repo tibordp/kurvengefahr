@@ -15,6 +15,7 @@
 //!   - `clip` — split strokes to the reachable rectangle.
 //!   - `optimize` — reorder strokes (chain-aware, per-pen greedy nearest-neighbour).
 //!   - `plan_axidraw` — optimized strokes → timed EBB motion segments (trapezoidal profiles).
+//!   - `pow_scan` / `pow_verify` — the share-upload proof-of-work solver (`sha256-lz-v1`).
 
 mod boolean;
 mod cleanup;
@@ -33,6 +34,7 @@ mod poly;
 mod raster;
 mod rng;
 mod shapes;
+mod share_pow;
 mod svg;
 mod tess;
 mod text;
@@ -574,6 +576,25 @@ pub fn plan_axidraw(
 ) -> plan::PlanBuffers {
     let strokes = decode(xy, pressure, offsets, pen, reversible, group);
     plan::plan_from_json(&strokes, params)
+}
+
+/// Share-upload proof-of-work (`sha256-lz-v1`, see `share_pow`): scan `count` nonces from
+/// `start_nonce` (wrapping) for one whose PoW digest has ≥ `bits` leading zero bits. Returns the
+/// nonce or None to continue; the share worker calls this in chunks so cancel stays responsive.
+/// `blob_hash` must be the 32-byte SHA-256 of the encrypted blob.
+#[wasm_bindgen]
+pub fn pow_scan(blob_hash: &[u8], start_nonce: u64, count: u32, bits: u32) -> Option<u64> {
+    let hash: &[u8; 32] = blob_hash.try_into().ok()?;
+    share_pow::scan(hash, start_nonce, count, bits)
+}
+
+/// Verify a share-upload proof-of-work nonce (one hash). False for a malformed hash length.
+#[wasm_bindgen]
+pub fn pow_verify(blob_hash: &[u8], nonce: u64, bits: u32) -> bool {
+    match <&[u8; 32]>::try_from(blob_hash) {
+        Ok(hash) => share_pow::verify(hash, nonce, bits),
+        Err(_) => false,
+    }
 }
 
 /// An orderable unit: the indices of the strokes it covers (in plot order), whether it may be
