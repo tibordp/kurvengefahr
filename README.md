@@ -85,7 +85,9 @@ validates the handwriting model.
 
 Sharing is optional: set `VITE_SHARE_API_URL` at build time to the base URL of a
 [share service](share-api/) instance to enable it; leave it unset and the app builds with no
-share UI at all.
+share UI at all. For local development, `docker compose -f share-api/dev/compose.yml up --build`
+runs a Garage-backed share service that `npm run dev` targets automatically (via
+`.env.development`).
 
 CI runs on every push to `main`; publishing to GitHub Pages at kurvengefahr.org is a manual
 workflow run.

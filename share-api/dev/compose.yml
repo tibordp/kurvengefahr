@@ -1,0 +1,55 @@
+# Local share stack: Garage (S3-compatible object store) + share-api built from source.
+#
+#   docker compose -f share-api/dev/compose.yml up --build
+#
+# The API lands on http://localhost:8787 — exactly where the repo's .env.development points
+# `npm run dev`, so a dev app has sharing enabled against this stack out of the box. Metrics on
+# http://localhost:8788/metrics. (Host ports are deliberately not the service defaults —
+# 8080/9464 are common squatters on dev machines.) Blob data persists in the `garage-data`
+# volume across restarts (`down -v` wipes it); garage-init is idempotent, so every `up` is safe.
+name: kg-share-dev
+
+services:
+  garage:
+    image: dxflrs/garage:v2.1.0
+    volumes:
+      - ./garage.toml:/etc/garage.toml:ro
+      - garage-data:/var/lib/garage
+
+  # First-boot layout/bucket/key setup through the admin API (the garage image has no shell).
+  garage-init:
+    image: python:3-alpine
+    depends_on:
+      - garage
+    volumes:
+      - ./garage-init.py:/garage-init.py:ro
+    command: python /garage-init.py
+    restart: "no"
+    environment:
+      GARAGE_ADMIN: http://garage:3903
+      GARAGE_ADMIN_TOKEN: kg-dev-admin-token
+      BUCKET: kg-shares
+      KEY_ID: GK0123456789abcdef01234567
+      KEY_SECRET: b892c8a0e5b3c0d9a1f2e3d4c5b6a7980112233445566778899aabbccddeeff0
+
+  share-api:
+    build:
+      context: ..
+    ports:
+      - "8787:8080"
+      - "8788:9464"
+    depends_on:
+      garage-init:
+        condition: service_completed_successfully
+    environment:
+      KG_S3_ENDPOINT: http://garage:3900
+      KG_S3_REGION: garage
+      KG_S3_BUCKET: kg-shares
+      KG_S3_ACCESS_KEY_ID: GK0123456789abcdef01234567
+      KG_S3_SECRET_ACCESS_KEY: b892c8a0e5b3c0d9a1f2e3d4c5b6a7980112233445566778899aabbccddeeff0
+      KG_S3_ALLOW_HTTP: "true"
+      KG_METRICS_ADDR: 0.0.0.0:9464
+      KG_LOG: info
+
+volumes:
+  garage-data:

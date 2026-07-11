@@ -141,4 +141,6 @@ fingerprints — **any new continuous canvas gesture must wrap in `beginGesture`
 ## Dev
 
 `npm run dev` (predev builds wasm) · `npm run build` · `npm run build:wasm` · `npm test` (vitest)
-· `cargo test` in `crate/`. Requires Rust + `wasm32-unknown-unknown` + `wasm-pack`.
+· `cargo test` in `crate/` and in `share-api/`. Requires Rust + `wasm32-unknown-unknown` +
+`wasm-pack`. Local share stack (Garage + share-api; `npm run dev` targets it via
+`.env.development`): `docker compose -f share-api/dev/compose.yml up --build`.

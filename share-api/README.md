@@ -25,16 +25,18 @@ docker run --rm -p 8080:8080 \
   ghcr.io/<owner>/kurvengefahr/share-api:latest
 ```
 
-Local development against MinIO:
+Local development uses the compose stack in [`dev/`](dev/) -- a single-node
+[Garage](https://garagehq.deuxfleurs.fr/) as the object store (auto-initialized on first boot by
+`dev/garage-init.py`) plus this service built from source:
 
 ```sh
-docker run --rm -d -p 9000:9000 -e MINIO_ROOT_USER=minio -e MINIO_ROOT_PASSWORD=minio123 \
-  quay.io/minio/minio server /data
-mc mb local/kg-shares   # or create the bucket via the console
-KG_S3_ENDPOINT=http://127.0.0.1:9000 KG_S3_BUCKET=kg-shares \
-  KG_S3_ACCESS_KEY_ID=minio KG_S3_SECRET_ACCESS_KEY=minio123 \
-  KG_S3_ALLOW_HTTP=true cargo run
+docker compose -f share-api/dev/compose.yml up --build
 ```
+
+The API lands on `http://localhost:8787` and metrics on `http://localhost:8788/metrics`; the
+repo's `.env.development` points `npm run dev` at it, so a dev build of the app has sharing
+enabled against this stack automatically. To run the service outside Docker, point `cargo run`
+at the stack's Garage with the same `KG_S3_*` values `dev/compose.yml` uses.
 
 Point a Kurvengefahr build at the service by setting `VITE_SHARE_API_URL` at app build time;
 without it the app has no share UI at all. CORS defaults to any origin (the URL fragment is the
