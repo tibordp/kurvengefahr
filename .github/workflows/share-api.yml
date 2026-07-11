@@ -1,8 +1,11 @@
 name: share-api
 
 # The share service is independent of the app build: its own gate (fmt/clippy/test, mirroring
-# ci.yml's conventions) and, on main, a container image published to GHCR. Deploying the image
-# to the box stays a manual act (docker pull), consistent with the manual Pages deploys.
+# ci.yml's conventions) and, on main, a multi-arch container image published to GHCR. Each
+# architecture builds natively (GitHub's arm64 runners are free for public repos — emulated
+# cargo builds would take tens of minutes), pushed by digest, then merged into one manifest
+# list. Deploying the image to the cluster stays a manual act, consistent with the manual
+# Pages deploys.
 on:
   push:
     branches: [main]
@@ -30,18 +33,81 @@ jobs:
       - run: cargo clippy --manifest-path share-api/Cargo.toml --all-targets -- -D warnings
       - run: cargo test --manifest-path share-api/Cargo.toml
 
-  publish:
+  build:
     needs: test
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
       packages: write
     steps:
       - uses: actions/checkout@v4
 
+      - name: Platform slug for artifact/cache names
+        run: echo "PLATFORM_PAIR=${PLATFORM//\//-}" >> "$GITHUB_ENV"
+        env:
+          PLATFORM: ${{ matrix.platform }}
+
       # The gha cache backend needs a docker-container builder; the runner's default docker
       # driver can't export cache.
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/metadata-action@v5
+        id: meta
+        with:
+          images: ghcr.io/${{ github.repository }}/share-api
+
+      - uses: docker/build-push-action@v6
+        id: build
+        with:
+          context: share-api
+          file: share-api/Dockerfile
+          platforms: ${{ matrix.platform }}
+          labels: ${{ steps.meta.outputs.labels }}
+          outputs: type=image,name=ghcr.io/${{ github.repository }}/share-api,push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=share-api-${{ env.PLATFORM_PAIR }}
+          cache-to: type=gha,mode=max,scope=share-api-${{ env.PLATFORM_PAIR }}
+
+      - name: Export digest
+        run: |
+          mkdir -p /tmp/digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "/tmp/digests/${digest#sha256:}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: digests-${{ env.PLATFORM_PAIR }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: /tmp/digests
+          pattern: digests-*
+          merge-multiple: true
+
       - uses: docker/setup-buildx-action@v3
 
       - uses: docker/login-action@v3
@@ -58,12 +124,12 @@ jobs:
             type=raw,value=latest
             type=sha,format=long
 
-      - uses: docker/build-push-action@v6
-        with:
-          context: share-api
-          file: share-api/Dockerfile
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+      - name: Create the multi-arch manifest list
+        working-directory: /tmp/digests
+        run: |
+          docker buildx imagetools create \
+            $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            $(printf 'ghcr.io/${{ github.repository }}/share-api@sha256:%s ' *)
+
+      - name: Inspect
+        run: docker buildx imagetools inspect ghcr.io/${{ github.repository }}/share-api:latest
