@@ -233,7 +233,10 @@ mod tests {
     #[test]
     fn overlapping_shapes_merge_into_one_silhouette() {
         // Even-odd would cut the overlap out as a hole; the hull must merge instead.
-        let out = apply(&[square(0.0, 0.0, 10.0, 0), square(5.0, 5.0, 10.0, 0)], &spec(false));
+        let out = apply(
+            &[square(0.0, 0.0, 10.0, 0), square(5.0, 5.0, 10.0, 0)],
+            &spec(false),
+        );
         assert_eq!(out.len(), 1, "one merged outline");
         let (x0, y0, x1, y1) = bbox(&out[0]);
         assert!((x0, y0) == (0.0, 0.0) && (x1, y1) == (15.0, 15.0));
@@ -264,14 +267,20 @@ mod tests {
 
     #[test]
     fn disjoint_islands_each_keep_their_outline() {
-        let out = apply(&[square(0.0, 0.0, 10.0, 0), square(30.0, 0.0, 10.0, 0)], &spec(false));
+        let out = apply(
+            &[square(0.0, 0.0, 10.0, 0), square(30.0, 0.0, 10.0, 0)],
+            &spec(false),
+        );
         assert_eq!(out.len(), 2, "separate islands stay separate");
     }
 
     #[test]
     fn open_strokes_are_silently_closed() {
         // An open right angle closes into a triangle whose outline is the hull.
-        let out = apply(&[open(&[(0.0, 0.0), (10.0, 0.0), (10.0, 10.0)], 2)], &spec(false));
+        let out = apply(
+            &[open(&[(0.0, 0.0), (10.0, 0.0), (10.0, 10.0)], 2)],
+            &spec(false),
+        );
         assert_eq!(out.len(), 1);
         assert!(is_closed(&out[0].points));
         assert_eq!(out[0].pen, 2);
@@ -288,7 +297,10 @@ mod tests {
 
     #[test]
     fn pens_hull_as_separate_regions() {
-        let out = apply(&[square(0.0, 0.0, 10.0, 0), square(5.0, 5.0, 10.0, 1)], &spec(false));
+        let out = apply(
+            &[square(0.0, 0.0, 10.0, 0), square(5.0, 5.0, 10.0, 1)],
+            &spec(false),
+        );
         assert_eq!(out.len(), 2, "different pens never merge");
         assert_eq!(out[0].pen, 0);
         assert_eq!(out[1].pen, 1);
@@ -358,6 +370,9 @@ mod tests {
             r#"[{"type":"hull","enabled":true,"convex":true}]"#,
         );
         assert_eq!(convex.len(), 1);
-        assert!(convex[0].points.len() < out[0].points.len(), "convex hull has fewer vertices");
+        assert!(
+            convex[0].points.len() < out[0].points.len(),
+            "convex hull has fewer vertices"
+        );
     }
 }
