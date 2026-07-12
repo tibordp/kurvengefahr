@@ -1,11 +1,15 @@
-// The Help / About dialog: a short description, a link to the source, and the keyboard-shortcut
-// reference (the discoverable home for the bindings that also appear in button tooltips). Opened
-// from the toolbar's help button or the `?` key; state lives in `useUI`.
+// The Help / About dialog: a short description, links to the docs and the source, and the
+// keyboard-shortcut reference (the discoverable home for the bindings that also appear in button
+// tooltips). Opened from the toolbar's help button or the `?` key; state lives in `useUI`. The
+// share viewer shows it too (its help button), minus the editor shortcuts.
+import { BookOpen } from 'lucide-react'
+import type { ReactNode } from 'react'
 import { useUI } from '../store/ui'
 import { Modal } from './primitives'
 import { SHORTCUT_GROUPS } from './shortcuts'
 
-const REPO_URL = 'https://github.com/tibordp/kurvengefahr'
+export const REPO_URL = 'https://github.com/tibordp/kurvengefahr'
+const DOCS_URL = `${REPO_URL}/tree/main/docs`
 
 /** A keycap-styled chip for a single key in the shortcuts table. */
 function Kbd({ children }: { children: string }) {
@@ -25,7 +29,25 @@ function GithubMark() {
   )
 }
 
-export function HelpDialog() {
+/** An external-link button (docs, source). */
+function LinkButton({ href, children }: { href: string; children: ReactNode }) {
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="inline-flex items-center gap-2 rounded-md border border-border bg-surface px-3 py-1.5 text-sm font-medium text-text outline-none transition-colors hover:bg-bg focus-visible:ring-2 focus-visible:ring-accent/45"
+    >
+      {children}
+      <span aria-hidden className="text-faint">
+        ↗
+      </span>
+    </a>
+  )
+}
+
+/** `shortcuts` hides the keyboard reference where it doesn't apply (the read-only share viewer). */
+export function HelpDialog({ shortcuts = true }: { shortcuts?: boolean }) {
   const open = useUI((s) => s.helpOpen)
   const setHelpOpen = useUI((s) => s.setHelpOpen)
   if (!open) return null
@@ -39,43 +61,45 @@ export function HelpDialog() {
         this device.
       </p>
 
-      <a
-        href={REPO_URL}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="mt-3 inline-flex items-center gap-2 rounded-md border border-border bg-surface px-3 py-1.5 text-sm font-medium text-text outline-none transition-colors hover:bg-bg focus-visible:ring-2 focus-visible:ring-accent/45"
-      >
-        <GithubMark />
-        View source on GitHub
-        <span aria-hidden className="text-faint">
-          ↗
-        </span>
-      </a>
-
-      <h3 className="mb-2 mt-6 text-2xs font-semibold uppercase tracking-wider text-muted">
-        Keyboard shortcuts
-      </h3>
-      <div className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
-        {SHORTCUT_GROUPS.map((group) => (
-          <section key={group.title}>
-            <h4 className="mb-1.5 text-2xs font-semibold uppercase tracking-wider text-faint">
-              {group.title}
-            </h4>
-            <dl className="flex flex-col gap-1">
-              {group.items.map((item) => (
-                <div key={item.label} className="flex items-center justify-between gap-3">
-                  <dt className="text-xs text-muted">{item.label}</dt>
-                  <dd className="flex shrink-0 items-center gap-1">
-                    {item.keys.map((k, i) => (
-                      <Kbd key={i}>{k}</Kbd>
-                    ))}
-                  </dd>
-                </div>
-              ))}
-            </dl>
-          </section>
-        ))}
+      <div className="mt-3 flex flex-wrap gap-2">
+        <LinkButton href={DOCS_URL}>
+          <BookOpen size={15} />
+          Read the docs
+        </LinkButton>
+        <LinkButton href={REPO_URL}>
+          <GithubMark />
+          View source on GitHub
+        </LinkButton>
       </div>
+
+      {shortcuts && (
+        <>
+          <h3 className="mb-2 mt-6 text-2xs font-semibold uppercase tracking-wider text-muted">
+            Keyboard shortcuts
+          </h3>
+          <div className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
+            {SHORTCUT_GROUPS.map((group) => (
+              <section key={group.title}>
+                <h4 className="mb-1.5 text-2xs font-semibold uppercase tracking-wider text-faint">
+                  {group.title}
+                </h4>
+                <dl className="flex flex-col gap-1">
+                  {group.items.map((item) => (
+                    <div key={item.label} className="flex items-center justify-between gap-3">
+                      <dt className="text-xs text-muted">{item.label}</dt>
+                      <dd className="flex shrink-0 items-center gap-1">
+                        {item.keys.map((k, i) => (
+                          <Kbd key={i}>{k}</Kbd>
+                        ))}
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+              </section>
+            ))}
+          </div>
+        </>
+      )}
     </Modal>
   )
 }

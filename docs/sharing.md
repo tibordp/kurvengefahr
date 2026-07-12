@@ -1,14 +1,14 @@
 # Sharing
 
 Share… (in the document menu) turns the current document into a link. Opening it shows a
-read-only view of that snapshot -- later edits to your document never change what the link shows
--- with an **Edit a copy** button that imports the snapshot as a new document for the viewer to
+read-only view of that snapshot - later edits to your document never change what the link shows -
+with an **Edit a copy** button that imports the snapshot as a new document for the viewer to
 keep working on. Nothing is added to the viewer's document library until they choose that.
 
 ## The privacy model
 
 The document is encrypted in your browser before anything is uploaded. The decryption key rides
-in the link's `#…` fragment, which browsers do not send to servers -- so the share service only
+in the link's `#…` fragment, which browsers do not send to servers - so the share service only
 ever stores ciphertext it cannot read, and anyone *with* the link can read the document. Treat
 the link itself as the secret.
 
@@ -24,5 +24,5 @@ valid) link.
 ## Self-hosting
 
 The public app uses the share service at `share.kurvengefahr.org`. The service is a small open
-component you can run yourself -- see [share-api](../share-api/) -- and a build configured
+component you can run yourself - see [share-api](../share-api/) - and a build configured
 without one simply has no Share entry.

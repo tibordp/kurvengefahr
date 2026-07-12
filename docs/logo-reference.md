@@ -1,7 +1,7 @@
 # Logo reference
 
 The dialect is UCB-style Logo: procedures with real recursion, dynamic scoping, lists as both
-data and code, and seeded randomness. Programs are deterministic -- the same source, parameter
+data and code, and seeded randomness. Programs are deterministic - the same source, parameter
 values, and seed always draw the same thing. New to Logo? Start with the
 [tutorial](logo-tutorial.md).
 
@@ -12,18 +12,18 @@ are the same command).
 
 The values:
 
-- **Numbers** -- `40`, `-3.5`. All distances are millimeters, all angles degrees.
-- **Words** -- `"petal` is the word itself (quoted, not evaluated); words also arrive as list
+- **Numbers** - `40`, `-3.5`. All distances are millimeters, all angles degrees.
+- **Words** - `"petal` is the word itself (quoted, not evaluated); words also arrive as list
   items. Booleans are the words `true` and `false`.
-- **Lists** -- `[fd 10 rt 90]` or `[30 45 60]`. A list literal is *data*: nothing inside runs
+- **Lists** - `[fd 10 rt 90]` or `[30 45 60]`. A list literal is *data*: nothing inside runs
   until something like `run`, `repeat`, or `if` executes it as code, or `pick`/`foreach` walks it
   as values.
-- **Variables** -- `:size` reads the variable `size` (shorthand for `thing "size`).
+- **Variables** - `:size` reads the variable `size` (shorthand for `thing "size`).
 
 Logo has no statement separators; it parses **greedily by arity**. Every command has a known
 number of inputs, so `fd 10 rt 90` is unambiguous: `fd` takes one input, then `rt` starts a new
 call. User procedures parse the same way, which is why they can be called before their `to`
-definition appears -- the whole program is scanned for procedure headers first.
+definition appears - the whole program is scanned for procedure headers first.
 
 Infix arithmetic mixes freely with prefix calls, binding tighter than the command around it:
 `fd :n + 5` moves by `:n + 5`. Precedence, loosest to tightest: comparisons
@@ -35,12 +35,12 @@ Procedures are defined with `to … end` at the top level:
 ```logo
 to name :input1 :input2
   …
-  output :input1 + :input2   ; optional -- makes it a reporter
+  output :input1 + :input2   ; optional - makes it a reporter
 end
 ```
 
 `output` returns a value from the procedure; `stop` returns without one. A procedure call in
-tail position runs in constant space -- tail recursion is the canonical Logo loop and never
+tail position runs in constant space - tail recursion is the canonical Logo loop and never
 exhausts the call depth; only non-tail recursion (work left to do after the recursive call, like
 the fractal tree's `bk`) counts against the depth limit.
 
@@ -55,8 +55,8 @@ Inside `map`, `filter`, and `foreach` templates, `?` is the current item:
 ## The turtle
 
 The turtle starts at the element's anchor (where you clicked when creating it), heading 0,
-**pen down**, pressure 1, pen 0. Heading 0 is up and positive turns are clockwise -- textbook
-Logo -- so `fd` moves up the page and `rt 90` faces right. Coordinates are mm, x right, y up,
+**pen down**, pressure 1, pen 0. Heading 0 is up and positive turns are clockwise - textbook
+Logo - so `fd` moves up the page and `rt 90` faces right. Coordinates are mm, x right, y up,
 relative to the start.
 
 ### Motion
@@ -105,7 +105,7 @@ relative to the start.
 | `repcount` | | | The current `repeat` iteration, counting from 1. |
 | `if` | | cond block | Run block if cond is true. |
 | `ifelse` | | cond then else | Run then if cond is true, else otherwise. Outputs the branch's value if it has one. |
-| `for` | | control block | `for [i start end step?] […]` -- run the block with `:i` counting from start to end. |
+| `for` | | control block | `for [i start end step?] […]` - run the block with `:i` counting from start to end. |
 | `while` | | cond block | Run block as long as the cond list evaluates true. |
 | `foreach` | | data template | Run template once per item of data, with `?` as the item. |
 | `map` | | template data | The list made by evaluating template (with `?`) for each item of data. |
@@ -121,7 +121,7 @@ relative to the start.
 | `make` | name value | Set variable name (a quoted word) to value. Creates a global if no local exists. |
 | `local` | name | Declare name (a quoted word, or list of them) local to the current procedure. |
 | `localmake` | name value | Declare name local and set it to value. |
-| `thing` | name | The value of the named variable -- `thing "x` is the same as `:x`. |
+| `thing` | name | The value of the named variable - `thing "x` is the same as `:x`. |
 | `param` | name default | Declare an inspector-adjustable parameter (see below). |
 
 ### `param`
@@ -208,7 +208,7 @@ Randomness draws from a generator seeded by the element's seed knob (the knob ap
 a program uses any of these). The same seed reproduces the same drawing; the re-roll die
 explores variations.
 
-`print` and `show` are accepted for compatibility with textbook programs but do nothing -- there
+`print` and `show` are accepted for compatibility with textbook programs but do nothing - there
 is no console to print to.
 
 ## Limits

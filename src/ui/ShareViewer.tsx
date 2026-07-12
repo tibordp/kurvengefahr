@@ -3,13 +3,15 @@
 // ViewerCanvas. Rendered by main.tsx *instead of* App when the URL carries a share fragment;
 // worker-backed elements regenerate through the same generation manager the editor uses.
 import { useState } from 'react'
-import { Loader2 } from 'lucide-react'
+import { CircleHelp, Loader2 } from 'lucide-react'
 import { useGenerationManager } from '../App'
 import { ViewerCanvas } from '../canvas/ViewerCanvas'
 import { useGeneration } from '../core/generation'
 import { saveViewerCopy, useViewer, type ViewerErrorKind } from '../share/viewer'
 import { toast } from '../store/toast'
-import { Banner, Button } from './primitives'
+import { useUI } from '../store/ui'
+import { HelpDialog } from './HelpDialog'
+import { Banner, Button, IconButton } from './primitives'
 import { Toaster } from './Toaster'
 import { LogoMark } from './Toolbar'
 
@@ -155,11 +157,20 @@ export function ShareViewer() {
         <div className="flex-1" />
         <RenderingIndicator />
         <EditCopyButton />
+        <IconButton
+          onClick={() => useUI.getState().toggleHelp()}
+          aria-label="Help and about"
+          aria-haspopup="dialog"
+          title="About Kurvengefahr"
+        >
+          <CircleHelp size={17} />
+        </IconButton>
       </header>
       <main className="relative flex min-h-0 min-w-0 flex-col">
         <GenerationErrorBanner />
         <ViewerCanvas />
       </main>
+      <HelpDialog shortcuts={false} />
       <Toaster />
     </div>
   )

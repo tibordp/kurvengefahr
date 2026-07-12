@@ -2,7 +2,7 @@
 
 The Logo element draws with a **turtle**: a pen-holding cursor you steer with commands. `fd 40`
 moves it 40 mm forward, drawing a line; `rt 90` turns it 90 degrees right. Everything a Logo
-program draws plots like any other element -- so a few lines of code become a parametric,
+program draws plots like any other element - so a few lines of code become a parametric,
 re-rollable, multi-pen drawing. This page assumes no Logo; if you know the language, skip to the
 [reference](logo-reference.md).
 
@@ -24,7 +24,7 @@ bk 10     ; backward 10 mm
 lt 45     ; turn 45° counterclockwise
 ```
 
-`repeat` runs a bracketed block several times -- the classic square:
+`repeat` runs a bracketed block several times - the classic square:
 
 ```logo
 repeat 4 [fd 40 rt 90]
@@ -55,7 +55,7 @@ end
 repeat 6 [petal 40 rt 60]
 ```
 
-Procedures can call themselves. This is *the* Logo idiom -- a spiral is a procedure that draws a
+Procedures can call themselves. This is *the* Logo idiom - a spiral is a procedure that draws a
 little, turns, and calls itself slightly bigger, until a stopping test:
 
 ```logo
@@ -68,7 +68,7 @@ end
 spiral 2
 ```
 
-Recursion also branches. The fractal tree draws a trunk, then becomes two smaller trees -- note
+Recursion also branches. The fractal tree draws a trunk, then becomes two smaller trees - note
 how it walks back down (`bk`) so each branch starts from the right place:
 
 ```logo
@@ -86,8 +86,8 @@ tree 40 7
 ```
 
 Arithmetic works infix (`:len + 1.5`, `360 / :petals`) right inside arguments, and comparisons
-(`=`, `<`, `>`, `<>`, …) drive `if`/`ifelse` and `while`. A handful of other loops exist --
-`for [i 1 10] [...]` counts, `foreach`/`map`/`filter` walk lists -- all in the
+(`=`, `<`, `>`, `<>`, …) drive `if`/`ifelse` and `while`. A handful of other loops exist -
+`for [i 1 10] [...]` counts, `foreach`/`map`/`filter` walk lists - all in the
 [reference](logo-reference.md#control).
 
 ## Knobs: `param`
@@ -102,7 +102,7 @@ param "size 40            ; no range -> a plain number field
 repeat :petals [petal :size rt 360 / :petals]
 ```
 
-Sliders re-run the program live -- your program becomes an instrument you play from the
+Sliders re-run the program live - your program becomes an instrument you play from the
 inspector. The declaration is real code (it defines `:petals`), and the element stores only your
 overrides, so the program text keeps its own defaults.
 
@@ -121,7 +121,7 @@ repeat :count [
 ]
 ```
 
-`setpressure 0.4` sets how hard the pen presses (0 to 1) -- it shows as line weight on screen and
+`setpressure 0.4` sets how hard the pen presses (0 to 1) - it shows as line weight on screen and
 plots as pen force on machines with [variable pressure](plotting.md#pens-and-pressure). Ramping
 it mid-drawing gives strokes that swell and fade:
 
@@ -149,8 +149,8 @@ repeat :steps [
 
 ## Working with the canvas
 
-While the editor is open, a small green turtle on the canvas marks where the program *ends* --
-position and heading -- so growing a drawing is appending to the end. The element moves, scales,
+While the editor is open, a small green turtle on the canvas marks where the program *ends* -
+position and heading - so growing a drawing is appending to the end. The element moves, scales,
 and rotates like any other, takes [effects](effects.md), and by default plots its strokes in the
 order the program drew them (the inspector's Global optimize toggle hands them to the
 [travel optimizer](plotting.md#stroke-order) instead).
@@ -163,7 +163,7 @@ while the canvas keeps the last good drawing.
 
 Save a program as a **tool** (the hammer icon in the editor, or the inspector) and it appears in
 the tool sidebar in every document: click it, then click the canvas to stamp a fresh element with
-that program. Stamped elements are self-contained copies -- editing one never changes the tool.
+that program. Stamped elements are self-contained copies - editing one never changes the tool.
 The Preferences tab manages the library, including import and export as a JSON file for sharing.
 
 From here, the [reference](logo-reference.md) has the full language: every builtin with its

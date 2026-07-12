@@ -2,7 +2,7 @@
 
 The canvas is the machine's bed at true scale: one canvas unit is one millimeter, and the page
 outline is exactly the plottable area of the selected [machine profile](machines.md). What you
-compose is what plots -- the same geometry drives the screen, the preview, and the output.
+compose is what plots - the same geometry drives the screen, the preview, and the output.
 
 ## Documents
 
@@ -12,7 +12,7 @@ duplicate, delete, switch between recent documents, and save/open as a [`.kgz` f
 for backup or moving between machines. Several tabs can hold different documents of the same
 library; edits sync across tabs.
 
-Undo (`Cmd/Ctrl Z`) covers everything -- geometry, params, machine settings -- and the history
+Undo (`Cmd/Ctrl Z`) covers everything - geometry, params, machine settings - and the history
 survives a page reload.
 
 ## Tools
@@ -35,7 +35,7 @@ Each tool is one key (hover any button for its shortcut; press `?` for the full 
 | `X` | Fiducial (registration point) |
 
 A straight line is the pen tool with two clicks; a star is a polygon with the inspector's Star
-toggle. Flood fill clicks any enclosed region -- every visible stroke acts as a boundary -- and
+toggle. Flood fill clicks any enclosed region - every visible stroke acts as a boundary - and
 turns the area into a regular hatch-filled path.
 
 ## Selecting and arranging
@@ -49,7 +49,7 @@ they work across documents, tabs, and windows; pasting an image from the clipboa
 
 Elements snap to the grid while moving and resizing (hold `Alt` to bypass); the grid toggle and
 spacing live in the status bar. Stroke order on paper is the optimizer's business, not a visual
-stacking order -- see [plotting](plotting.md#stroke-order).
+stacking order - see [plotting](plotting.md#stroke-order).
 
 The elements panel lists everything in the document: click to select, and each row has hide,
 rename, and delete. The filter box narrows long documents by name or type.
@@ -58,9 +58,9 @@ rename, and delete. The filter box narrows long documents by name or type.
 
 The right-hand panel follows the selection. For any element it shows the pen, pressure (line
 weight), dash pattern, the [effect stack](effects.md), and the exact transform; below that come
-the selected type's own controls -- text and font settings, tracing method, generative knobs, and
+the selected type's own controls - text and font settings, tracing method, generative knobs, and
 so on, covered per type in [elements](elements.md). With several elements selected it also offers
-alignment, boolean operations, and combine/weld -- see [paths](elements.md#shapes-and-paths).
+alignment, boolean operations, and combine/weld - see [paths](elements.md#shapes-and-paths).
 
 The **Machine** tab holds the machine profile ([machines](machines.md)), and **Preferences** the
 theme and your saved Logo tools.
@@ -75,7 +75,7 @@ so you always manipulate the real geometry.
 
 ## Command palette and shortcuts
 
-`Cmd/Ctrl K` opens the command palette -- every command, searchable, including ones that have no
+`Cmd/Ctrl K` opens the command palette - every command, searchable, including ones that have no
 button. `?` opens the shortcut reference. `Shift 1` fits the whole page in view, `Shift 2` the
 selection.
 

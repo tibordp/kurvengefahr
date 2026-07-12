@@ -24,7 +24,7 @@
 // Dock height is transient chrome state (store/ui.ts), never part of the document — so the resize
 // drag needs no history bracket.
 import { Suspense, lazy, useEffect, useState } from 'react'
-import { Code, Eye, Hammer, X } from 'lucide-react'
+import { BookOpen, Code, Eye, Hammer, X } from 'lucide-react'
 import { useDoc } from '../store/document'
 import { useUI } from '../store/ui'
 import { useLogoTools } from '../store/logoTools'
@@ -32,9 +32,12 @@ import { promptDialog } from '../store/dialogs'
 import { LOGO_EXAMPLES } from '../elements/logo/examples'
 import type { LogoParams } from '../elements/logo'
 import { Button, IconButton, controlClass, cx } from './primitives'
+import { REPO_URL } from './HelpDialog'
 import { useIsMobile } from './mobile'
 
 const LogoEditor = lazy(() => import('./LogoEditor'))
+
+const LOGO_DOCS_URL = `${REPO_URL}/blob/main/docs/logo-tutorial.md`
 
 const MIN_HEIGHT = 120
 const maxHeight = () => Math.round(window.innerHeight * 0.7)
@@ -174,6 +177,14 @@ export function LogoDock() {
         onClick={() => void saveAsTool()}
       >
         <Hammer size={15} />
+      </IconButton>
+      <IconButton
+        aria-label="Open the Logo language docs"
+        title="Logo language docs — tutorial and full reference"
+        className="h-7 w-7"
+        onClick={() => window.open(LOGO_DOCS_URL, '_blank', 'noopener')}
+      >
+        <BookOpen size={15} />
       </IconButton>
       {isMobile && (
         <IconButton

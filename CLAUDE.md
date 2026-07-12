@@ -90,7 +90,8 @@ fingerprints — **any new continuous canvas gesture must wrap in `beginGesture`
   single source of truth + Help dialog), wire in `useShortcuts.ts`, and put the key in the
   control's `title`. Icon-only buttons use `IconButton` (requires `aria-label`; pair with `title`).
 - **README and docs/ are user-facing** — the README is the feature tour, docs/ the deeper manual
-  (house style: no emoji, `--` not em-dash, American spelling). Dev/maintainer material stays out
+  (house style: no emoji, plain single `-` for dashes — never `--` or em-dash, American
+  spelling). Dev/maintainer material stays out
   of both — it lives in `tools/README.md`, module headers, or here.
 - Numeric inputs are `type="text"` with commit-on-valid-parse (`Num`/`SliderNum`) — `type="number"`
   reports `""` mid-typing and clobbers negatives/decimals.
