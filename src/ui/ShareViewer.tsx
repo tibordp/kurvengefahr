@@ -148,7 +148,8 @@ export function ShareViewer() {
         </a>
         <span className="mx-1 h-5 w-px bg-border" aria-hidden />
         <span className="min-w-0 truncate text-sm font-medium">{state.name.trim() || 'Untitled'}</span>
-        <span className="shrink-0 rounded-full border border-border bg-bg px-2 py-0.5 text-2xs text-muted">
+        {/* Hidden on mobile — the document title gets the width (read-only is apparent anyway). */}
+        <span className="hidden shrink-0 rounded-full border border-border bg-bg px-2 py-0.5 text-2xs text-muted md:inline">
           Read-only snapshot
         </span>
         <div className="flex-1" />

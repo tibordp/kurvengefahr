@@ -10,8 +10,10 @@ import { pressureEnabled } from '../core/types'
 import { generateLocal, isContainer } from '../elements/registry'
 import { elementLocalGeometry } from '../core/pipeline/clipGeometry'
 import { useDoc } from '../store/document'
+import { useUI } from '../store/ui'
 import { useNodeInteraction } from './useNodeInteraction'
 import { InkStrokes } from './InkStrokes'
+import { isMobileViewport } from '../ui/mobile'
 
 interface Props {
   element: DocElement
@@ -67,12 +69,18 @@ function ContainerNodeImpl({ element, membersOf, pxPerMm, interactive = true, re
   const colorFor = useMemo(() => (pen: number) => pens.find((p) => p.id === pen)?.color ?? '#1a1a1a', [pens])
 
   // Double-click enters a *clip*: select its first content member so it renders raw for editing (the
-  // clip's mask is the privileged member). A plain group has no privileged member — there's nothing to
-  // "enter" — so it gets no double-click affordance; edit a member by selecting its row in the tree.
+  // clip's mask is the privileged member). That stays on mobile too — it's the only way into a clip.
+  // A plain group has no privileged member — there's nothing to "enter" — so on desktop it gets no
+  // double-click affordance (edit a member by selecting its row in the tree); on mobile it opens the
+  // inspector drawer, like any other element.
   const isClip = element.type === 'clip'
-  const enter = () => {
-    const first = (membersOf.get(element.id) ?? []).find((m) => m.clipRole !== 'mask')
-    if (first) select(first.id, false)
+  const onDbl = () => {
+    if (isClip) {
+      const first = (membersOf.get(element.id) ?? []).find((m) => m.clipRole !== 'mask')
+      if (first) select(first.id, false)
+    } else if (isMobileViewport()) {
+      useUI.getState().setInspectorOpen(true)
+    }
   }
 
   // Include the container's own effects ref so re-fingerprinting also catches an effect edit on it.
@@ -92,7 +100,7 @@ function ContainerNodeImpl({ element, membersOf, pxPerMm, interactive = true, re
       listening={!readOnly && interactive}
       draggable={!readOnly && interactive}
       {...(readOnly ? {} : handlers)}
-      {...(isClip && !readOnly ? { onDblClick: enter, onDblTap: enter } : {})}
+      {...(readOnly ? {} : { onDblClick: onDbl, onDblTap: onDbl })}
     >
       {/* Container geometry already has each member's pressure baked in (place gain in
           group/clipLocalGeometry) and carries per-stroke pens → gain 1, per-stroke colours. */}

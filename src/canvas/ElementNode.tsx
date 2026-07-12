@@ -14,6 +14,7 @@ import { useRasterImage } from './useRasterImage'
 import type { RasterParams } from '../elements/raster'
 import { useNodeInteraction } from './useNodeInteraction'
 import { InkStrokes } from './InkStrokes'
+import { isMobileViewport } from '../ui/mobile'
 
 interface Props {
   element: DocElement
@@ -65,6 +66,14 @@ function ElementNodeImpl({ element, pxPerMm, interactive = true, readOnly = fals
   const generating = useGeneration((s) => !!s.status[element.id])
   const dirty = !generating && needsManualRegen(element.id, element.type, element.params)
 
+  // Double-click/tap (the click already selected the element): on desktop a Logo program opens
+  // its code editor. On mobile any element opens the inspector drawer instead — there's no
+  // always-visible inspector there, and the code editor sits behind its Edit code button.
+  const onDblClick = () => {
+    if (isMobileViewport()) useUI.getState().setInspectorOpen(true)
+    else if (element.type === 'logo') useUI.getState().setCodeDockFor(element.id)
+  }
+
   return (
     <Group
       id={element.id}
@@ -77,13 +86,7 @@ function ElementNodeImpl({ element, pxPerMm, interactive = true, readOnly = fals
       listening={!readOnly && interactive}
       draggable={!readOnly && interactive}
       {...(readOnly ? {} : handlers)}
-      // Double-clicking a Logo program opens its code (the click already selected it).
-      {...(element.type === 'logo' && interactive && !readOnly
-        ? {
-            onDblClick: () => useUI.getState().setCodeDockFor(element.id),
-            onDblTap: () => useUI.getState().setCodeDockFor(element.id),
-          }
-        : {})}
+      {...(interactive && !readOnly ? { onDblClick, onDblTap: onDblClick } : {})}
     >
       <BoxBounds element={element} />
       {element.type === 'raster' && <RasterUnderlay element={element} />}
