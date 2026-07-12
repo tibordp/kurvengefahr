@@ -24,8 +24,8 @@ machine), AxiDraw-style EBB plotters, and GRBL machines, with presets for popula
 - **Flood fill** -- click any enclosed region and every visible stroke acts as its boundary: the
   area becomes a regular hatch-filled path (holes included) you can edit like any other shape.
 - **Groups, clips, and effects** -- nest elements into containers, clip anything to a shape, and
-  stack non-destructive distortions (roughen, smooth, wave, sketch, twist, bulge, taper, offset)
-  on any of it. The source stays editable throughout.
+  stack non-destructive distortions (roughen, smooth, wave, sketch, twist, bulge, taper, offset,
+  hull) on any of it. The source stays editable throughout.
 - **Generative patterns** -- spirographs, L-system fractals, Truchet tiles, Voronoi diagrams, and
   flow fields, reproducible per seed.
 - **Logo programs** -- write turtle graphics in a real Logo (procedures, recursion, lists, seeded

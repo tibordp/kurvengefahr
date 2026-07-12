@@ -31,7 +31,7 @@ export function EffectsSection({ id, effects }: { id: string; effects: EffectSpe
       {effects.map((f, i) => {
         const def = effectDef(f.type)
         if (!def) return null
-        const val = f as unknown as Record<string, number>
+        const val = f as unknown as Record<string, number | boolean>
         return (
           <div key={i} className="mb-2 rounded-md border border-border p-2">
             <div className="flex items-center gap-1.5">
@@ -58,19 +58,30 @@ export function EffectsSection({ id, effects }: { id: string; effects: EffectSpe
             </div>
             {f.enabled && (
               <div className="mt-2">
-                {def.controls.map((c) => (
-                  <SliderNum
-                    key={c.key}
-                    label={c.label}
-                    min={c.min}
-                    max={c.max}
-                    step={c.step}
-                    int={c.int}
-                    hardMax={!!c.int || c.key === 'strength' || c.key === 'minPressure'}
-                    value={val[c.key] ?? 0}
-                    onChange={(v) => patch(i, { [c.key]: v })}
-                  />
-                ))}
+                {def.controls.map((c) =>
+                  c.bool ? (
+                    <Field key={c.key} label={c.label}>
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 justify-self-start"
+                        checked={val[c.key] === true}
+                        onChange={(e) => patch(i, { [c.key]: e.target.checked })}
+                      />
+                    </Field>
+                  ) : (
+                    <SliderNum
+                      key={c.key}
+                      label={c.label}
+                      min={c.min}
+                      max={c.max}
+                      step={c.step}
+                      int={c.int}
+                      hardMax={!!c.int || c.key === 'strength' || c.key === 'minPressure'}
+                      value={(val[c.key] as number) ?? 0}
+                      onChange={(v) => patch(i, { [c.key]: v })}
+                    />
+                  ),
+                )}
                 {def.seeded && (
                   <Button
                     className="mt-1 w-full"

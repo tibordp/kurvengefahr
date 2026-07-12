@@ -4,15 +4,11 @@
 // entry here + (it renders generically in the inspector). Field names match the Rust EffectSpec.
 import type { EffectSpec, EffectType } from '../core/types'
 
-/** A numeric control rendered generically by the inspector for one effect param. */
-export interface EffectControl {
-  key: string
-  label: string
-  min: number
-  max: number
-  step: number
-  int?: boolean
-}
+/** A control rendered generically by the inspector for one effect param: a slider+number for
+ *  numeric knobs, or a checkbox when `bool` is set. */
+export type EffectControl =
+  | { key: string; label: string; min: number; max: number; step: number; int?: boolean; bool?: never }
+  | { key: string; label: string; bool: true }
 
 export interface EffectDef {
   type: EffectType
@@ -107,6 +103,13 @@ const DEFS: Record<EffectType, EffectDef> = {
     defaults: () => ({ type: 'offset', enabled: true, offsetMm: 2 }),
     controls: [{ key: 'offsetMm', label: 'Distance (mm)', min: -20, max: 20, step: 0.1 }],
   },
+  hull: {
+    type: 'hull',
+    label: 'Hull (outline)',
+    seeded: false,
+    defaults: () => ({ type: 'hull', enabled: true, convex: false }),
+    controls: [{ key: 'convex', label: 'Convex', bool: true }],
+  },
 }
 
 export const EFFECT_DEFS: EffectDef[] = Object.values(DEFS)
@@ -136,7 +139,10 @@ export function sanitizeEffects(raw: unknown): EffectSpec[] {
     const base = def.defaults() as unknown as Record<string, unknown>
     const src = f as Record<string, unknown>
     const spec: Record<string, unknown> = { type: def.type, enabled: src.enabled !== false }
-    for (const c of def.controls) spec[c.key] = num(src[c.key], base[c.key] as number)
+    for (const c of def.controls)
+      spec[c.key] = c.bool
+        ? (typeof src[c.key] === 'boolean' ? src[c.key] : (base[c.key] as boolean))
+        : num(src[c.key], base[c.key] as number)
     if (def.seeded) spec.seed = num(src.seed, base.seed as number)
     out.push(spec as unknown as EffectSpec)
   }

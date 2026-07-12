@@ -9,6 +9,7 @@
 //! [`apply`], the relevant fields on [`EffectSpec`], and the TS registry entry + inspector control.
 
 mod bulge;
+mod hull;
 mod offset;
 mod roughen;
 mod sketch;
@@ -61,6 +62,8 @@ pub struct EffectSpec {
     pub end_mm: f32,
     /// Taper: pressure at the very tip (0..1), ramping up to full over the taper length.
     pub min_pressure: f32,
+    /// Hull: convex hull of all points instead of the concave union silhouette.
+    pub convex: bool,
 }
 
 /// Apply a stack of effects (JSON array of [`EffectSpec`]) to local-space geometry, in order. A
@@ -84,6 +87,7 @@ pub fn apply(strokes: &[Stroke], params_json: &str) -> Vec<Stroke> {
             "bulge" => bulge::apply(&cur, spec),
             "taper" => taper::apply(&cur, spec),
             "offset" => offset::apply(&cur, spec),
+            "hull" => hull::apply(&cur, spec),
             _ => cur,
         };
     }
