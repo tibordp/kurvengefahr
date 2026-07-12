@@ -1,6 +1,6 @@
 # Kurvengefahr
 
-*Achtung, die Kurve!*
+*"Achtung, die Kurve!"*
 
 A browser-based CAM tool for pen plotters. Compose on a virtual bed -- handwriting, text, vector
 shapes, imported SVG and DXF, traced photos, generative patterns, STL wireframes -- preview the
@@ -31,7 +31,8 @@ machine), AxiDraw-style EBB plotters, and GRBL machines, with presets for popula
 - **Logo programs** -- write turtle graphics in a real Logo (procedures, recursion, lists, seeded
   randomness) in an editor with live diagnostics and autocomplete; `param` declarations become
   inspector knobs, `setpen`/`setpressure` drive color and line weight from code, and programs save
-  as reusable tools in the sidebar, importable and exportable. See [docs/logo.md](docs/logo.md).
+  as reusable tools in the sidebar, importable and exportable. There is a
+  [tutorial](docs/logo-tutorial.md) and a [full language reference](docs/logo-reference.md).
 - **SVG and DXF import** -- files become native, editable paths at real-world size, colors mapped to
   pens; occluded fill regions are clipped away so they don't plot.
 - **Raster tracing** -- restyle a photo as strokes: outlines, centerlines, topographic levels,
@@ -55,8 +56,12 @@ machine), AxiDraw-style EBB plotters, and GRBL machines, with presets for popula
   upload; the key rides in the link itself and never reaches the server. Self-hosters can run
   their own [share service](share-api/) or simply build without one.
 
-More detail lives in [docs/](docs/), including the [browser API](docs/browser-api.md) for
-userscripts and headless tooling.
+The [docs](docs/) are the full manual: [the editor](docs/editor.md),
+[every element type](docs/elements.md), [effects](docs/effects.md),
+[plotting and export](docs/plotting.md), [sharing](docs/sharing.md),
+[machine profiles](docs/machines.md), the Logo [tutorial](docs/logo-tutorial.md) and
+[reference](docs/logo-reference.md), plus the [`.kgz` file format](docs/file-format.md) and the
+[browser API](docs/browser-api.md) for userscripts and headless tooling.
 
 ## How it works
 

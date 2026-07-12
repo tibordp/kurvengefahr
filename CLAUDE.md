@@ -89,12 +89,21 @@ fingerprints — **any new continuous canvas gesture must wrap in `beginGesture`
 - **Shortcuts stay in sync three ways**: register in `SHORTCUT_GROUPS` (`src/ui/shortcuts.ts`, the
   single source of truth + Help dialog), wire in `useShortcuts.ts`, and put the key in the
   control's `title`. Icon-only buttons use `IconButton` (requires `aria-label`; pair with `title`).
-- **README** is the user-facing feature list — update it when a change alters what the app can do
-  (house style: no emoji, `--` not em-dash, American spelling). **Regenerate docs screenshots**
-  when a change is visible in the UI: `node docs/screenshot.mjs docs/showcase.kgz`; every committed
-  screenshot keeps its source `.kgz` beside it.
+- **README and docs/ are user-facing** — the README is the feature tour, docs/ the deeper manual
+  (house style: no emoji, `--` not em-dash, American spelling). Dev/maintainer material stays out
+  of both — it lives in `tools/README.md`, module headers, or here.
 - Numeric inputs are `type="text"` with commit-on-valid-parse (`Num`/`SliderNum`) — `type="number"`
   reports `""` mid-typing and clobbers negatives/decimals.
+
+## Pre-commit checklist
+
+Run through this before every commit:
+
+1. **Docs are current** — any feature added or reworked is reflected in README.md (the feature
+   tour) and the relevant docs/ page(s).
+2. **Screenshots regenerated** — if the change is visible in the UI:
+   `node tools/screenshot.mjs docs/showcase.kgz`, then refresh `public/og.png` from it (sips
+   commands in `tools/README.md`). Every committed screenshot keeps its source `.kgz` beside it.
 
 ## Non-obvious design choices
 

@@ -27,7 +27,7 @@ images/<id>.png      one entry per referenced raster image (stored; PNG is alrea
   optional fields (`name`, `effects`, `pressure`, `dash`, `parent`, `clipRole`, `hidden`). Param
   shapes are per-type and defined in `src/elements/*`; groups and clips are elements too, with
   membership expressed by the member's `parent`.
-- `profile` -- the machine profile, a union on `kind` (`prusa` | `axidraw`). See
+- `profile` -- the machine profile, a union on `kind` (`prusa` | `axidraw` | `grbl`). See
   [machines](machines.md).
 - `fiducial` -- the optional registration point, or `null`.
 - Raster elements reference their image by `params.imageId`, matching an `images/` entry. On import

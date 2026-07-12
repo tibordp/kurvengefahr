@@ -3,7 +3,7 @@
 // `window.kurvengefahr` API: import the container, wait for worker-backed generation (handwriting,
 // raster) to settle, fit the view, screenshot. Regenerates the README screenshots in docs/.
 //
-//   node docs/screenshot.mjs <doc.kgz> [out.png]
+//   node tools/screenshot.mjs <doc.kgz> [out.png]
 //
 // Options:
 //   --url <u>      app URL (default http://localhost:5173; a vite dev server is spawned on a
@@ -21,8 +21,9 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import puppeteer from 'puppeteer-core'
 
-const docsDir = path.dirname(fileURLToPath(import.meta.url))
-const repoRoot = path.dirname(docsDir)
+const toolsDir = path.dirname(fileURLToPath(import.meta.url))
+const repoRoot = path.dirname(toolsDir)
+const docsDir = path.join(repoRoot, 'docs')
 
 const CHROME = process.env.CHROME_PATH ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
 const SPAWN_PORT = 5199

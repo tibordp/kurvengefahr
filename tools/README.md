@@ -1,7 +1,28 @@
 # tools/ — dev-time asset generators
 
-Scripts that produce committed assets: the handwriting model weight blob and the Hershey font data.
-**End users never run these** — the committed artifacts are all the app needs.
+Scripts that produce committed assets: the docs screenshots, the handwriting model weight blob,
+and the Hershey font data. **End users never run these** — the committed artifacts are all the
+app needs.
+
+## Docs screenshots (`docs/showcase.png`, `public/og.png`)
+
+`screenshot.mjs` renders a `.kgz` document to a PNG through the real app in headless Chrome:
+imports the container, waits for generation to settle, fits the view, screenshots. Regenerate the
+README screenshot after a visible UI change:
+
+```sh
+node tools/screenshot.mjs docs/showcase.kgz   # rewrites docs/showcase.png
+```
+
+Any `.kgz` works, and every committed screenshot keeps its source `.kgz` beside it (see the
+script header for `--url/--width/--height/--scale/--theme`). The social-preview card
+(`public/og.png`, referenced from `index.html`) is a 1200x630 crop of the showcase screenshot --
+refresh it after regenerating:
+
+```sh
+sips --resampleWidth 1200 docs/showcase.png --out public/og.png
+sips --cropToHeightWidth 630 1200 public/og.png
+```
 
 ## Hershey fonts (`crate/fonts/hershey.json`)
 

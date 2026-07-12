@@ -4,6 +4,8 @@ The editor itself targets an abstract pen plotter: everything upstream of output
 machine-neutral terms -- positions in page millimeters, a pen index, a pressure from 0 to 1.
 A **machine profile** is what turns that into physical motion. Profiles are editable copies seeded
 from a preset, and a profile's *kind* (G-code plotter, AxiDraw, or GRBL) comes from that preset.
+This page is about setting a machine up; day-to-day plotting -- pens, stroke order, preview,
+exports -- is covered in [plotting](plotting.md).
 
 Common to all kinds:
 

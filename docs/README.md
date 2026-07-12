@@ -1,28 +1,29 @@
 # Kurvengefahr docs
 
-Deeper documentation for the parts of Kurvengefahr that outside tools and curious users depend on.
-The [README](../README.md) has the feature tour; the source has the rest.
+The user manual. The [README](../README.md) has the quick feature tour; these pages cover how the
+app actually works, aimed at someone comfortable with vector tools and plotters.
 
+Using the app:
+
+- [The editor](editor.md) -- documents, the canvas, tools, selection, node editing, the inspector,
+  undo, keyboard shortcuts, and the mobile layout.
+- [Elements](elements.md) -- every kind of mark: shapes, paths, text, handwriting, generative
+  patterns, traced images, 3D wireframes, and imports.
+- [Effects](effects.md) -- the non-destructive effect stack, every effect, and flattening.
+- [Plotting and export](plotting.md) -- pens, plot order, the toolpath preview, G-code, live
+  plotting, and SVG/PDF/PNG/print export.
+- [Sharing](sharing.md) -- read-only snapshot links and the privacy model behind them.
+- [Machines](machines.md) -- what a machine profile means, for G-code plotters, AxiDraw, and GRBL.
+
+The Logo language:
+
+- [Logo tutorial](logo-tutorial.md) -- turtle graphics from zero: movement, procedures, recursion,
+  parameters, pens, and randomness.
+- [Logo reference](logo-reference.md) -- the complete dialect: syntax, semantics, every builtin,
+  and the runtime limits.
+
+For tooling built on top:
+
+- [File format](file-format.md) -- the `.kgz` container and how compatibility is handled.
 - [Browser API](browser-api.md) -- the `window.kurvengefahr` surface for userscripts, extensions,
   and headless automation.
-- [File format](file-format.md) -- the `.kgz` container and how compatibility is handled.
-- [Logo](logo.md) -- the turtle-graphics dialect: vocabulary, `param` knobs, pens and pressure
-  from code, custom tools, limits.
-- [Machines](machines.md) -- what a machine profile means, for G-code plotters and AxiDraw.
-
-The screenshots in this directory regenerate through the real app in headless Chrome:
-
-```bash
-node docs/screenshot.mjs docs/showcase.kgz   # rewrites docs/showcase.png
-```
-
-Any `.kgz` works -- the script imports it, waits for generation to settle, fits the view, and
-saves a PNG (see the header of `screenshot.mjs` for options).
-
-The social-preview card (`public/og.png`, referenced from `index.html`) is a 1200x630 crop of the
-showcase screenshot -- refresh it after regenerating:
-
-```bash
-sips --resampleWidth 1200 docs/showcase.png --out public/og.png
-sips --cropToHeightWidth 630 1200 public/og.png
-```
