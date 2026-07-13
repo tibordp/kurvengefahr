@@ -61,6 +61,25 @@ fn smooth_once(pts: &[Point], lambda: f32, closed: bool) -> Vec<Point> {
     out
 }
 
+/// Subdivide-then-relax one polyline; the shared core of the effect, also used by the
+/// Fermat-spiral fill to iron out contour-grid jags. Open polylines pin their endpoints.
+pub(crate) fn smooth_pts(
+    points: &[Point],
+    res: f32,
+    lambda: f32,
+    iters: usize,
+    closed: bool,
+) -> Vec<Point> {
+    if points.len() < 2 || lambda <= 1e-4 || iters == 0 {
+        return points.to_vec();
+    }
+    let mut pts = subdivide(points, res.max(0.1));
+    for _ in 0..iters {
+        pts = smooth_once(&pts, lambda.clamp(0.0, 1.0), closed);
+    }
+    pts
+}
+
 pub fn apply(strokes: &[Stroke], s: &EffectSpec) -> Vec<Stroke> {
     let lambda = s.strength.clamp(0.0, 1.0);
     let iters = s.iterations.min(100);
@@ -75,12 +94,8 @@ pub fn apply(strokes: &[Stroke], s: &EffectSpec) -> Vec<Stroke> {
                 return stroke.clone();
             }
             let closed = is_closed(&stroke.points);
-            let mut pts = subdivide(&stroke.points, res);
-            for _ in 0..iters {
-                pts = smooth_once(&pts, lambda, closed);
-            }
             Stroke {
-                points: pts,
+                points: smooth_pts(&stroke.points, res, lambda, iters as usize, closed),
                 pen: stroke.pen,
                 reversible: stroke.reversible,
                 group: stroke.group,

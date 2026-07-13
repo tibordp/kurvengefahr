@@ -35,6 +35,7 @@ mod raster;
 mod rng;
 mod shapes;
 mod share_pow;
+mod spiral;
 mod svg;
 mod tess;
 mod text;

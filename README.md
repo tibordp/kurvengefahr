@@ -40,8 +40,8 @@ machine), AxiDraw-style EBB plotters, and GRBL machines, with presets for popula
 - **3D models** - import an STL, orbit it in an interactive preview, and it renders as a
   plottable wireframe of the model's feature edges: silhouettes, creases at a tunable angle, and
   boundaries, with hidden lines removed or kept and a perspective or orthographic camera.
-- **Hatch fills** - a pen can't lay solid ink, so closed shapes fill with lines, rings, Hilbert
-  curves, mazes, and friends, at an adjustable density.
+- **Hatch fills** - a pen can't lay solid ink, so closed shapes fill with lines, rings, one-line
+  Fermat spirals, Hilbert curves, mazes, and friends, at an adjustable density.
 - **Made for pens** - a pen per element with color-grouped output and swap pauses, pressure as line
   weight (mapped to Z on spring-loaded holders), dashed strokes, travel-optimized ordering, a
   registration pause to line up the paper, and a scrubbable preview of the exact toolpath.

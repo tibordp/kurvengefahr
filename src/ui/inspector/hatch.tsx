@@ -40,6 +40,7 @@ export function HatchControls({ hatch, onChange }: { hatch: Hatch; onChange: (h:
               <option value="cross">Cross-hatch</option>
               <option value="grid">Grid</option>
               <option value="concentric">Concentric</option>
+              <option value="fermat">Fermat spiral</option>
               <option value="hilbert">Hilbert curve</option>
               <option value="gradient">Gradient hatch</option>
               <option value="scribble">Scribble</option>

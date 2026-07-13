@@ -211,7 +211,7 @@ fn pt_seg_dist2(px: f32, py: f32, a: P, b: P) -> f32 {
 }
 
 /// Signed distance to the nearest edge of any ring, **positive inside** the even-odd region.
-fn signed_dist(rings: &[Vec<P>], x: f32, y: f32) -> f32 {
+pub(crate) fn signed_dist(rings: &[Vec<P>], x: f32, y: f32) -> f32 {
     let mut best = f32::INFINITY;
     for poly in rings {
         let n = poly.len();
@@ -236,7 +236,8 @@ fn signed_dist(rings: &[Vec<P>], x: f32, y: f32) -> f32 {
 }
 
 /// Marching-squares cell at iso-level `l`. Corners are bottom-left/right, top-right/left distance
-/// values; emits the 0–2 contour segments crossing the cell, with saddles resolved by the centre.
+/// values; emits the 0–2 contour segments crossing the cell. Saddles are resolved by the centre
+/// average.
 #[allow(clippy::too_many_arguments)]
 fn march_cell(
     l: f32,
@@ -345,12 +346,23 @@ fn stitch(segs: &[(P, P)], tol: f32) -> Vec<Vec<P>> {
     polylines
 }
 
-/// Concentric fill for an **arbitrary** polygon: iso-distance contours of the inward distance field
-/// (rings at `spacing`, `2·spacing`, …), so it works on concave shapes and splits into multiple
-/// rings where the medial axis branches. (Rect/ellipse use the exact parametric `concentric`.)
-fn concentric_poly(rings: &[Vec<P>], spacing: f32, out: &mut Vec<Stroke>) {
+/// The sampled inward distance field over a shape's bbox: `field[jy*nx+ix]` = signed distance at
+/// node `(x0 + ix·sx, y0 + iy·sy)`, positive inside. Shared by the concentric and
+/// Fermat-spiral fills.
+struct DistGrid {
+    nx: usize,
+    ny: usize,
+    x0: f32,
+    y0: f32,
+    sx: f32,
+    sy: f32,
+    field: Vec<f32>,
+    maxd: f32,
+}
+
+fn dist_grid(rings: &[Vec<P>], spacing: f32) -> Option<DistGrid> {
     if rings.iter().all(|r| r.len() < 3) || spacing <= 1e-3 {
-        return;
+        return None;
     }
     const MAX_CELLS: usize = 400;
     let (xmin, ymin, xmax, ymax) = bbox(rings);
@@ -361,48 +373,90 @@ fn concentric_poly(rings: &[Vec<P>], spacing: f32, out: &mut Vec<Stroke>) {
     let ncx = ((ext_x / target).ceil() as usize).clamp(1, MAX_CELLS);
     let ncy = ((ext_y / target).ceil() as usize).clamp(1, MAX_CELLS);
     let (sx, sy) = (ext_x / ncx as f32, ext_y / ncy as f32);
-    let (nodes_x, nodes_y) = (ncx + 1, ncy + 1);
+    let (nx, ny) = (ncx + 1, ncy + 1);
 
-    let mut field = vec![0.0_f32; nodes_x * nodes_y];
+    let mut field = vec![0.0_f32; nx * ny];
     let mut maxd = 0.0_f32;
-    for jy in 0..nodes_y {
+    for jy in 0..ny {
         let y = ymin + jy as f32 * sy;
-        for ix in 0..nodes_x {
+        for ix in 0..nx {
             let d = signed_dist(rings, xmin + ix as f32 * sx, y);
-            field[jy * nodes_x + ix] = d;
+            field[jy * nx + ix] = d;
             maxd = maxd.max(d);
         }
     }
+    Some(DistGrid {
+        nx,
+        ny,
+        x0: xmin,
+        y0: ymin,
+        sx,
+        sy,
+        field,
+        maxd,
+    })
+}
 
-    let tol = sx.min(sy) * 0.1;
-    let mut level = spacing;
-    while level < maxd {
-        let mut segs: Vec<(P, P)> = Vec::new();
-        for jy in 0..ncy {
-            let (y0, y1) = (ymin + jy as f32 * sy, ymin + (jy + 1) as f32 * sy);
-            for ix in 0..ncx {
-                let (x0, x1) = (xmin + ix as f32 * sx, xmin + (ix + 1) as f32 * sx);
-                march_cell(
-                    level,
-                    field[jy * nodes_x + ix],
-                    field[jy * nodes_x + ix + 1],
-                    field[(jy + 1) * nodes_x + ix + 1],
-                    field[(jy + 1) * nodes_x + ix],
-                    x0,
-                    y0,
-                    x1,
-                    y1,
-                    &mut segs,
-                );
-            }
+/// Marching squares of an arbitrary node array over the grid at `iso`, stitched into polylines.
+/// Drops sub-pen-width slivers: zero-length segments where a contour grazes a grid node, and the
+/// bead chains marching squares produces along medial-axis plateaus. The cutoff matches the
+/// parametric concentric's stopping rule (~spacing/4 half-extent ≈ 1.5·spacing around).
+fn march_rings(g: &DistGrid, vals: &[f32], iso: f32, min_len: f32) -> Vec<Vec<P>> {
+    let mut segs: Vec<(P, P)> = Vec::new();
+    for jy in 0..g.ny - 1 {
+        let (y0, y1) = (g.y0 + jy as f32 * g.sy, g.y0 + (jy + 1) as f32 * g.sy);
+        for ix in 0..g.nx - 1 {
+            let (x0, x1) = (g.x0 + ix as f32 * g.sx, g.x0 + (ix + 1) as f32 * g.sx);
+            march_cell(
+                iso,
+                vals[jy * g.nx + ix],
+                vals[jy * g.nx + ix + 1],
+                vals[(jy + 1) * g.nx + ix + 1],
+                vals[(jy + 1) * g.nx + ix],
+                x0,
+                y0,
+                x1,
+                y1,
+                &mut segs,
+            );
         }
-        for line in stitch(&segs, tol) {
+    }
+    let mut lines = stitch(&segs, g.sx.min(g.sy) * 0.1);
+    lines.retain(|l| l.windows(2).map(|w| dist2(w[0], w[1]).sqrt()).sum::<f32>() > min_len);
+    lines
+}
+
+/// Iso-distance contours of the inward distance field at levels `spacing`, `2·spacing`, …,
+/// grouped by level.
+pub(crate) fn distance_contours(rings: &[Vec<P>], spacing: f32) -> Vec<Vec<Vec<P>>> {
+    let mut levels: Vec<Vec<Vec<P>>> = Vec::new();
+    let Some(g) = dist_grid(rings, spacing) else {
+        return levels;
+    };
+    let mut level = spacing;
+    while level < g.maxd {
+        levels.push(march_rings(&g, &g.field, level, spacing * 1.5));
+        level += spacing;
+    }
+    levels
+}
+
+/// Concentric fill for an **arbitrary** polygon: iso-distance contours of the inward distance field
+/// (rings at `spacing`, `2·spacing`, …), so it works on concave shapes and splits into multiple
+/// rings where the medial axis branches. (Rect/ellipse use the exact parametric `concentric`.)
+fn concentric_poly(rings: &[Vec<P>], spacing: f32, out: &mut Vec<Stroke>) {
+    for level in distance_contours(rings, spacing) {
+        for line in level {
             if line.len() >= 2 {
                 out.push(stroke(line.into_iter().map(|(x, y)| pt(x, y)).collect()));
             }
         }
-        level += spacing;
     }
+}
+
+fn dist2(a: P, b: P) -> f32 {
+    let (dx, dy) = (b.0 - a.0, b.1 - a.1);
+    dx * dx + dy * dy
 }
 
 /// Deterministic 0..1 hash for jittered placement (stipple / voronoi seeds / truchet orientation).
@@ -784,7 +838,7 @@ fn maze_fill(rings: &[Vec<P>], spacing: f32, out: &mut Vec<Stroke>) {
 
 /// Pattern dispatch over one or more rings (filled together, even-odd → holes). 0 lines,
 /// 1 cross-hatch, 2 grid, 3 hilbert, 4 concentric, 5 stipple, 6 scribble, 7 gradient, 8 voronoi,
-/// 9 truchet, 10 spiral, 11 maze.
+/// 9 truchet, 10 spiral, 11 maze, 12 fermat spiral.
 pub fn fill(
     xy: &[f32],
     ring_starts: &[u32],
@@ -813,6 +867,7 @@ pub fn fill(
         9 => truchet_fill(&rings, spacing, &mut out),
         10 => spiral_fill(&rings, spacing, &mut out),
         11 => maze_fill(&rings, spacing, &mut out),
+        12 => crate::spiral::fill(&rings, spacing, &mut out),
         _ => {}
     }
     out
@@ -913,10 +968,76 @@ mod concentric_tests {
         // A 30×30 square; each new pattern code should fill it with strokes, clipped to the shape.
         let sq: Vec<f32> = vec![0.0, 0.0, 30.0, 0.0, 30.0, 30.0, 0.0, 30.0];
         let starts = vec![0u32, 4];
-        for code in [5u32, 6, 7, 8, 9, 10, 11] {
+        for code in [5u32, 6, 7, 8, 9, 10, 11, 12] {
             let out = fill(&sq, &starts, code, 2.0, 45.0);
             assert!(!out.is_empty(), "fill pattern {code} produced nothing");
         }
+    }
+
+    #[test]
+    #[ignore] // visual aid: cargo test dbg_spiral_svg --lib -- --ignored --nocapture > out.svg
+    fn dbg_spiral_svg() {
+        let circle: Vec<P> = (0..64)
+            .map(|i| {
+                let t = i as f32 / 64.0 * std::f32::consts::TAU;
+                (25.0 + 20.0 * t.cos(), 25.0 + 15.0 * t.sin())
+            })
+            .collect();
+        let square: Vec<P> = vec![(60.0, 5.0), (100.0, 5.0), (100.0, 45.0), (60.0, 45.0)];
+        let ell: Vec<P> = vec![
+            (110.0, 5.0),
+            (150.0, 5.0),
+            (150.0, 20.0),
+            (125.0, 20.0),
+            (125.0, 45.0),
+            (110.0, 45.0),
+        ];
+        let outer: Vec<P> = vec![(160.0, 5.0), (200.0, 5.0), (200.0, 45.0), (160.0, 45.0)];
+        let hole: Vec<P> = vec![(176.0, 21.0), (184.0, 21.0), (184.0, 29.0), (176.0, 29.0)];
+        let star: Vec<P> = (0..14)
+            .map(|i| {
+                let t = i as f32 / 14.0 * std::f32::consts::TAU;
+                let r = if i % 2 == 0 { 22.0 } else { 9.0 };
+                (228.0 + r * t.cos(), 25.0 + r * t.sin())
+            })
+            .collect();
+        // Wavy hand-drawn-ish blob: concave lobes like a freehand path.
+        let blob: Vec<P> = (0..96)
+            .map(|i| {
+                let t = i as f32 / 96.0 * std::f32::consts::TAU;
+                let r = 18.0 + 6.0 * (3.0 * t + 1.0).sin() + 3.0 * (7.0 * t + 2.0).sin();
+                (280.0 + r * t.cos(), 25.0 + r * t.sin())
+            })
+            .collect();
+        let shapes: Vec<Vec<Vec<P>>> = vec![
+            vec![circle],
+            vec![square],
+            vec![ell],
+            vec![outer, hole],
+            vec![star],
+            vec![blob],
+        ];
+        println!(r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 310 105">"#);
+        for (row, sp) in [(0.0_f32, 2.0_f32), (55.0, 5.0)] {
+            for (shape_i, rings) in shapes.iter().enumerate() {
+                let mut out = Vec::new();
+                crate::spiral::fill(rings, sp, &mut out);
+                eprintln!("spacing {sp} shape {shape_i}: {} strokes", out.len());
+                for (si, s) in out.iter().enumerate() {
+                    let d: Vec<String> = s
+                        .points
+                        .iter()
+                        .map(|p| format!("{:.2},{:.2}", p.x, p.y + row))
+                        .collect();
+                    let col = ["red", "blue", "green", "orange", "purple"][si % 5];
+                    println!(
+                        r#"<polyline points="{}" fill="none" stroke="{col}" stroke-width="0.2"/>"#,
+                        d.join(" ")
+                    );
+                }
+            }
+        }
+        println!("</svg>");
     }
 
     #[test]

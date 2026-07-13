@@ -105,6 +105,7 @@ Run through this before every commit:
 2. **Screenshots regenerated** — if the change is visible in the UI:
    `node tools/screenshot.mjs docs/showcase.kgz`, then refresh `public/og.png` from it (sips
    commands in `tools/README.md`). Every committed screenshot keeps its source `.kgz` beside it.
+3. Make sure cargo clippy and fmt are clean
 
 ## Non-obvious design choices
 

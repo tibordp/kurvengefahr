@@ -9,6 +9,7 @@ export type HatchPattern =
   | 'cross'
   | 'grid'
   | 'concentric'
+  | 'fermat'
   | 'hilbert'
   | 'stipple'
   | 'scribble'
@@ -46,6 +47,7 @@ const CODE: Record<Exclude<HatchPattern, 'none'>, number> = {
   truchet: 9,
   spiral: 10,
   maze: 11,
+  fermat: 12,
 }
 
 const PATTERNS: HatchPattern[] = [
@@ -54,6 +56,7 @@ const PATTERNS: HatchPattern[] = [
   'cross',
   'grid',
   'concentric',
+  'fermat',
   'hilbert',
   'stipple',
   'scribble',

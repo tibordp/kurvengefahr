@@ -13,7 +13,7 @@ mod hull;
 mod offset;
 mod roughen;
 mod sketch;
-mod smooth;
+pub(crate) mod smooth;
 mod taper;
 mod twist;
 mod wave;

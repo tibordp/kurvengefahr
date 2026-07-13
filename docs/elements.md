@@ -9,9 +9,11 @@ every element takes a pen, a pressure (line weight), a dash pattern, and an
 
 **Rectangle, ellipse, polygon** are parametric shapes; the polygon covers stars via the Star
 toggle (inner radius becomes editable). Closed shapes have a Fill section: stroke only, fill
-only, or both, where the fill is a hatch - lines, cross-hatch, grid, concentric, Hilbert curve,
-gradient hatch, scribble, stipple, Voronoi, Truchet tiles, spiral, or maze - with a density in
-mm (and an angle where it applies). A pen lays down lines, not areas, so hatching *is* how a
+only, or both, where the fill is a hatch - lines, cross-hatch, grid, concentric, Fermat
+spiral, Hilbert curve, gradient hatch, scribble, stipple, Voronoi, Truchet tiles, spiral, or
+maze - with a density in mm (and an angle where it applies). The Fermat spiral fills the whole
+shape with a single continuous line: it follows the concentric contours, weaves inward and back
+out through every lobe, and closes into one loop, so the pen never lifts inside the shape. A pen lays down lines, not areas, so hatching *is* how a
 plotter fills.
 
 **Paths** come from the pen tool (click for corners, click-drag for curve handles), the freehand
