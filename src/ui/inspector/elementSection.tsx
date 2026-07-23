@@ -1,4 +1,5 @@
 // The Elements-tab body: single-selection element editor, multi-select actions, and the fiducial.
+import { useEffect } from 'react'
 import {
   Trash2,
   Eye,
@@ -14,6 +15,7 @@ import {
   FlipVertical,
 } from 'lucide-react'
 import { useDoc, type AlignEdge } from '../../store/document'
+import { useUI } from '../../store/ui'
 import { isMultiPen } from '../../elements/registry'
 import { drawableRegion } from '../../core/pipeline/clip'
 import { pressureEnabled } from '../../core/types'
@@ -52,6 +54,19 @@ function MultiSelectSection({ count }: { count: number }) {
   const setPressureSelected = useDoc((s) => s.setPressureSelected)
   const pressureOn = useDoc((s) => pressureEnabled(s.profile))
   const booleanSelected = useDoc((s) => s.booleanSelected)
+  const setOperandHint = useUI((s) => s.setOperandHint)
+  // Subtract is order-sensitive (the last-selected shape is the cutter); hovering it asks the canvas
+  // to outline that operand. Focus/blur mirror it for keyboard users. Union/intersect/exclude are
+  // commutative, so they get no hint.
+  const operandHint = {
+    onMouseEnter: () => setOperandHint(true),
+    onMouseLeave: () => setOperandHint(false),
+    onFocus: () => setOperandHint(true),
+    onBlur: () => setOperandHint(false),
+  }
+  // Clicking Subtract combines the selection and unmounts this panel before onMouseLeave fires — so
+  // clear the hint on unmount too, lest it stick and outline a later selection.
+  useEffect(() => () => setOperandHint(false), [setOperandHint])
   const joinSelected = useDoc((s) => s.joinSelected)
   const convertToPath = useDoc((s) => s.convertToPath)
   const simplifySelected = useDoc((s) => s.simplifySelected)
@@ -110,7 +125,11 @@ function MultiSelectSection({ count }: { count: number }) {
             <Button title="Union — merge into one shape" onClick={() => booleanSelected(0)}>
               Union
             </Button>
-            <Button title="Subtract — remove the upper shapes from the bottom one" onClick={() => booleanSelected(2)}>
+            <Button
+              title="Subtract — remove the later-selected shapes from the first-selected one"
+              onClick={() => booleanSelected(2)}
+              {...operandHint}
+            >
               Subtract
             </Button>
             <Button title="Intersect — keep only the overlap" onClick={() => booleanSelected(1)}>

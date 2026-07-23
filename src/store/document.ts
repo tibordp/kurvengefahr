@@ -269,7 +269,7 @@ export function cloneSubtrees(
   return { copies: clones, newRootIds }
 }
 
-/** The hatch a closed shape carries (so a boolean result inherits the topmost shape's fill). */
+/** The hatch a closed shape carries (so a boolean result inherits the first-selected shape's fill). */
 function hatchOf(el: DocElement): Hatch {
   if (el.type === 'rect') return (el.params as RectParams).hatch
   if (el.type === 'ellipse') return (el.params as EllipseParams).hatch
@@ -341,7 +341,7 @@ interface DocStore {
    *  element's transform into its nodes so Bézier curves are preserved. Like booleans but open paths
    *  too; touching ends are welded by the optimizer at plot time. */
   joinSelected: () => void
-  /** Clip-to-shape: consume the topmost selected element as the mask, wrap the rest into a new `clip`
+  /** Clip-to-shape: consume the last-selected element as the mask, wrap the rest into a new `clip`
    *  element (non-destructive, nestable). Needs ≥2 selected. */
   clipSelected: () => void
   /** Release a clip: bake its transform into the members, restore the mask, remove the clip. */

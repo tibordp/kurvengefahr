@@ -21,6 +21,11 @@ interface UIStore {
   /** Dock height in px (transient — never persisted with the document). */
   codeDockHeight: number
   setCodeDockHeight: (h: number) => void
+  /** True while the pointer is over an order-sensitive combine control (clip, boolean subtract):
+   *  the canvas then outlines the last-selected element — the mask/cutter that op will act on — so
+   *  the button explains its own operand. Purely a hover cue; nothing reads it at click time. */
+  operandHint: boolean
+  setOperandHint: (on: boolean) => void
 }
 
 export const useUI = create<UIStore>((set) => ({
@@ -34,4 +39,6 @@ export const useUI = create<UIStore>((set) => ({
   setCodeDockFor: (id) => set({ codeDockFor: id }),
   codeDockHeight: 240,
   setCodeDockHeight: (h) => set({ codeDockHeight: h }),
+  operandHint: false,
+  setOperandHint: (on) => set({ operandHint: on }),
 }))

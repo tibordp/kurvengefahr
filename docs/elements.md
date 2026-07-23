@@ -22,7 +22,8 @@ node-editable in place - see [editing paths](editor.md#editing-paths). A path wi
 contours gets the same Fill section as a shape.
 
 With several closed shapes selected, the inspector offers **boolean operations** - union,
-subtract (upper shapes cut the bottom one), intersect - which produce one editable path.
+subtract (the later-selected shapes cut the first-selected one), intersect - which produce one
+editable path.
 **Combine** merges selections into one multi-contour compound path (even-odd: enclosed regions
 become holes); **Break apart** undoes that. **Weld** joins open contours that share endpoints
 into continuous lines - useful before plotting hand-drawn or imported linework so the pen lifts
@@ -98,9 +99,9 @@ recursive trees and multi-pen rosettes. It gets its own pages: start with the
 
 Containers are real elements: select several elements and group them to move, scale, effect, and
 pen them as one; members keep their identity and are editable from the elements panel.
-A **clip** masks its members to a shape, non-destructively and nestably - select the elements
-plus the mask shape on top and choose Clip to shape. Double-click a clip to enter it and edit a
-member in place. Effects on a container apply to the composed result - see
+A **clip** masks its members to a shape, non-destructively and nestably - select the content
+elements, then the mask shape last, and choose Clip to shape (the last-selected shape becomes the
+mask). Double-click a clip to enter it and edit a member in place. Effects on a container apply to the composed result - see
 [effects](effects.md).
 
 ## SVG and DXF import

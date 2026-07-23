@@ -71,7 +71,7 @@ function buildCommands(): Command[] {
   }
   if (sel.length >= 2) add('group', 'Group selection', 'Arrange', () => doc.createGroup(doc.selectedIds))
   if (groupIds.length) add('ungroup', 'Ungroup', 'Arrange', () => groupIds.forEach(doc.ungroup))
-  if (sel.length >= 2) add('clip', 'Clip to topmost shape', 'Arrange', () => doc.clipSelected())
+  if (sel.length >= 2) add('clip', 'Clip to last-selected shape', 'Arrange', () => doc.clipSelected())
   if (clipIds.length) add('unclip', 'Release clip', 'Arrange', () => clipIds.forEach(doc.unclip))
   if (sel.some((e) => e.type !== 'path')) add('to-path', 'Convert to path', 'Arrange', () => doc.convertToPath())
   if (closed.length >= 2) {

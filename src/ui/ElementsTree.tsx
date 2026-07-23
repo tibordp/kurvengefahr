@@ -38,6 +38,7 @@ import { useDoc } from '../store/document'
 import { elementLabel, isContainer } from '../elements/registry'
 import { useGeneration, needsManualRegen } from '../core/generation'
 import { useHover } from '../store/hover'
+import { useUI } from '../store/ui'
 import type { DocElement } from '../core/types'
 import type { PolygonParams } from '../elements/shapes'
 import { SectionTitle, controlClass, cx } from './primitives'
@@ -206,6 +207,7 @@ export function ElementsTree() {
   const createGroup = useDoc((s) => s.createGroup)
   const ungroup = useDoc((s) => s.ungroup)
   const clipSelected = useDoc((s) => s.clipSelected)
+  const setOperandHint = useUI((s) => s.setOperandHint)
   const setElementName = useDoc((s) => s.setElementName)
   const unclip = useDoc((s) => s.unclip)
   const genStatus = useGeneration((s) => s.status)
@@ -481,9 +483,17 @@ export function ElementsTree() {
           {canGroup && (
             <button
               className="rounded p-1 text-muted transition-colors hover:bg-bg hover:text-text"
-              title="Clip to topmost shape"
-              aria-label="Clip to topmost shape"
-              onClick={() => clipSelected()}
+              title="Clip to last-selected shape"
+              aria-label="Clip to last-selected shape"
+              onClick={() => {
+                setOperandHint(false)
+                clipSelected()
+              }}
+              // The last-selected shape becomes the mask; outline it while this control is hovered.
+              onMouseEnter={() => setOperandHint(true)}
+              onMouseLeave={() => setOperandHint(false)}
+              onFocus={() => setOperandHint(true)}
+              onBlur={() => setOperandHint(false)}
             >
               <Scissors size={15} />
             </button>

@@ -774,11 +774,14 @@ function HoverHighlight({ pxPerMm }: { pxPerMm: number }) {
 
 /** With several elements selected, outline the **last-selected** one — the "key object" that clip
  *  uses as its mask and boolean subtract removes. Solid red (vs the blue Transformer box) so it
- *  reads as the distinguished operand. */
+ *  reads as the distinguished operand. Shown only while hovering the control that op lives on (via
+ *  `operandHint`), so it explains that button rather than lingering — and never floats over a live
+ *  group resize, which the Transformer owns. */
 function KeyHighlight({ pxPerMm }: { pxPerMm: number }) {
+  const hint = useUI((s) => s.operandHint)
   const keyId = useDoc((s) => (s.selectedIds.length >= 2 ? s.selectedIds[s.selectedIds.length - 1] : null))
   const elements = useDoc((s) => s.elements)
-  const el = keyId ? (elements.find((e) => e.id === keyId) ?? null) : null
+  const el = hint && keyId ? (elements.find((e) => e.id === keyId) ?? null) : null
   const b = el ? elementPageBounds(el, elements) : null
   if (!b) return null
   const pad = 2 / pxPerMm
