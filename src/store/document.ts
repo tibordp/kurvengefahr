@@ -282,6 +282,11 @@ interface DocStore {
   elements: DocElement[]
   profile: MachineProfile
   selectedIds: string[]
+  /** A lone selected `path` edits via its on-canvas control points by default; clicking the path
+   *  body again flips it into whole-path bounding-box (Transformer) mode. This holds the id of the
+   *  path currently in that transform mode, or null (points mode). Transient view state — reset on
+   *  any selection change, never persisted. */
+  transformPathId: string | null
   /** The document's single alignment fiducial (page-space mm), or null. */
   fiducial: Fiducial | null
 
@@ -313,6 +318,9 @@ interface DocStore {
   select: (id: string | null, additive?: boolean) => void
   selectMany: (ids: string[]) => void
   clearSelection: () => void
+  /** Flip a lone selected path between control-point editing and whole-path Transformer mode
+   *  (clicking the already-selected path body). Any subsequent selection change resets to points. */
+  togglePathTransform: (id: string) => void
   /** Move every selected element by (dx,dy) mm. */
   nudge: (dx: number, dy: number) => void
   /** Align selected elements' page bounding boxes to the group's bbox edge/centre. */
@@ -395,6 +403,7 @@ export const useDoc = create<DocStore>((set, get) => ({
   elements: [],
   profile: PRUSA_MK4,
   selectedIds: [],
+  transformPathId: null,
   fiducial: null,
 
   addHandwriting: (text = 'Kurvengefahr', at = { x: 20, y: 20 }) =>
@@ -524,18 +533,22 @@ export const useDoc = create<DocStore>((set, get) => ({
 
   select: (id, additive = false) =>
     set((state) => {
-      if (id === null) return { selectedIds: [] }
+      // Any selection change drops back to control-point mode for the next lone path.
+      if (id === null) return { selectedIds: [], transformPathId: null }
       if (additive)
         return {
           selectedIds: state.selectedIds.includes(id)
             ? state.selectedIds.filter((s) => s !== id)
             : [...state.selectedIds, id],
+          transformPathId: null,
         }
-      return { selectedIds: [id] }
+      return { selectedIds: [id], transformPathId: null }
     }),
 
-  selectMany: (ids) => set({ selectedIds: ids }),
-  clearSelection: () => set({ selectedIds: [] }),
+  selectMany: (ids) => set({ selectedIds: ids, transformPathId: null }),
+  clearSelection: () => set({ selectedIds: [], transformPathId: null }),
+  togglePathTransform: (id) =>
+    set((state) => ({ transformPathId: state.transformPathId === id ? null : id })),
 
   nudge: (dx, dy) =>
     set((state) => {
@@ -1059,6 +1072,7 @@ export const useDoc = create<DocStore>((set, get) => ({
       elements: snapshot.elements,
       profile: snapshot.profile,
       selectedIds: snapshot.selectedIds,
+      transformPathId: null,
       fiducial: snapshot.fiducial,
     }),
 

@@ -4,7 +4,9 @@
 // segment). Anchors and handles are authored in element-local mm; we map to/from page space through
 // the element's transform so editing works even when the path is moved. Dragging writes params via
 // setParams (which re-tessellates immediately). A selected path shows this instead of the
-// Transformer; you still move the whole path by dragging its body.
+// Transformer by default; you still move the whole path by dragging its body. Clicking the body
+// again flips to the bounding-box Transformer (rotate/scale the whole path) — see `transformPathId`
+// in the document store — and clicking once more flips back.
 import { Fragment, useEffect } from 'react'
 import { Circle, Line } from 'react-konva'
 import type Konva from 'konva'
@@ -37,6 +39,8 @@ export function NodeEditLayer({ pxPerMm }: { pxPerMm: number }) {
   const el = useDoc((s) =>
     s.selectedIds.length === 1 ? (s.elements.find((e) => e.id === s.selectedIds[0]) ?? null) : null,
   )
+  // A path flipped into whole-path Transformer mode shows the bounding box, not its control points.
+  const transforming = useDoc((s) => s.transformPathId === s.selectedIds[0])
   const setParams = useDoc((s) => s.setParams)
   const elements = useDoc((s) => s.elements)
   const sels = useNodeSelection((s) => s.sels)
@@ -51,7 +55,7 @@ export function NodeEditLayer({ pxPerMm }: { pxPerMm: number }) {
     }
   }, [elId])
 
-  if (!el || el.type !== 'path') return null
+  if (!el || el.type !== 'path' || transforming) return null
 
   const p = el.params as PathParams
   // Effective page transform — for a clip member this composes the clip chain, so handles land where

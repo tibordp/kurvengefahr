@@ -6,6 +6,7 @@
 // Container members are the exception: their stored transform is *container-local*, but the canvas
 // works in page space, so a member drags/transforms solo (no shared gesture) and commits through the
 // inverse of its container chain — keeping it pinned under the container while editing in place.
+import { useRef } from 'react'
 import type Konva from 'konva'
 import type { DocElement, Transform } from '../core/types'
 import { applyScale, bakesScale } from '../elements/registry'
@@ -28,6 +29,8 @@ let dragGesture: {
 
 export interface NodeHandlers {
   onMouseDown: (e: Konva.KonvaEventObject<MouseEvent>) => void
+  onTouchStart: (e: Konva.KonvaEventObject<TouchEvent>) => void
+  onClick: () => void
   onTap: () => void
   onDragStart: () => void
   onDragMove: (e: Konva.KonvaEventObject<DragEvent>) => void
@@ -50,6 +53,22 @@ export function useNodeInteraction(element: DocElement): NodeHandlers {
   const select = useDoc((s) => s.select)
   const setTransform = useDoc((s) => s.setTransform)
   const setParams = useDoc((s) => s.setParams)
+  const togglePathTransform = useDoc((s) => s.togglePathTransform)
+
+  // A full click (press + release, no drag) on the body of a path that's already the lone selection
+  // flips it between control-point editing and the whole-path bounding-box Transformer (a single-path
+  // affordance — multi-selection is always Transformer). We arm on press and fire on release so a
+  // *drag* to move the path never flips the mode; `onDragStart` disarms once a real drag begins.
+  const armed = useRef(false)
+  const arm = () => {
+    const { selectedIds } = useDoc.getState()
+    armed.current =
+      element.type === 'path' && selectedIds.length === 1 && selectedIds[0] === element.id
+  }
+  const fireToggle = () => {
+    if (armed.current) togglePathTransform(element.id)
+    armed.current = false
+  }
 
   // A clip member: convert the node's page transform back to clip-local (scale stays in the
   // transform — baking through a transformed chain is ambiguous).
@@ -77,11 +96,20 @@ export function useNodeInteraction(element: DocElement): NodeHandlers {
   return {
     onMouseDown: (e) => {
       const additive = e.evt.shiftKey || e.evt.metaKey || e.evt.ctrlKey
+      armed.current = false
       if (additive) select(element.id, true)
       else if (!useDoc.getState().selectedIds.includes(element.id)) select(element.id, false)
+      else arm() // already the lone selection — a plain click (no drag) toggles on release
     },
-    onTap: () => select(element.id),
+    onTouchStart: () => {
+      armed.current = false
+      if (!useDoc.getState().selectedIds.includes(element.id)) select(element.id)
+      else arm()
+    },
+    onClick: fireToggle,
+    onTap: fireToggle,
     onDragStart: () => {
+      armed.current = false // a real drag (past Konva's drag threshold) is a move, never a toggle
       beginGesture()
       if (isMember || dragGesture) return
       const { selectedIds, elements } = useDoc.getState()

@@ -73,6 +73,10 @@ corner/smooth, and `Alt`-dragging a handle breaks its symmetry. The full gesture
 `?` dialog. Editing an element that has effects shows the pre-effect source as a ghost outline,
 so you always manipulate the real geometry.
 
+A lone selected path shows its control points; click the path body again to switch to the
+whole-path bounding box, so you can resize or rotate it as a unit, and click once more to return
+to the control points. Dragging the body just moves the path and never switches modes.
+
 ## Command palette and shortcuts
 
 `Cmd/Ctrl K` opens the command palette - every command, searchable, including ones that have no

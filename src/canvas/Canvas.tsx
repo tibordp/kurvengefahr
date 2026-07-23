@@ -70,6 +70,7 @@ export function Canvas() {
   const profile = useDoc((s) => s.profile)
   const bed = profile.bed
   const selectedIds = useDoc((s) => s.selectedIds)
+  const transformPathId = useDoc((s) => s.transformPathId)
   const previewActive = usePreview((s) => s.active)
   const tool = useTools((s) => s.tool)
   const drawing = tool !== 'select' && !previewActive
@@ -190,11 +191,14 @@ export function Canvas() {
     }
   }, [])
 
-  // A lone selected path is edited via the node overlay (NodeEditLayer), not the bounding-box
-  // Transformer; everything else (incl. multi-selection) uses the Transformer for group transforms.
+  // A lone selected path is edited via the node overlay (NodeEditLayer) by default, not the
+  // bounding-box Transformer; clicking its body again flips it into Transformer mode
+  // (`transformPathId`). Everything else (incl. multi-selection) always uses the Transformer.
   const solePath =
     selectedIds.length === 1 && elements.find((e) => e.id === selectedIds[0])?.type === 'path'
-  const showTransformer = selectedIds.length > 0 && !previewActive && !drawing && !solePath && !editingId
+  const nodeEditing = solePath && transformPathId !== selectedIds[0]
+  const showTransformer =
+    selectedIds.length > 0 && !previewActive && !drawing && !nodeEditing && !editingId
 
   useEffect(() => {
     const tr = trRef.current
@@ -444,7 +448,7 @@ export function Canvas() {
       const y1 = Math.max(marquee.a.y, marquee.b.y)
       const tiny = x1 - x0 < 2 / scale && y1 - y0 < 2 / scale
       const doc = useDoc.getState()
-      const editEl = solePath ? doc.elements.find((el) => el.id === doc.selectedIds[0]) : undefined
+      const editEl = nodeEditing ? doc.elements.find((el) => el.id === doc.selectedIds[0]) : undefined
 
       if (editEl && editEl.type === 'path') {
         // Node-edit mode: the marquee rubber-bands this path's control points, not elements.

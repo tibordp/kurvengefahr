@@ -121,6 +121,7 @@ export const SHORTCUT_GROUPS: { title: string; items: ShortcutItem[] }[] = [
       { keys: ['Del'], label: 'Delete the selected node(s)' },
       { keys: ['Double-click', 'node'], label: 'Toggle corner / smooth' },
       { keys: ['Alt', 'drag handle'], label: 'Break handle symmetry (cusp)' },
+      { keys: ['Click', 'path body'], label: 'Toggle control points / whole-path box' },
     ],
   },
   {
