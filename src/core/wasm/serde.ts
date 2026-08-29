@@ -8,6 +8,7 @@
 //   pen:        Uint16Array, length nStrokes
 //   reversible: Uint8Array,  length nStrokes (0/1)
 //   group:      Uint32Array, length nStrokes (chain id; 0 = free singleton)
+//   part:       Uint16Array, length nStrokes (sub-part tag; 0 = untagged)
 import type { Geometry } from '../types'
 
 export interface FlatGeometry {
@@ -17,6 +18,7 @@ export interface FlatGeometry {
   pen: Uint16Array
   reversible: Uint8Array
   group: Uint32Array
+  part: Uint16Array
 }
 
 const DEFAULT_PRESSURE = 1
@@ -31,6 +33,7 @@ export function flatten(geom: Geometry): FlatGeometry {
   const pen = new Uint16Array(geom.length)
   const reversible = new Uint8Array(geom.length)
   const group = new Uint32Array(geom.length)
+  const part = new Uint16Array(geom.length)
 
   let p = 0
   for (let i = 0; i < geom.length; i++) {
@@ -39,6 +42,7 @@ export function flatten(geom: Geometry): FlatGeometry {
     pen[i] = s.pen
     reversible[i] = s.reversible ? 1 : 0
     group[i] = s.group ?? 0
+    part[i] = s.part ?? 0
     for (const pt of s.points) {
       xy[p * 2] = pt.x
       xy[p * 2 + 1] = pt.y
@@ -47,11 +51,11 @@ export function flatten(geom: Geometry): FlatGeometry {
     }
   }
   offsets[geom.length] = p
-  return { xy, pressure, offsets, pen, reversible, group }
+  return { xy, pressure, offsets, pen, reversible, group, part }
 }
 
 export function unflatten(flat: FlatGeometry): Geometry {
-  const { xy, pressure, offsets, pen, reversible, group } = flat
+  const { xy, pressure, offsets, pen, reversible, group, part } = flat
   const geom: Geometry = []
   const nStrokes = pen.length
   for (let i = 0; i < nStrokes; i++) {
@@ -63,6 +67,7 @@ export function unflatten(flat: FlatGeometry): Geometry {
     }
     const stroke: Geometry[number] = { points, pen: pen[i], reversible: reversible[i] !== 0 }
     if (group[i] !== 0) stroke.group = group[i]
+    if (part[i] !== 0) stroke.part = part[i]
     geom.push(stroke)
   }
   return geom

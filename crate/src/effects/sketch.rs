@@ -40,6 +40,7 @@ pub fn apply(strokes: &[Stroke], s: &EffectSpec) -> Vec<Stroke> {
                 pen: stroke.pen,
                 reversible: stroke.reversible,
                 group: stroke.group,
+                part: stroke.part,
             });
         }
     }

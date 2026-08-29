@@ -124,6 +124,7 @@ async function runJob(job: GenerateMsg) {
     let lineWidth = 0
     let done = 0
     let wordSeq = 0
+    let lineNo = 0 // 1-based index of the line being flushed; tags its strokes as a part
 
     /** Finalize the current line. Justify stretches gaps on soft (wrap-broken) lines only; hard
      *  breaks (paragraph end) stay ragged, like the last line of any justified paragraph. */
@@ -135,7 +136,8 @@ async function runJob(job: GenerateMsg) {
         const dx = lineShift(layout.align, layout.maxWidthMm, lineWidth)
         if (dx !== 0) for (const w of line) translate(w.geom, dx, 0)
       }
-      for (const w of line) for (const s of w.geom) placed.push(s)
+      if (line.length > 0) lineNo++
+      for (const w of line) for (const s of w.geom) placed.push({ ...s, part: lineNo })
       line = []
       penX = 0
       lineWidth = 0
@@ -148,7 +150,7 @@ async function runJob(job: GenerateMsg) {
       const display = dx !== 0 ? current.map((s) => ({ ...s, points: s.points.map((p) => ({ ...p, x: p.x + dx })) })) : current
       const flat = flatten(placed.concat(display))
       post({ type: 'partial', jobId, elementId, hash, done, total, ...flat }, [
-        flat.xy.buffer, flat.pressure.buffer, flat.offsets.buffer, flat.pen.buffer, flat.reversible.buffer, flat.group.buffer,
+        flat.xy.buffer, flat.pressure.buffer, flat.offsets.buffer, flat.pen.buffer, flat.reversible.buffer, flat.group.buffer, flat.part.buffer,
       ])
     }
 
@@ -168,7 +170,7 @@ async function runJob(job: GenerateMsg) {
         const width = res.width
         const wordGeom = unflatten({
           xy: res.xy, pressure: res.pressure, offsets: res.offsets,
-          pen: res.pen, reversible: res.reversible, group: res.group,
+          pen: res.pen, reversible: res.reversible, group: res.group, part: res.part,
         })
         res.free()
 

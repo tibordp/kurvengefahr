@@ -70,6 +70,7 @@ pub fn combine(
                 pen: 0,
                 reversible: true,
                 group: 0,
+                part: 0,
             });
         }
     }

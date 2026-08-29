@@ -89,6 +89,7 @@ interface PartialMsg {
   pen: Uint16Array
   reversible: Uint8Array
   group: Uint32Array
+  part: Uint16Array
 }
 type WorkerOut =
   | { type: 'loading-model'; jobId: number; elementId: string }
@@ -234,6 +235,7 @@ function handleMessage(msg: WorkerOut) {
       pen: msg.pen,
       reversible: msg.reversible,
       group: msg.group,
+      part: msg.part,
     })
     markGenerated(msg.elementId, job.hash, geom)
     if (msg.meta !== undefined) generatedMeta.set(msg.elementId, msg.meta)

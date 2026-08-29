@@ -227,6 +227,7 @@ mod tests {
             pen: 3,
             reversible: true,
             group: 7,
+            part: 0,
         }]
     }
 
@@ -262,6 +263,7 @@ mod tests {
             pen: 0,
             reversible: false,
             group: 0,
+            part: 0,
         }]
     }
 
@@ -325,6 +327,7 @@ mod tests {
                 pen: 0,
                 reversible: true,
                 group: 0,
+                part: 0,
             },
             Stroke {
                 points: vec![
@@ -342,6 +345,7 @@ mod tests {
                 pen: 0,
                 reversible: true,
                 group: 0,
+                part: 0,
             },
         ];
         let json = r#"[{"type":"roughen","enabled":true,"amplitudeMm":3,"detailMm":5,"tremorMm":0.5,"seed":9}]"#;
@@ -388,6 +392,7 @@ mod tests {
             pen: 5,
             reversible: true,
             group: 2,
+            part: 0,
         }];
         let json =
             r#"[{"type":"smooth","enabled":true,"detailMm":2.0,"strength":0.7,"iterations":15}]"#;
@@ -494,6 +499,7 @@ mod tests {
                 pen: 0,
                 reversible: true,
                 group: 0,
+                part: 0,
             },
             Stroke {
                 points: vec![
@@ -511,6 +517,7 @@ mod tests {
                 pen: 0,
                 reversible: true,
                 group: 0,
+                part: 0,
             },
         ];
         let json = r#"[{"type":"sketch","enabled":true,"passes":2,"offsetMm":1.0,"seed":4}]"#;

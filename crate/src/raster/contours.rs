@@ -145,6 +145,7 @@ pub(crate) fn trace_mask(
             pen: 0,
             reversible: true,
             group: 0,
+            part: 0,
         });
     }
     out

@@ -56,6 +56,10 @@ interface ElementType {
    *  "show source image" toggle. Excluded from the geometry hash so flipping them never marks the
    *  element dirty or triggers a regenerate. */
   viewParams?: string[]
+  /** Name for a stroke sub-part tag (`Stroke.part`, nonzero) this type's generator emits - the layer
+   *  label inside the element on vector export (tonal hatching: "Band 2 (90°)"). Types that never
+   *  tag parts omit it; an unnamed tag falls back to "Part N". */
+  partLabel?: (params: any, part: number) => string
 }
 
 const types = new Map<string, ElementType>()
@@ -74,6 +78,11 @@ export function typeLabel(type: string): string {
  *  `describe`, then the type label. The single naming path for every element list in the UI. */
 export function elementLabel(el: { type: string; name?: string; params: unknown }): string {
   return el.name ?? types.get(el.type)?.describe?.(el.params) ?? typeLabel(el.type)
+}
+
+/** The export-layer name of a stroke sub-part tag within an element (see `Stroke.part`). */
+export function partLabel(type: string, params: unknown, part: number): string {
+  return types.get(type)?.partLabel?.(params, part) ?? `Part ${part}`
 }
 
 /** Whether a type has been registered. Persistence uses this to drop unknown element types safely

@@ -86,13 +86,14 @@ async function runJob(job: GenerateMsg) {
       pen: res.pen,
       reversible: res.reversible,
       group: res.group,
+      part: res.part,
     }
     res.free()
     if (aborted()) return
 
     post(
       { type: 'partial', jobId, elementId, hash, done: 1, total: 1, ...flat },
-      [flat.xy.buffer, flat.pressure.buffer, flat.offsets.buffer, flat.pen.buffer, flat.reversible.buffer, flat.group.buffer],
+      [flat.xy.buffer, flat.pressure.buffer, flat.offsets.buffer, flat.pen.buffer, flat.reversible.buffer, flat.group.buffer, flat.part.buffer],
     )
     post({ type: 'done', jobId, elementId })
   } catch (err) {

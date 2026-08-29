@@ -245,6 +245,7 @@ impl Turtle {
                 pen: self.pen,
                 reversible: true,
                 group: 0,
+                part: 0,
             });
         } else {
             self.cur.clear();

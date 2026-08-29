@@ -22,6 +22,11 @@ pub struct Stroke {
     /// Chain id. Strokes sharing a nonzero group form one ordered, contiguous, fixed-direction
     /// chain the optimizer plots as a single unit. 0 = free singleton (goes in the bag).
     pub group: u32,
+    /// Sub-part index within the element that generated the stroke, purely organizational: it
+    /// names a layer inside the element on vector export (tonal hatching tags each tone band) and
+    /// never influences plotting. 0 = untagged. Assigned by generators, carried untouched through
+    /// effects/clip; the optimizer does not care about it.
+    pub part: u16,
 }
 
 /// Flat geometry returned to JS. Each getter hands back a fresh typed array (a copy).
@@ -33,6 +38,7 @@ pub struct GeometryBuffers {
     pen: Vec<u16>,
     reversible: Vec<u8>,
     group: Vec<u32>,
+    part: Vec<u16>,
 }
 
 #[wasm_bindgen]
@@ -61,6 +67,10 @@ impl GeometryBuffers {
     pub fn group(&self) -> Vec<u32> {
         self.group.clone()
     }
+    #[wasm_bindgen(getter)]
+    pub fn part(&self) -> Vec<u16> {
+        self.part.clone()
+    }
 }
 
 impl GeometryBuffers {
@@ -71,6 +81,7 @@ impl GeometryBuffers {
         let mut pen = Vec::with_capacity(strokes.len());
         let mut reversible = Vec::with_capacity(strokes.len());
         let mut group = Vec::with_capacity(strokes.len());
+        let mut part = Vec::with_capacity(strokes.len());
         offsets.push(0);
         for s in strokes {
             for p in &s.points {
@@ -82,6 +93,7 @@ impl GeometryBuffers {
             pen.push(s.pen);
             reversible.push(s.reversible as u8);
             group.push(s.group);
+            part.push(s.part);
         }
         GeometryBuffers {
             xy,
@@ -90,6 +102,7 @@ impl GeometryBuffers {
             pen,
             reversible,
             group,
+            part,
         }
     }
 }
@@ -102,6 +115,7 @@ pub fn decode(
     pen: &[u16],
     reversible: &[u8],
     group: &[u32],
+    part: &[u16],
 ) -> Vec<Stroke> {
     (0..pen.len())
         .map(|i| {
@@ -119,6 +133,7 @@ pub fn decode(
                 pen: pen[i],
                 reversible: reversible[i] != 0,
                 group: group[i],
+                part: part[i],
             }
         })
         .collect()

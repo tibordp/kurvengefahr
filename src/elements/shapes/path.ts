@@ -1,7 +1,7 @@
 import { registerElement } from '../registry'
 import { pathGeometry } from '../../core/wasm/shapes'
 import type { Geometry, Point } from '../../core/types'
-import { type Hatch, defaultHatch, sanitizeHatch, pathFill } from './hatch'
+import { type Hatch, defaultHatch, sanitizeHatch, pathFill, outlineAndFill, outlineFillLabel } from './hatch'
 
 /** One path node: anchor (x,y) plus in/out control handles stored RELATIVE to the anchor. A
  *  corner / polyline node has zero-length handles. All in element-local mm. */
@@ -194,6 +194,7 @@ function coerceNodes(arr: unknown): PathNode[] {
 
 registerElement('path', {
   label: 'Path',
+  partLabel: outlineFillLabel,
   describe: (p: PathParams) => {
     const nodeCount = p.contours.reduce((a, c) => a + c.nodes.length, 0)
     const closed = p.contours.length > 0 && p.contours.every((c) => c.closed)
@@ -211,7 +212,7 @@ registerElement('path', {
       .filter((pts) => pts.length >= 3)
     const fill = rings.length ? pathFill(rings, p.hatch) : []
     const drawn = outlines.filter((s) => s.points.length >= 2)
-    return [...(p.hatch.stroke ? drawn : []), ...fill]
+    return outlineAndFill(drawn, fill, p.hatch.stroke)
   },
   isLocked: () => false,
   sanitizeParams: (raw) => {

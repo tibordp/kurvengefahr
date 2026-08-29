@@ -107,6 +107,10 @@ impl WordResult {
     pub fn group(&self) -> Vec<u32> {
         self.geom.group()
     }
+    #[wasm_bindgen(getter)]
+    pub fn part(&self) -> Vec<u16> {
+        self.geom.part()
+    }
     /// Advance width in mm (used by the worker to lay words out left→right and wrap).
     #[wasm_bindgen(getter)]
     pub fn width(&self) -> f32 {
@@ -200,6 +204,7 @@ pub fn tessellate_path(
             pen: 0,
             reversible: true,
             group: 0,
+            part: 0,
         }));
     }
     GeometryBuffers::from_strokes(&strokes)
@@ -249,6 +254,10 @@ impl LogoRunResult {
     #[wasm_bindgen(getter)]
     pub fn group(&self) -> Vec<u32> {
         self.geom.group()
+    }
+    #[wasm_bindgen(getter)]
+    pub fn part(&self) -> Vec<u16> {
+        self.geom.part()
     }
     #[wasm_bindgen(getter)]
     pub fn x(&self) -> f32 {
@@ -482,6 +491,7 @@ pub fn stl_mesh_preview(bytes: &[u8], max_tris: u32) -> Result<MeshPreview, JsVa
 /// `effects::EffectSpec`, mirrored by `src/effects`); enabled specs apply in order. Pen/reversible/
 /// group metadata is preserved. Deterministic per each spec's `seed`.
 #[wasm_bindgen]
+#[allow(clippy::too_many_arguments)] // the flat CSR boundary (serde.ts) is positional by design
 pub fn apply_effects(
     xy: &[f32],
     pressure: &[f32],
@@ -489,9 +499,10 @@ pub fn apply_effects(
     pen: &[u16],
     reversible: &[u8],
     group: &[u32],
+    part: &[u16],
     params_json: &str,
 ) -> GeometryBuffers {
-    let strokes = decode(xy, pressure, offsets, pen, reversible, group);
+    let strokes = decode(xy, pressure, offsets, pen, reversible, group, part);
     GeometryBuffers::from_strokes(&effects::apply(&strokes, params_json))
 }
 
@@ -506,12 +517,13 @@ pub fn clip(
     pen: &[u16],
     reversible: &[u8],
     group: &[u32],
+    part: &[u16],
     x0: f32,
     y0: f32,
     x1: f32,
     y1: f32,
 ) -> GeometryBuffers {
-    let strokes = decode(xy, pressure, offsets, pen, reversible, group);
+    let strokes = decode(xy, pressure, offsets, pen, reversible, group, part);
     let rect = Rect { x0, y0, x1, y1 };
     GeometryBuffers::from_strokes(&clip::clip(&strokes, &rect))
 }
@@ -528,10 +540,11 @@ pub fn clip_polygon(
     pen: &[u16],
     reversible: &[u8],
     group: &[u32],
+    part: &[u16],
     ring_xy: &[f32],
     ring_starts: &[u32],
 ) -> GeometryBuffers {
-    let strokes = decode(xy, pressure, offsets, pen, reversible, group);
+    let strokes = decode(xy, pressure, offsets, pen, reversible, group, part);
     let rings = poly::parse_polys(ring_xy, ring_starts);
     GeometryBuffers::from_strokes(&clip::clip_to_polygon(&strokes, &rings))
 }
@@ -551,11 +564,12 @@ pub fn optimize(
     pen: &[u16],
     reversible: &[u8],
     group: &[u32],
+    part: &[u16],
     start_x: f32,
     start_y: f32,
     pen_order: &[u16],
 ) -> GeometryBuffers {
-    let strokes = decode(xy, pressure, offsets, pen, reversible, group);
+    let strokes = decode(xy, pressure, offsets, pen, reversible, group, part);
     // Cleanup first (dedupe / chain / collinear on free strokes), then order to minimise travel.
     let strokes = cleanup::cleanup(&strokes);
     GeometryBuffers::from_strokes(&order_greedy(&strokes, start_x, start_y, pen_order))
@@ -566,6 +580,7 @@ pub fn optimize(
 /// (`plan::PlanParams`, mirrored by `src/core/pipeline/plan.ts`); geometry is page mm, which for
 /// this machine *is* machine mm. Returns the flat segment tape the streaming session executes.
 #[wasm_bindgen]
+#[allow(clippy::too_many_arguments)] // the flat CSR boundary (serde.ts) is positional by design
 pub fn plan_axidraw(
     xy: &[f32],
     pressure: &[f32],
@@ -573,9 +588,10 @@ pub fn plan_axidraw(
     pen: &[u16],
     reversible: &[u8],
     group: &[u32],
+    part: &[u16],
     params: &str,
 ) -> plan::PlanBuffers {
-    let strokes = decode(xy, pressure, offsets, pen, reversible, group);
+    let strokes = decode(xy, pressure, offsets, pen, reversible, group, part);
     plan::plan_from_json(&strokes, params)
 }
 
@@ -643,6 +659,7 @@ fn rotate_closed(s: &Stroke, start: usize) -> Stroke {
         pen: s.pen,
         reversible: s.reversible,
         group: s.group,
+        part: s.part,
     }
 }
 
@@ -709,6 +726,7 @@ fn clone_stroke(s: &Stroke, reverse: bool) -> Stroke {
         pen: s.pen,
         reversible: s.reversible,
         group: s.group,
+        part: s.part,
     }
 }
 
@@ -907,6 +925,7 @@ mod optimize_tests {
             pen,
             reversible: true,
             group: 0,
+            part: 0,
         }
     }
 

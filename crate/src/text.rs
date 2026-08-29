@@ -452,6 +452,7 @@ fn stroke(points: Vec<Point>) -> Stroke {
         pen: 0,
         reversible: true,
         group: 0,
+        part: 0,
     }
 }
 

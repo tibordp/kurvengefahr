@@ -28,7 +28,12 @@ pub fn hatch(grid: &Grid, p: &Params) -> Vec<Stroke> {
     for k in 1..=levels {
         let cutoff = k as f32 / (levels as f32 + 1.0);
         let angle = p.angle + (k - 1) as f32 * 180.0 / levels as f32;
+        let start = out.len();
         hatch_pass(grid, angle, spacing, |ink| ink >= cutoff, &mut out);
+        // Tag the band so exports can keep each tone band's rake as its own layer.
+        for s in &mut out[start..] {
+            s.part = k as u16;
+        }
     }
     out
 }
@@ -154,4 +159,27 @@ pub fn pressure_hatch(grid: &Grid, p: &Params) -> Vec<Stroke> {
         o += spacing;
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hatch_tags_each_tone_band_as_its_own_part() {
+        // A uniformly black image clears every threshold, so every band rakes the whole box.
+        let rgba = [0u8, 0, 0, 255].repeat(4 * 4);
+        let grid = Grid::build(&rgba, 4, 4, 20.0, 20.0, false);
+        let p = Params {
+            levels: 3,
+            spacing: 2.0,
+            angle: 0.0,
+            ..Params::default()
+        };
+        let out = hatch(&grid, &p);
+        let mut parts: Vec<u16> = out.iter().map(|s| s.part).collect();
+        parts.dedup();
+        assert_eq!(parts, vec![1, 2, 3]);
+        assert!(out.iter().all(|s| s.part >= 1 && s.part <= 3));
+    }
 }

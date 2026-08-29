@@ -1,10 +1,12 @@
 // Export the document as vector SVG or raster PNG — the same plottable geometry the G-code is built
-// from (so it round-trips and lets you eyeball exactly what will plot), in page mm on the bed.
+// from (so it round-trips and lets you eyeball exactly what will plot), in page mm on the bed. The
+// SVG is layered for editing elsewhere: element → part (tone band) → pen (see buildSvgMarkup).
 // The shared helpers (plottable / byPen / pressureVaries) also feed the PDF export and true-scale
 // printing (exportPdf.ts, print.ts).
 import { useDoc } from '../store/document'
 import { useDocuments } from '../store/documents'
-import { buildPlottableGeometry } from '../core/pipeline'
+import { buildPlottableGeometry, buildPlottableGeometryByElement } from '../core/pipeline'
+import { elementLabel, partLabel } from '../elements/registry'
 import { downloadBlob, safeFilename } from './download'
 import { pressureEnabled, type Geometry, type Stroke } from '../core/types'
 import { displayPenWidthMm } from '../canvas/penWidth'
@@ -55,33 +57,66 @@ export function byPen(geom: Geometry, order: number[]): Map<number, Geometry> {
   return sorted
 }
 
-/** The plottable geometry rendered as SVG markup (one layer per pen, page mm on the bed). */
+/** The plottable geometry rendered as SVG markup: one layer per element (document order, named as
+ *  in the Elements tree), a sub-layer per stroke part where the generator tagged them (tonal
+ *  hatching's tone bands), and a pen layer inside only where an element draws with more than one pen
+ *  (a single-pen element carries its pen on the enclosing layer). Page mm on the bed. */
 export function buildSvgMarkup(): string {
-  const { geom, bed, penColor, pressureOn } = plottable()
-  const { pens } = useDoc.getState().profile
-  const groups = byPen(geom, pens.map((p) => p.id))
-  const f3 = (n: number) => n.toFixed(3)
-  let body = ''
-  for (const [pen, strokes] of groups) {
-    const penName = pens.find((p) => p.id === pen)?.name ?? `Pen ${pen}`
-    body += `  <g stroke="${penColor(pen)}" data-pen="${esc(penName)}">\n`
-    for (const s of strokes) {
-      if (s.points.length < 2) continue
-      if (pressureOn && pressureVaries(s)) {
-        // Pressure rides on line weight (matching canvas/preview): one <line> per segment, its width
-        // from the segment's mean pressure. Only varying strokes pay this cost; the rest stay one path.
-        for (let i = 1; i < s.points.length; i++) {
-          const a = s.points[i - 1]
-          const b = s.points[i]
-          const w = displayPenWidthMm(((a.pressure ?? 1) + (b.pressure ?? 1)) / 2, true)
-          body += `    <line x1="${f3(a.x)}" y1="${f3(a.y)}" x2="${f3(b.x)}" y2="${f3(b.y)}" stroke-width="${f3(w)}"/>\n`
-        }
-      } else {
-        // Uniform stroke: one path. Weight it by the stroke's single pressure when pressure is on.
-        const wAttr = pressureOn ? ` stroke-width="${f3(displayPenWidthMm(s.points[0].pressure ?? 1, true))}"` : ''
-        const d = s.points.map((p, i) => `${i ? 'L' : 'M'}${f3(p.x)} ${f3(p.y)}`).join(' ')
-        body += `    <path d="${d}"${wAttr}/>\n`
+  const { elements, profile } = useDoc.getState()
+  const chunks = buildPlottableGeometryByElement(elements, profile)
+  const penColor = (pen: number) => profile.pens.find((p) => p.id === pen)?.color ?? '#1a1a1a'
+  const penName = (pen: number) => profile.pens.find((p) => p.id === pen)?.name ?? `Pen ${pen}`
+  const penOrder = profile.pens.map((p) => p.id)
+  const pressureOn = pressureEnabled(profile)
+  const { bed } = profile
+
+  const strokeMarkup = (s: Stroke, indent: string): string => {
+    if (pressureOn && pressureVaries(s)) {
+      // Pressure rides on line weight (matching canvas/preview): one <line> per segment, its width
+      // from the segment's mean pressure. Only varying strokes pay this cost; the rest stay one path.
+      let out = ''
+      for (let i = 1; i < s.points.length; i++) {
+        const a = s.points[i - 1]
+        const b = s.points[i]
+        const w = displayPenWidthMm(((a.pressure ?? 1) + (b.pressure ?? 1)) / 2, true)
+        out += `${indent}<line x1="${f3(a.x)}" y1="${f3(a.y)}" x2="${f3(b.x)}" y2="${f3(b.y)}" stroke-width="${f3(w)}"/>\n`
       }
+      return out
+    }
+    // Uniform stroke: one path. Weight it by the stroke's single pressure when pressure is on.
+    const wAttr = pressureOn ? ` stroke-width="${f3(displayPenWidthMm(s.points[0].pressure ?? 1, true))}"` : ''
+    const d = s.points.map((p, i) => `${i ? 'L' : 'M'}${f3(p.x)} ${f3(p.y)}`).join(' ')
+    return `${indent}<path d="${d}"${wAttr}/>\n`
+  }
+  const penAttrs = (pen: number) => ` stroke="${penColor(pen)}" data-pen="${esc(penName(pen))}"`
+  // The strokes of one bucket (an element, or one of its parts): a single pen puts its attributes on
+  // the enclosing <g>; several pens get one nested <g> each, in palette order.
+  const bucketMarkup = (open: string, strokes: Geometry, indent: string): string => {
+    const pens = byPen(strokes, penOrder)
+    if (pens.size === 1) {
+      const [pen, list] = [...pens][0]
+      return `${indent}<g${open}${penAttrs(pen)}>\n${list.map((s) => strokeMarkup(s, indent + '  ')).join('')}${indent}</g>\n`
+    }
+    let out = `${indent}<g${open}>\n`
+    for (const [pen, list] of pens) {
+      out += `${indent}  <g${penAttrs(pen)}>\n${list.map((s) => strokeMarkup(s, indent + '    ')).join('')}${indent}  </g>\n`
+    }
+    return out + `${indent}</g>\n`
+  }
+
+  let body = ''
+  for (const { el, geom } of chunks) {
+    const elOpen = ` data-element="${esc(elementLabel(el))}"`
+    const parts = byPart(geom)
+    if (parts.size === 1) {
+      // Untagged, or a single part (e.g. an unfilled shape's outline): no sub-groups to show.
+      body += bucketMarkup(elOpen, geom, '  ')
+      continue
+    }
+    body += `  <g${elOpen}>\n`
+    for (const [part, strokes] of parts) {
+      const open = part === 0 ? '' : ` data-part="${esc(partLabel(el.type, el.params, part))}"`
+      body += bucketMarkup(open, strokes, '    ')
     }
     body += `  </g>\n`
   }
@@ -90,6 +125,19 @@ export function buildSvgMarkup(): string {
     `viewBox="0 0 ${bed.width} ${bed.height}" fill="none" stroke-width="${PEN_WIDTH_MM}" ` +
     `stroke-linecap="round" stroke-linejoin="round">\n${body}</svg>\n`
   )
+}
+
+const f3 = (n: number) => n.toFixed(3)
+
+/** Strokes bucketed by their `part` tag in ascending tag order (0 = untagged first). */
+function byPart(geom: Geometry): Map<number, Geometry> {
+  const m = new Map<number, Geometry>()
+  for (const s of geom) {
+    if (s.points.length < 2) continue
+    const k = s.part ?? 0
+    ;(m.get(k) ?? m.set(k, []).get(k)!).push(s)
+  }
+  return new Map([...m].sort((a, b) => a[0] - b[0]))
 }
 
 /** The plottable geometry rendered as an SVG Blob. */

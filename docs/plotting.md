@@ -65,7 +65,11 @@ Machine-specific behavior - homing, pen actuation, pausing semantics - is covere
 
 Export (in the document menu) renders what would plot:
 
-- **SVG** - vector, real millimeters, one layer per pen.
+- **SVG** - vector, real millimeters, grouped for editing elsewhere: one group per element in
+  document order (named as in the Elements tree), each carrying its pen's color and name (an
+  element that draws with several pens gets a group per pen inside). Where an element has a natural
+  split, it gets one sub-group per part: outline and fill for hatch-filled shapes and text, one per
+  tone band for tonal hatching, one per iso level for contour maps, one per line for handwriting.
 - **PDF** - vector, one page at exactly the bed size.
 - **PNG** - transparent raster at a resolution you choose.
 

@@ -317,5 +317,6 @@ fn push_clipped(out: &mut Vec<Stroke>, a: [f32; 2], b: [f32; 2], tw: f32, th: f3
         pen: 0,
         reversible: true,
         group: 0,
+        part: 0,
     });
 }

@@ -73,6 +73,7 @@ pub fn apply(strokes: &[Stroke], spec: &EffectSpec) -> Vec<Stroke> {
                     pen: src.pen,
                     reversible: src.reversible,
                     group: src.group,
+                    part: src.part,
                 });
             }
         }
@@ -99,6 +100,7 @@ mod tests {
             pen,
             reversible: true,
             group: 0,
+            part: 0,
         }
     }
 
@@ -191,6 +193,7 @@ mod tests {
             pen,
             reversible: false,
             group: 7,
+            part: 0,
         }
     }
 
@@ -233,6 +236,7 @@ mod tests {
             pen: 2,
             reversible: false,
             group: 7,
+            part: 0,
         };
         let out = apply(&[segment, square(0)], &spec(3.0));
         assert_eq!(out.len(), 2);

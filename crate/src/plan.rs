@@ -566,6 +566,7 @@ mod tests {
             pen,
             reversible: true,
             group: 0,
+            part: 0,
         }
     }
 

@@ -13,7 +13,12 @@ pub fn contourmap(grid: &Grid, p: &Params) -> Vec<Stroke> {
     let mut out = Vec::new();
     for k in 1..=levels {
         let v = k as f32 / (levels as f32 + 1.0);
+        let start = out.len();
         marching_squares(grid, v, &mut out);
+        // Tag the level so exports can keep each iso-line set as its own layer.
+        for s in &mut out[start..] {
+            s.part = k as u16;
+        }
     }
     out
 }
@@ -149,5 +154,32 @@ impl Chainer {
                 ));
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn contourmap_tags_each_level_as_its_own_part() {
+        // A left-to-right ramp crosses every iso value, so every level draws a contour.
+        let (w, h) = (16usize, 4usize);
+        let mut rgba = Vec::with_capacity(w * h * 4);
+        for _y in 0..h {
+            for x in 0..w {
+                let v = 255 - (x * 255 / (w - 1)) as u8;
+                rgba.extend_from_slice(&[v, v, v, 255]);
+            }
+        }
+        let grid = Grid::build(&rgba, w, h, 32.0, 8.0, false);
+        let p = Params {
+            levels: 3,
+            ..Params::default()
+        };
+        let out = contourmap(&grid, &p);
+        let mut parts: Vec<u16> = out.iter().map(|s| s.part).collect();
+        parts.dedup();
+        assert_eq!(parts, vec![1, 2, 3]);
     }
 }

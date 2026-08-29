@@ -165,6 +165,7 @@ describe.runIf(!!DEVICE)('live EBB', () => {
       flat.pen,
       flat.reversible,
       flat.group,
+      flat.part,
       JSON.stringify({
         stepsPerMm: 80,
         drawSpeed: 150,

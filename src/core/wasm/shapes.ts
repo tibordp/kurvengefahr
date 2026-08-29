@@ -29,6 +29,7 @@ function decode(res: GeometryBuffers): Geometry {
     pen: res.pen,
     reversible: res.reversible,
     group: res.group,
+    part: res.part,
   })
   res.free()
   return out

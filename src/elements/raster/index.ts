@@ -91,6 +91,14 @@ registerElement('raster', {
   // Every method re-traces live (debounced) as params change — they're all fast enough off-thread,
   // so there's no manual "Regenerate" for raster (unlike handwriting's slow model run).
   autoRegenerate: () => true,
+  // Tonal hatching tags each tone band (mirrors the band angle formula in crate/src/raster/tone.rs);
+  // the contour map tags each iso level.
+  partLabel: (p: RasterParams, part) => {
+    if (p.method === 'contourmap') return `Level ${part}`
+    if (p.method !== 'hatch') return `Part ${part}`
+    const angle = (((p.angle + ((part - 1) * 180) / p.levels) % 180) + 180) % 180
+    return `Band ${part} (${Math.round(angle * 10) / 10}°)`
+  },
   // The mm box the trace is fit into — lets the canvas rescale stale ink to a new size during a
   // resize, instead of flashing the old size until the re-trace lands.
   provisionalExtent: (p: RasterParams) => ({ w: p.targetWidthMm, h: p.targetHeightMm }),

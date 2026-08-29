@@ -29,6 +29,11 @@ export interface Stroke {
    *  unit the optimizer plots together (internal pen-ups and all). 0/undefined = free
    *  singleton in the global bag. Assigned at element concatenation (`buildPageGeometry`). */
   group?: number
+  /** Sub-part index within the element that generated the stroke - purely organizational. It names
+   *  a layer inside the element on vector export (tonal hatching tags each tone band; the type's
+   *  registry `partLabel` names it) and never influences plotting. 0/undefined = untagged. Assigned
+   *  by generators, carried untouched through effects/clip/place. */
+  part?: number
 }
 
 /** The entire interface between "things that make marks" and "things that make motion." */

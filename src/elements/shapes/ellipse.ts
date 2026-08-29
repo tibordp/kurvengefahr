@@ -1,7 +1,7 @@
 import { registerElement } from '../registry'
 import { ellipseGeometry } from '../../core/wasm/shapes'
 import type { Geometry } from '../../core/types'
-import { type Hatch, defaultHatch, sanitizeHatch, ellipseFill } from './hatch'
+import { type Hatch, defaultHatch, sanitizeHatch, ellipseFill, outlineAndFill, outlineFillLabel } from './hatch'
 
 export interface EllipseParams {
   /** Radii in mm; the ellipse is centred at the local origin (0,0). */
@@ -16,12 +16,13 @@ const num = (v: unknown, d: number) => (typeof v === 'number' && Number.isFinite
 
 registerElement('ellipse', {
   label: 'Ellipse',
+  partLabel: outlineFillLabel,
   generate: (p: EllipseParams): Geometry => {
     const rx = Math.max(0, p.rx)
     const ry = Math.max(0, p.ry)
     const outline = ellipseGeometry(rx, ry)
     const fill = ellipseFill(rx, ry, outline[0]?.points ?? [], p.hatch)
-    return [...(p.hatch.stroke ? outline : []), ...fill]
+    return outlineAndFill(outline, fill, p.hatch.stroke)
   },
   isLocked: () => false,
   sanitizeParams: (raw) => {

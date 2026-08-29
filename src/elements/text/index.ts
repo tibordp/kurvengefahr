@@ -4,7 +4,7 @@
 // shapes. Scale stays in the transform (no applyScale), like handwriting.
 import { registerElement } from '../registry'
 import { textGeometry } from '../../core/wasm/shapes'
-import { type Hatch, defaultHatch, sanitizeHatch, pathFill } from '../shapes/hatch'
+import { type Hatch, defaultHatch, sanitizeHatch, pathFill, outlineAndFill, outlineFillLabel } from '../shapes/hatch'
 import type { Geometry, Point } from '../../core/types'
 
 export type TextMode = 'single' | 'outline'
@@ -59,6 +59,7 @@ const str = (v: unknown, d: string) => (typeof v === 'string' ? v : d)
 
 registerElement('text', {
   label: 'Text',
+  partLabel: outlineFillLabel,
   describe: (p: TextParams) => {
     const t = p.text.replace(/\s+/g, ' ').trim()
     return t ? (t.length > 20 ? `${t.slice(0, 20)}…` : t) : null
@@ -81,7 +82,7 @@ registerElement('text', {
     // Outline glyphs are closed contours: stroke them and/or hatch-fill them (even-odd holes).
     const rings: Point[][] = geom.map((s) => s.points)
     const fill = p.hatch.pattern !== 'none' ? pathFill(rings, p.hatch) : []
-    return [...(p.hatch.stroke ? geom : []), ...fill]
+    return outlineAndFill(geom, fill, p.hatch.stroke)
   },
   isLocked: () => false,
   sanitizeParams: (raw) => {

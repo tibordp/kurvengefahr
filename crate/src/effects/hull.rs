@@ -51,6 +51,7 @@ fn contour_stroke(contour: &[[f32; 2]], src: &Stroke) -> Stroke {
         pen: src.pen,
         reversible: src.reversible,
         group: src.group,
+        part: src.part,
     }
 }
 
@@ -183,6 +184,7 @@ mod tests {
             pen,
             reversible: true,
             group: 0,
+            part: 0,
         }
     }
 
@@ -199,6 +201,7 @@ mod tests {
             pen,
             reversible: false,
             group: 7,
+            part: 0,
         }
     }
 

@@ -23,6 +23,7 @@ export async function optimizeGeometry(
     flat.pen,
     flat.reversible,
     flat.group,
+    flat.part,
     start.x,
     start.y,
     Uint16Array.from(penOrder),
@@ -35,6 +36,7 @@ export async function optimizeGeometry(
     pen: result.pen,
     reversible: result.reversible,
     group: result.group,
+    part: result.part,
   })
   result.free()
   return out

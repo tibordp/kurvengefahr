@@ -1,7 +1,7 @@
 import { registerElement } from '../registry'
 import { rectGeometry } from '../../core/wasm/shapes'
 import type { Geometry } from '../../core/types'
-import { type Hatch, defaultHatch, sanitizeHatch, rectFill } from './hatch'
+import { type Hatch, defaultHatch, sanitizeHatch, rectFill, outlineAndFill, outlineFillLabel } from './hatch'
 
 export interface RectParams {
   /** Width / height in mm, local origin at (0,0). */
@@ -23,12 +23,13 @@ const num = (v: unknown, d: number) => (typeof v === 'number' && Number.isFinite
 
 registerElement('rect', {
   label: 'Rectangle',
+  partLabel: outlineFillLabel,
   generate: (p: RectParams): Geometry => {
     const w = Math.max(0, p.w)
     const h = Math.max(0, p.h)
     const outline = rectGeometry(w, h, Math.max(0, p.cornerRadius))
     const fill = rectFill(w, h, outline[0]?.points ?? [], p.hatch)
-    return [...(p.hatch.stroke ? outline : []), ...fill]
+    return outlineAndFill(outline, fill, p.hatch.stroke)
   },
   isLocked: () => false,
   sanitizeParams: (raw) => {

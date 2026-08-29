@@ -43,6 +43,7 @@ export async function planAxidraw(
     flat.pen,
     flat.reversible,
     flat.group,
+    flat.part,
     JSON.stringify(params),
   )
   // Copy the arrays out before freeing the Rust-owned struct.

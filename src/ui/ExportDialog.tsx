@@ -32,7 +32,7 @@ export function ExportDialog() {
     <Modal title="Export" onClose={close} className="w-[24rem]">
       <Field label="Format">
         <select className={controlClass} value={format} onChange={(e) => setFormat(e.target.value as Format)}>
-          <option value="svg">SVG — vector, per-pen layers</option>
+          <option value="svg">SVG — vector, layered by element</option>
           <option value="pdf">PDF — vector, page at bed size</option>
           <option value="png">PNG — raster image</option>
         </select>

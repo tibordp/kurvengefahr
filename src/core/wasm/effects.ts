@@ -18,6 +18,7 @@ export function applyEffectsWasm(geom: Geometry, effects: EffectSpec[]): Geometr
     flat.pen,
     flat.reversible,
     flat.group,
+    flat.part,
     JSON.stringify(effects),
   )
   const out = unflatten({
@@ -27,6 +28,7 @@ export function applyEffectsWasm(geom: Geometry, effects: EffectSpec[]): Geometr
     pen: res.pen,
     reversible: res.reversible,
     group: res.group,
+    part: res.part,
   })
   res.free()
   return out

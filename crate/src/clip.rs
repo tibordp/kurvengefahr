@@ -69,6 +69,7 @@ fn clip_stroke(s: &Stroke, r: &Rect, out: &mut Vec<Stroke>) {
                 pen: s.pen,
                 reversible: s.reversible,
                 group: s.group,
+                part: s.part,
             });
         }
         return;
@@ -114,6 +115,7 @@ fn clip_stroke(s: &Stroke, r: &Rect, out: &mut Vec<Stroke>) {
                 pen: s.pen,
                 reversible: s.reversible,
                 group: s.group,
+                part: s.part,
             });
         }
     }
@@ -150,6 +152,7 @@ fn clip_stroke_poly(s: &Stroke, rings: &[Vec<P>], out: &mut Vec<Stroke>) {
                 pen: s.pen,
                 reversible: s.reversible,
                 group: s.group,
+                part: s.part,
             });
         }
         return;
@@ -161,6 +164,7 @@ fn clip_stroke_poly(s: &Stroke, rings: &[Vec<P>], out: &mut Vec<Stroke>) {
                 pen: s.pen,
                 reversible: s.reversible,
                 group: s.group,
+                part: s.part,
             });
         } else {
             run.clear();
@@ -214,6 +218,7 @@ mod poly_tests {
             pen: 3,
             reversible: false,
             group: 7,
+            part: 0,
         };
         let square: Vec<P> = vec![(0.0, 0.0), (10.0, 0.0), (10.0, 10.0), (0.0, 10.0)];
         let out = clip_to_polygon(&[s], &[square]);
@@ -240,6 +245,7 @@ mod poly_tests {
             pen: 0,
             reversible: true,
             group: 0,
+            part: 0,
         };
         let out = clip_to_polygon(&[s], &[outer, hole]);
         assert_eq!(

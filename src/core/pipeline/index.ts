@@ -35,7 +35,20 @@ import { applyDash } from './dash'
  *  pen, while pen groups still plot in palette order — a pen change is a physical pause
  *  regardless, so cross-pen drawing order can't be honoured anyway. */
 export function buildPageGeometry(elements: DocElement[]): Geometry {
-  const out: Geometry = []
+  return buildPageGeometryByElement(elements).flatMap((c) => c.geom)
+}
+
+/** One chunk of page geometry per mark-making element: what `buildPageGeometry` concatenates, kept
+ *  apart so an export can layer by element. Vector exports (SVG) use this to build one layer per
+ *  element. A container (group/clip) is one chunk - its members are composed in Rust, so their
+ *  identity is gone by the time the geometry comes back. Document order. */
+export interface ElementGeometry {
+  el: DocElement
+  geom: Geometry
+}
+
+export function buildPageGeometryByElement(elements: DocElement[]): ElementGeometry[] {
+  const chunks: ElementGeometry[] = []
   let chainId = 0
   // Container members (group/clip children, incl. a clip's mask) are handled via their container, not
   // at the top level. Guard on the container existing, so an orphaned member (container deleted) still
@@ -55,6 +68,8 @@ export function buildPageGeometry(elements: DocElement[]): Geometry {
     if (memberIds.has(el.id)) continue // emitted via its container
     if (el.hidden) continue // hidden elements (incl. containers) make no marks; a hidden clip mask
     // still clips its siblings because that happens inside the container composition, not here.
+    const out: Geometry = []
+    chunks.push({ el, geom: out })
     if (isContainer(el.type)) {
       // Composed (group) / clipped (clip) member geometry — already effected + multi-pen; just place.
       for (const s of place(elementLocalGeometry(el, membersOf), el.transform)) out.push({ ...s })
@@ -82,13 +97,22 @@ export function buildPageGeometry(elements: DocElement[]): Geometry {
       for (const s of styled) out.push({ ...s, pen: stamp(s) })
     }
   }
-  return out
+  return chunks
 }
 
 /** Page geometry clipped to what the pen can actually reach. Both Generate and Preview build
  *  on this so they agree on what gets plotted (and what's pruned). */
 export function buildPlottableGeometry(elements: DocElement[], profile: MachineProfile): Geometry {
   return clipToRegion(buildPageGeometry(elements), drawableRegion(profile))
+}
+
+/** `buildPlottableGeometry`, kept apart per element (see `buildPageGeometryByElement`). Elements
+ *  left with no marks after clipping are dropped. */
+export function buildPlottableGeometryByElement(elements: DocElement[], profile: MachineProfile): ElementGeometry[] {
+  const region = drawableRegion(profile)
+  return buildPageGeometryByElement(elements)
+    .map(({ el, geom }) => ({ el, geom: clipToRegion(geom, region) }))
+    .filter((c) => c.geom.some((s) => s.points.length >= 2))
 }
 
 /** What a full pipeline run produces, by machine kind: a G-code string to download/upload, an

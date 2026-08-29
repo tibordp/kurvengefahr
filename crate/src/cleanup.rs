@@ -169,6 +169,7 @@ fn clean_pen(strokes: &[&Stroke], pen: u16) -> Vec<Stroke> {
                     pen,
                     reversible: true,
                     group: 0,
+                    part: 0,
                 })
             } else {
                 None
@@ -222,6 +223,7 @@ mod tests {
             pen,
             reversible: true,
             group: 0,
+            part: 0,
         }
     }
     fn total_points(v: &[Stroke]) -> usize {
@@ -299,6 +301,7 @@ mod tests {
             pen: 0,
             reversible: true,
             group: 0,
+            part: 0,
         }]);
         assert_eq!(out.len(), 1);
         assert_eq!(
@@ -315,6 +318,7 @@ mod tests {
     fn keeps_pens_separate_and_chains_untouched() {
         let chain = Stroke {
             group: 7,
+            part: 0,
             ..s(0, &[(0.0, 0.0), (1.0, 0.0)])
         };
         let out = cleanup(&[

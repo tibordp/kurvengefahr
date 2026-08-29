@@ -48,6 +48,7 @@ pub fn tsp(grid: &Grid, p: &Params) -> Vec<Stroke> {
         pen: 0,
         reversible: false,
         group: 0,
+        part: 0,
     }]
 }
 

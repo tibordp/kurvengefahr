@@ -32,6 +32,7 @@ pub fn place_word(ink: &LineInk, font_size_mm: f32, slant_deg: f32) -> Vec<Strok
                 // at element concatenation, so generators emit group 0.
                 reversible: true,
                 group: 0,
+                part: 0,
             }
         })
         .collect()

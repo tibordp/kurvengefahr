@@ -30,6 +30,24 @@ export interface Hatch {
   stroke: boolean
 }
 
+/** Stroke part tags for the outline-vs-fill split every hatch-fillable shape shares. The outline
+ *  and the fill are the natural layers of such a shape on export (the fill's individual hatch
+ *  directions stay one layer - that would be a second axis). */
+export const PART_OUTLINE = 1
+export const PART_FILL = 2
+
+/** A hatch-fillable shape's geometry: its outline (if stroked) then its fill, each tagged as a part. */
+export function outlineAndFill(outline: Geometry, fill: Geometry, stroke: boolean): Geometry {
+  return [
+    ...(stroke ? outline.map((s) => ({ ...s, part: PART_OUTLINE })) : []),
+    ...fill.map((s) => ({ ...s, part: PART_FILL })),
+  ]
+}
+
+/** Registry `partLabel` for the outline/fill split. */
+export const outlineFillLabel = (_p: unknown, part: number): string =>
+  part === PART_OUTLINE ? 'Outline' : part === PART_FILL ? 'Fill' : `Part ${part}`
+
 export const defaultHatch = (): Hatch => ({ pattern: 'none', spacing: 3, angle: 45, stroke: true })
 
 /** WASM pattern codes for the polygon-based fills. Rect/ellipse use the exact parametric

@@ -45,7 +45,7 @@ machine's own origin.
 - `buildGcode()` - the full G-code string for the document. Resolves to `null` on an empty
   document or a non-G-code machine (an AxiDraw plots live over serial; there is no file artifact);
   rejects when the machine profile is invalid.
-- `renderSvg()` - what would plot, as an SVG `Blob` (one layer per pen, real mm). Same output as
+- `renderSvg()` - what would plot, as an SVG `Blob` (layered by element, real mm). Same output as
   Export.
 - `renderPng(pxPerMm?)` - the same, as a transparent PNG `Blob`.
 

@@ -1,7 +1,7 @@
 import { registerElement } from '../registry'
 import { polygonGeometry } from '../../core/wasm/shapes'
 import type { Geometry } from '../../core/types'
-import { type Hatch, defaultHatch, sanitizeHatch, pathFill } from './hatch'
+import { type Hatch, defaultHatch, sanitizeHatch, pathFill, outlineAndFill, outlineFillLabel } from './hatch'
 
 export interface PolygonParams {
   /** Radii in mm; the polygon is inscribed in this ellipse, centred at the local origin (0,0). */
@@ -50,6 +50,7 @@ const num = (v: unknown, d: number) => (typeof v === 'number' && Number.isFinite
 
 registerElement('polygon', {
   label: 'Polygon',
+  partLabel: outlineFillLabel,
   describe: (p: PolygonParams) => (p.star ? 'Star' : null),
   generate: (p: PolygonParams): Geometry => {
     const rx = Math.max(0, p.rx)
@@ -57,7 +58,7 @@ registerElement('polygon', {
     const sides = Math.max(3, Math.floor(p.sides))
     const outline = polygonGeometry(rx, ry, sides, p.star, p.innerRatio)
     const fill = pathFill([outline[0]?.points ?? []], p.hatch)
-    return [...(p.hatch.stroke ? outline : []), ...fill]
+    return outlineAndFill(outline, fill, p.hatch.stroke)
   },
   isLocked: () => false,
   sanitizeParams: (raw) => {

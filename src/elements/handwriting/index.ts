@@ -44,6 +44,7 @@ export interface HandwritingParams {
 // optimization. No synchronous `generate` — the controller produces geometry off-thread.
 registerElement('handwriting', {
   label: 'Handwriting',
+  partLabel: (_p, part) => `Line ${part}`,
   describe: (p: HandwritingParams) => {
     const text = p.text.replace(/\s+/g, ' ').trim()
     if (!text) return 'Handwriting (empty)'

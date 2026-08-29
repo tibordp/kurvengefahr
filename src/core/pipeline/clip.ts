@@ -42,6 +42,7 @@ export function clipToRegion(geom: Geometry, r: Rect): Geometry {
     flat.pen,
     flat.reversible,
     flat.group,
+    flat.part,
     r.x0,
     r.y0,
     r.x1,
@@ -54,6 +55,7 @@ export function clipToRegion(geom: Geometry, r: Rect): Geometry {
     pen: res.pen,
     reversible: res.reversible,
     group: res.group,
+    part: res.part,
   })
   res.free()
   return out
@@ -79,7 +81,7 @@ export function clipToPolygon(geom: Geometry, rings: Point[][]): Geometry {
     }
   }
   ringStarts[rings.length] = p
-  const res = wasmClipPolygon(flat.xy, flat.pressure, flat.offsets, flat.pen, flat.reversible, flat.group, ringXy, ringStarts)
+  const res = wasmClipPolygon(flat.xy, flat.pressure, flat.offsets, flat.pen, flat.reversible, flat.group, flat.part, ringXy, ringStarts)
   const out = unflatten({
     xy: res.xy,
     pressure: res.pressure,
@@ -87,6 +89,7 @@ export function clipToPolygon(geom: Geometry, rings: Point[][]): Geometry {
     pen: res.pen,
     reversible: res.reversible,
     group: res.group,
+    part: res.part,
   })
   res.free()
   return out
