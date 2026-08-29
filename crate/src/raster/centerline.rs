@@ -60,10 +60,12 @@ pub fn centerline(grid: &Grid, p: &Params) -> Vec<Stroke> {
             .collect();
         let kept = crate::shapes::simplify(&flat, tol);
         let pts: Vec<Point> = kept
-            .chunks_exact(2)
-            .map(|c| Point {
-                x: c[0],
-                y: c[1],
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|&[x, y]| Point {
+                x,
+                y,
                 pressure: 1.0,
             })
             .collect();

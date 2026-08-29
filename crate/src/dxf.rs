@@ -460,8 +460,10 @@ pub fn import(bytes: &[u8], params_json: &str) -> DxfImport {
                 .collect();
             let kept = crate::shapes::simplify(&flat, crate::tess::DXF_SIMPLIFY_TOL);
             *pts = kept
-                .chunks_exact(2)
-                .map(|c| (c[0] as f64, c[1] as f64))
+                .as_chunks::<2>()
+                .0
+                .iter()
+                .map(|&[x, y]| (x as f64, y as f64))
                 .collect();
         }
     }

@@ -71,11 +71,10 @@ fn compress(state: &mut [u32; 8], block: &[u8; 64]) {
 /// One-shot SHA-256 of an arbitrary message.
 pub fn sha256(data: &[u8]) -> [u8; 32] {
     let mut state = H0;
-    let mut chunks = data.chunks_exact(64);
-    for block in &mut chunks {
-        compress(&mut state, block.try_into().unwrap());
+    let (blocks, rem) = data.as_chunks::<64>();
+    for block in blocks {
+        compress(&mut state, block);
     }
-    let rem = chunks.remainder();
     // Padding: 0x80, zeros, then the 64-bit big-endian bit length — one extra block, or two if
     // the remainder leaves fewer than 9 bytes of room.
     let mut tail = [0u8; 128];

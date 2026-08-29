@@ -23,7 +23,7 @@ impl Mesh {
         let mut lookup: HashMap<[u32; 3], u32> = HashMap::new();
         let mut verts: Vec<[f32; 3]> = Vec::new();
         let mut tris: Vec<[u32; 3]> = Vec::new();
-        for t in soup.chunks_exact(9) {
+        for t in soup.as_chunks::<9>().0 {
             let mut idx = [0u32; 3];
             for v in 0..3 {
                 let p = [t[v * 3], t[v * 3 + 1], t[v * 3 + 2]];
