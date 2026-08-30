@@ -5,6 +5,7 @@
 //   - wheel            → zoom toward the cursor
 //   - Space-drag / MMB → pan (only meaningful when the bed exceeds the viewport; clamped)
 //   - mouse-move       → publish cursor position (mm) to the status bar
+//   - right-click / touch long-press → context menu; two-finger drag/pinch → pan/zoom
 // The store stays authoritative for element transforms; the viewport is its own UI store.
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { DocElement } from '../core/types'
@@ -23,7 +24,7 @@ import { ContainerNode } from './ContainerNode'
 import { CanvasContextMenu, type CanvasMenuState } from './CanvasContextMenu'
 import { PreviewLayer } from './PreviewLayer'
 import { DrawingPreview } from './DrawingPreview'
-import { NodeEditLayer } from './NodeEditLayer'
+import { NodeEditLayer, NODE_ANCHOR, NODE_MIDPOINT } from './NodeEditLayer'
 import { GhostLayer } from './GhostLayer'
 import { TurtleMarker } from './TurtleMarker'
 import { FiducialLayer } from './FiducialLayer'
@@ -43,6 +44,7 @@ import { place, localToPage, effectiveTransform } from '../core/pipeline/place'
 import { elementLocalGeometry } from '../core/pipeline/clipGeometry'
 import { generateLocal, isContainer } from '../elements/registry'
 import { useNodeSelection, isNodeSelected, type NodeSel } from './nodeSelection'
+import { LONG_PRESS_MS, LONG_PRESS_SLOP_PX, LONG_PRESS_HAPTIC_MS, longPressed } from './longPress'
 import { useHover } from '../store/hover'
 import type { PathParams } from '../elements/shapes'
 
@@ -101,6 +103,14 @@ export function Canvas() {
   const [marquee, setMarquee] = useState<{ a: Pt; b: Pt } | null>(null)
   const marqueeStart = useRef<Pt | null>(null)
   const [menu, setMenu] = useState<CanvasMenuState | null>(null)
+  // Touch long-press bookkeeping (see longPress.ts): the pending timer, where the press started
+  // (for the slop check), and whether the pointer currently down is a touch (for onContextMenu).
+  const longPress = useRef<{ timer: number | null; x: number; y: number; touchDown: boolean }>({
+    timer: null,
+    x: 0,
+    y: 0,
+    touchDown: false,
+  })
 
   // Track the host size.
   useEffect(() => {
@@ -232,16 +242,32 @@ export function Canvas() {
   // Finalize an in-progress drag even if the pointer is released outside the stage (e.g. freehand),
   // and keep the pointer/pinch bookkeeping clean when a release/cancel misses the stage.
   useEffect(() => {
+    const cancelLongPress = () => {
+      const lp = longPress.current
+      if (lp.timer !== null) window.clearTimeout(lp.timer)
+      lp.timer = null
+    }
     const up = (e: PointerEvent) => {
       pointers.current.delete(e.pointerId)
       if (pointers.current.size < 2) pinch.current = null
+      cancelLongPress()
+      longPress.current.touchDown = false
       drawPointerUp()
+    }
+    // Long-press slop lives at window level: once Konva starts dragging a node it stops routing
+    // pointermove through the stage, so a stage-level check would never see the finger move.
+    const move = (e: PointerEvent) => {
+      const lp = longPress.current
+      if (lp.timer !== null && Math.hypot(e.clientX - lp.x, e.clientY - lp.y) > LONG_PRESS_SLOP_PX)
+        cancelLongPress() // it moved: a drag, not a press
     }
     window.addEventListener('pointerup', up)
     window.addEventListener('pointercancel', up)
+    window.addEventListener('pointermove', move)
     return () => {
       window.removeEventListener('pointerup', up)
       window.removeEventListener('pointercancel', up)
+      window.removeEventListener('pointermove', move)
     }
   }, [])
 
@@ -315,21 +341,39 @@ export function Canvas() {
     )
   }
 
-  // Right-click: open the context menu (acting on the element under the cursor, or the background).
-  // The element's own mousedown has already resolved selection, so we just read it.
-  const onContextMenu = (e: KonvaEventObject<MouseEvent>) => {
-    e.evt.preventDefault()
-    // Mid-pen-path, right-click finishes it open (no extra node) — the only way to get a two-node
-    // curved segment. (The right-click's pointerdown is already ignored, so no node was added.)
+  // Open the context menu at viewport (clientX, clientY), acting on the element under the hit
+  // node or on the background. Shared by right-click and touch long-press; the element's own
+  // mousedown/touchstart has already resolved selection, so we just read it.
+  const openMenu = (hit: Konva.Node, clientX: number, clientY: number) => {
+    // Mid-pen-path, right-click / long-press finishes it open (no extra node) — the only way to
+    // get a two-node curved segment. (The right-click's pointerdown is already ignored, so no
+    // node was added.)
     if (drawing) {
       finishPenPath()
       return
     }
     if (previewActive) return
-    const stage = e.target.getStage()
+    const stage = hit.getStage()
+    // A path's control point or segment midpoint (NodeEditLayer): the menu acts on that node —
+    // select it if it isn't already (the mousedown/touchstart normally has) — or offers to insert on
+    // that segment.
+    if (hit.name() === NODE_ANCHOR || hit.name() === NODE_MIDPOINT) {
+      const elementId = hit.getAttr('elementId') as string
+      const ci = hit.getAttr('ci') as number
+      let segment: CanvasMenuState['segment']
+      if (hit.name() === NODE_ANCHOR) {
+        const ni = hit.getAttr('ni') as number
+        const ns = useNodeSelection.getState()
+        if (!isNodeSelected(ns.sels, elementId, ci, ni)) ns.set([{ elementId, ci, ni }])
+      } else {
+        segment = { ci, seg: hit.getAttr('seg') as number }
+      }
+      setMenu({ x: clientX, y: clientY, page: pointerMM(stage) ?? { x: 0, y: 0 }, targetId: elementId, segment })
+      return
+    }
     // Walk up from the hit node to the owning element Group (its id is the element id).
     const ids = new Set(useDoc.getState().elements.map((el) => el.id))
-    let node: Konva.Node | null = e.target
+    let node: Konva.Node | null = hit
     let targetId: string | null = null
     while (node && node !== stage) {
       const nid = node.id()
@@ -343,13 +387,50 @@ export function Canvas() {
       useDoc.getState().select(targetId, false)
     }
     const p = pointerMM(stage) ?? { x: 0, y: 0 }
-    setMenu({ x: e.evt.clientX, y: e.evt.clientY, page: p, targetId })
+    setMenu({ x: clientX, y: clientY, page: p, targetId })
+  }
+
+  const onContextMenu = (e: KonvaEventObject<MouseEvent>) => {
+    e.evt.preventDefault()
+    // Touch goes through the long-press timer below; Android also synthesizes a `contextmenu`
+    // from a long touch, so a touch-originated one is ignored or the menu would open twice.
+    if (longPress.current.touchDown) return
+    openMenu(e.target, e.evt.clientX, e.evt.clientY)
+  }
+
+  // --- Touch long-press → context menu (see longPress.ts). Armed by a single non-mouse
+  // pointerdown; cancelled by movement past the slop radius, a second finger, or release.
+  const cancelLongPress = () => {
+    const lp = longPress.current
+    if (lp.timer !== null) window.clearTimeout(lp.timer)
+    lp.timer = null
+  }
+  const armLongPress = (e: KonvaEventObject<PointerEvent>) => {
+    cancelLongPress()
+    const lp = longPress.current
+    lp.x = e.evt.clientX
+    lp.y = e.evt.clientY
+    const hit = e.target
+    lp.timer = window.setTimeout(() => {
+      lp.timer = null
+      longPressed.current = true
+      // The press is a menu gesture now, not the start of a marquee; the release that follows
+      // finds no marquee to resolve and (via `longPressed`) no tap to toggle.
+      marqueeStart.current = null
+      setMarquee(null)
+      // A tick under the finger, like the platform's own long-press (Android; iOS has no web
+      // haptics API, so there it's silent).
+      navigator.vibrate?.(LONG_PRESS_HAPTIC_MS)
+      openMenu(hit, lp.x, lp.y)
+    }, LONG_PRESS_MS)
   }
 
   const onPointerDown = (e: KonvaEventObject<PointerEvent>) => {
     pointers.current.set(e.evt.pointerId, { x: e.evt.clientX, y: e.evt.clientY })
+    longPress.current.touchDown = e.evt.pointerType !== 'mouse'
     // Second finger down → switch to a pinch gesture, abandoning any single-pointer interaction.
     if (pointers.current.size >= 2) {
+      cancelLongPress()
       pan.current.active = false
       marqueeStart.current = null
       setMarquee(null)
@@ -357,6 +438,7 @@ export function Canvas() {
       beginPinch()
       return
     }
+    if (e.evt.pointerType !== 'mouse') armLongPress(e)
     if (e.evt.button === 2) return // right-click → handled by onContextMenu (no marquee/pan)
     if (spaceHeld || e.evt.button === 1) {
       pan.current = { active: true, lastX: e.evt.clientX, lastY: e.evt.clientY }
@@ -430,6 +512,17 @@ export function Canvas() {
 
   const onPointerUp = (e: KonvaEventObject<PointerEvent>) => {
     pointers.current.delete(e.evt.pointerId)
+    cancelLongPress()
+    longPress.current.touchDown = false
+    // A finger has no hover: once it lifts there is no cursor position to report (mouse does this
+    // in onMouseLeave, which touch never fires).
+    if (e.evt.pointerType !== 'mouse') {
+      clearCursor()
+      setHoverElement(false)
+      // Konva's `tap` (the toggle consumer) fires on the touchend that follows this pointerup in
+      // the same task; anything left unconsumed after that is stale.
+      window.setTimeout(() => (longPressed.current = false), 0)
+    }
     // Ending (or stepping down out of) a pinch: don't fall through to marquee/draw resolution.
     if (pinch.current) {
       if (pointers.current.size < 2) pinch.current = null

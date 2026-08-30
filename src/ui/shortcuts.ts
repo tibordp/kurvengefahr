@@ -122,6 +122,7 @@ export const SHORTCUT_GROUPS: { title: string; items: ShortcutItem[] }[] = [
       { keys: ['Double-click', 'node'], label: 'Toggle corner / smooth' },
       { keys: ['Alt', 'drag handle'], label: 'Break handle symmetry (cusp)' },
       { keys: ['Click', 'path body'], label: 'Toggle control points / whole-path box' },
+      { keys: ['Right-click', 'node'], label: 'Node actions menu (insert, smooth, delete)' },
     ],
   },
   {
@@ -143,5 +144,15 @@ export const SHORTCUT_GROUPS: { title: string; items: ShortcutItem[] }[] = [
   {
     title: 'Help',
     items: [{ keys: ['?'], label: 'Shortcuts & about' }],
+  },
+  {
+    title: 'Touch',
+    items: [
+      { keys: ['Long-press'], label: 'Context menu (element or background)' },
+      { keys: ['Two fingers'], label: 'Pan / pinch to zoom' },
+      { keys: ['Double-tap', 'element'], label: 'Open the inspector' },
+      { keys: ['Double-tap'], label: 'Finish a pen path' },
+      { keys: ['Double-tap', 'node'], label: 'Toggle corner / smooth' },
+    ],
   },
 ]

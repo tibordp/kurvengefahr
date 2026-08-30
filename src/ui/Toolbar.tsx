@@ -1,5 +1,20 @@
 import { useState, useEffect } from 'react'
-import { RotateCw, Play, Pencil, Download, Printer, PanelRight, CircleHelp, Undo2, Redo2 } from 'lucide-react'
+import {
+  RotateCw,
+  Play,
+  Pencil,
+  Download,
+  Printer,
+  PanelRight,
+  CircleHelp,
+  Undo2,
+  Redo2,
+  MoreHorizontal,
+  Search,
+  Maximize,
+  Focus,
+  MousePointer2,
+} from 'lucide-react'
 import { useDoc } from '../store/document'
 import { usePreview } from '../store/preview'
 import { useTools } from '../store/tools'
@@ -18,9 +33,11 @@ import { useSerial } from '../store/serial'
 import { usePlotSession } from '../store/plotSession'
 import { toast } from '../store/toast'
 import { SerialPlotCluster } from './PlotHUD'
-import { Button, IconButton } from './primitives'
+import { Button, IconButton, Menu, MenuItem, MenuSeparator } from './primitives'
 import { MOD_KEY } from './shortcuts'
 import { DocumentMenu } from './DocumentMenu'
+import { useCommandPalette } from '../store/commandPalette'
+import { useViewport } from '../store/viewport'
 
 /** Map a bridge failure to a short, human toast. CANCELLED is intentionally absent (silent). */
 function plotErrorMessage(code: string): string {
@@ -62,6 +79,7 @@ export function LogoMark({ className }: { className?: string }) {
 
 export function Toolbar() {
   const elements = useDoc((s) => s.elements)
+  const hasSelection = useDoc((s) => s.selectedIds.length > 0)
   const previewActive = usePreview((s) => s.active)
   const toggleInspector = useUI((s) => s.toggleInspector)
   const toggleHelp = useUI((s) => s.toggleHelp)
@@ -261,15 +279,44 @@ export function Toolbar() {
         </Button>
       )}
 
-      {/* Help / About + keyboard shortcuts. */}
-      <IconButton
-        onClick={toggleHelp}
-        aria-label="Help and about"
-        aria-haspopup="dialog"
-        title="Shortcuts & about (?)"
+      {/* ⋯ — the click-reachable home for everything that is otherwise keyboard-only (command
+          palette, fit view, select all) plus Help. One menu on every breakpoint: the gap it fills
+          is "no keyboard at hand", which is a tablet as much as a phone — and a mouse-only desktop
+          user who never learned ⌘K. */}
+      <Menu
+        align="right"
+        trigger={({ open }) => (
+          <IconButton aria-label="More" title="More" className={open ? 'bg-bg text-text' : undefined}>
+            <MoreHorizontal size={17} />
+          </IconButton>
+        )}
       >
-        <CircleHelp size={17} />
-      </IconButton>
+        <MenuItem onClick={() => useCommandPalette.getState().set(true)}>
+          <Search size={15} /> Actions…
+          <span className="ml-auto pl-4 text-2xs text-faint">{MOD_KEY}K</span>
+        </MenuItem>
+        <MenuSeparator />
+        <MenuItem onClick={() => useViewport.getState().requestFit('all')}>
+          <Maximize size={15} /> Fit everything
+          <span className="ml-auto pl-4 text-2xs text-faint">⇧1</span>
+        </MenuItem>
+        <MenuItem disabled={!hasSelection} onClick={() => useViewport.getState().requestFit('selection')}>
+          <Focus size={15} /> Fit selection
+          <span className="ml-auto pl-4 text-2xs text-faint">⇧2</span>
+        </MenuItem>
+        <MenuItem
+          disabled={elements.length === 0}
+          onClick={() => useDoc.getState().selectMany(useDoc.getState().elements.map((e) => e.id))}
+        >
+          <MousePointer2 size={15} /> Select all
+          <span className="ml-auto pl-4 text-2xs text-faint">{MOD_KEY}A</span>
+        </MenuItem>
+        <MenuSeparator />
+        <MenuItem onClick={toggleHelp}>
+          <CircleHelp size={15} /> Help & about
+          <span className="ml-auto pl-4 text-2xs text-faint">?</span>
+        </MenuItem>
+      </Menu>
     </header>
   )
 }

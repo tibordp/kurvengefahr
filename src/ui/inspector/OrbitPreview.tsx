@@ -55,6 +55,10 @@ export function OrbitPreview({
   // clientX/Y, not movementX/Y (which is physical-px on some platforms and 0 in synthetic events).
   const pose = useRef<Pose>({ ...params })
   const gesture = useRef<{ mode: 'orbit' | 'pan'; lastX: number; lastY: number } | null>(null)
+  // Active pointers by id; two of them turn the gesture into a two-finger drag (pan) + pinch
+  // (dolly) — touch's stand-in for Shift-drag and the wheel.
+  const pointers = useRef<Map<number, { x: number; y: number }>>(new Map())
+  const pinch = useRef<{ dist: number; mx: number; my: number } | null>(null)
   const wheelTimer = useRef<number | null>(null)
   const raf = useRef(0)
 
@@ -89,9 +93,22 @@ export function OrbitPreview({
     }
   }
 
+  const twoFingers = () => {
+    const pts = [...pointers.current.values()]
+    if (pts.length < 2) return null
+    const [a, b] = pts
+    return { dist: Math.hypot(a.x - b.x, a.y - b.y) || 1, mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2 }
+  }
+
   const onPointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (e.button !== 0 && e.button !== 1 && e.button !== 2) return
     e.currentTarget.setPointerCapture(e.pointerId)
+    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
+    if (pointers.current.size >= 2) {
+      // Second finger: the single-finger orbit (already begun) becomes a pinch/pan.
+      pinch.current = twoFingers()
+      return
+    }
     if (!wheelTimer.current) syncPoseFromProps()
     gesture.current = {
       mode: e.button !== 0 || e.shiftKey ? 'pan' : 'orbit',
@@ -104,6 +121,18 @@ export function OrbitPreview({
   const onPointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
     const g = gesture.current
     if (!g) return
+    if (pointers.current.has(e.pointerId)) pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
+    const pc = pinch.current
+    const two = pc && twoFingers()
+    if (pc && two) {
+      const p = pose.current
+      p.distance = clamp((p.distance * pc.dist) / two.dist, 1.3, 20)
+      p.panX = clamp(p.panX + (two.mx - pc.mx) / Math.max(1, width), -0.5, 0.5)
+      p.panY = clamp(p.panY + (two.my - pc.my) / Math.max(1, height), -0.5, 0.5)
+      pinch.current = two
+      queueCommit()
+      return
+    }
     const dx = e.clientX - g.lastX
     const dy = e.clientY - g.lastY
     g.lastX = e.clientX
@@ -120,8 +149,16 @@ export function OrbitPreview({
     queueCommit()
   }
 
-  const onPointerUp = () => {
+  const onPointerUp = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    pointers.current.delete(e.pointerId)
+    if (pointers.current.size < 2) pinch.current = null
     if (!gesture.current) return
+    if (pointers.current.size > 0) {
+      // One finger lifted out of a pinch: the remaining one continues as a plain orbit from here.
+      const rest = [...pointers.current.values()][0]
+      gesture.current = { mode: 'orbit', lastX: rest.x, lastY: rest.y }
+      return
+    }
     gesture.current = null
     queueCommit()
     endGesture()
@@ -248,7 +285,7 @@ export function OrbitPreview({
         ref={canvasRef}
         className="w-full cursor-grab touch-none rounded-md border border-border bg-surface active:cursor-grabbing"
         style={{ height }}
-        title="Drag to orbit · Shift-drag or right-drag to pan · scroll to zoom"
+        title="Drag to orbit · Shift-drag, right-drag, or two-finger drag to pan · scroll or pinch to zoom"
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}

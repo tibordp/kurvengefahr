@@ -81,7 +81,8 @@ to the control points. Dragging the body just moves the path and never switches 
 
 `Cmd/Ctrl K` opens the command palette - every command, searchable, including ones that have no
 button. `?` opens the shortcut reference. `Shift 1` fits the whole page in view, `Shift 2` the
-selection.
+selection. Without a keyboard, the `...` button at the right end of the toolbar reaches the same
+things: the palette, fit to view, select all, and help.
 
 ## On a phone
 
@@ -89,4 +90,19 @@ The same app adapts below tablet width: the inspector becomes a drawer (toggle i
 toolbar, or double-tap any element), the document menu collapses to a single button with rename
 inside, and the Logo code editor goes fullscreen, sized to the on-screen keyboard, with an eye
 button to peek at the drawing while you edit. Live plotting over USB works wherever the browser
-offers Web Serial; everything else is touch-friendly.
+offers Web Serial.
+
+Touch stands in for the mouse and keyboard like this:
+
+- Long-press an element or the empty page for the context menu - duplicate, copy, cut, paste,
+  delete, flip, group, pen assignment, and the fiducial. Right-click does the same with a mouse.
+- Two fingers pan; pinch zooms.
+- Editing a path: tap a node to select it, drag to move it, double-tap to switch it between
+  corner and smooth, and tap a segment midpoint to insert a node. Long-press a node or a midpoint
+  for the same actions as a menu (insert, make smooth or corner, delete, transform the whole
+  path) - right-click does the same on desktop.
+- The STL preview orbits with one finger, pans with two, and zooms with a pinch.
+
+Modifier-key gestures (Shift to constrain a shape or rotation, Alt to bypass snapping or break a
+handle, Shift-click to extend a selection) have no touch equivalent yet; turn off the grid in the
+status bar to move freely, and drag a marquee to select several elements.

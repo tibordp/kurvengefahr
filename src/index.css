@@ -1,5 +1,10 @@
 @import 'tailwindcss';
 
+/* Hover-capable input (mouse/trackpad). Tailwind's own `hover:` is already gated on
+   `(hover: hover)`, so a control that is hidden until hover must hide only on such devices - a
+   touch tablet is wide but never hovers. */
+@custom-variant can-hover (@media (hover: hover));
+
 /* Design tokens. Tailwind v4 reads these and generates matching utilities
    (bg-accent, text-muted, rounded-card, text-2xs, …). The palette is a calm
    neutral surface + a single signal-red accent — a nod to the neon trails of

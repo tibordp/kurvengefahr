@@ -49,4 +49,10 @@ export default defineConfig({
       '@wasm': path.resolve(__dirname, 'crate/pkg'),
     },
   },
+  // Dev server reachable from a phone on the LAN: bind every interface, and let Vite's host check
+  // (which otherwise admits only localhost) accept this machine's mDNS name (`<host>.local`).
+  server: {
+    host: true,
+    allowedHosts: ['.local'],
+  },
 })

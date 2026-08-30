@@ -13,10 +13,22 @@ import type Konva from 'konva'
 import { useDoc } from '../store/document'
 import { beginGesture, endGesture } from '../store/history'
 import { localToPage, pageToLocal, effectiveTransform } from '../core/pipeline/place'
-import { splitCubic } from '../core/wasm/shapes'
 import { snap } from './snap'
-import { cornerNode, type PathNode, type PathParams } from '../elements/shapes'
-import { useNodeSelection, clearNodeSelection, isNodeSelected } from './nodeSelection'
+import type { PathNode, PathParams } from '../elements/shapes'
+import {
+  useNodeSelection,
+  clearNodeSelection,
+  isNodeSelected,
+  toggleSmoothNode,
+  insertNodeOnSegment,
+} from './nodeSelection'
+import { isCoarsePointer } from '../ui/mobile'
+import { consumeLongPress } from './longPress'
+
+/** Konva node names for the context menu: a long-press / right-click on one of these acts on the
+ *  node (`elementId`, `ci`, `ni`) or segment (`elementId`, `ci`, `seg`) it carries as attrs. */
+export const NODE_ANCHOR = 'node-anchor'
+export const NODE_MIDPOINT = 'node-midpoint'
 
 /** Cubic point at parameter t for the segment A→B (handles relative to anchors), in local mm. */
 function cubicAt(a: PathNode, b: PathNode, t: number): { x: number; y: number } {
@@ -65,6 +77,15 @@ export function NodeEditLayer({ pxPerMm }: { pxPerMm: number }) {
   const hr = 3 / pxPerMm // handle radius
   const ir = 2.6 / pxPerMm // insert (midpoint) dot radius
   const lw = 1 / pxPerMm
+  // Hit radius, larger than the drawn dot: a fingertip needs ~a 32 px target, a mouse gets a little
+  // slack too. The visuals stay small so neighbouring nodes remain distinguishable.
+  const hitR = (isCoarsePointer() ? 16 : 7) / pxPerMm
+  const hitCircle = (ctx: Konva.Context, shape: Konva.Shape) => {
+    ctx.beginPath()
+    ctx.arc(0, 0, hitR, 0, Math.PI * 2, false)
+    ctx.closePath()
+    ctx.fillStrokeShape(shape)
+  }
 
   const setContourNodes = (ci: number, nodes: PathNode[]) =>
     setParams(el.id, { ...p, contours: p.contours.map((c, j) => (j === ci ? { ...c, nodes } : c)) })
@@ -77,51 +98,10 @@ export function NodeEditLayer({ pxPerMm }: { pxPerMm: number }) {
 
   const dragLocal = (e: Konva.KonvaEventObject<DragEvent>) => pageToLocal(t, e.target.x(), e.target.y())
 
-  // Double-click an anchor: corner (no handles) ⇄ smooth (symmetric handles synthesized from the
-  // neighbour direction). Cusp nodes (independent handles) collapse to a corner first.
-  const toggleSmooth = (ci: number, ni: number) => {
-    const c = p.contours[ci]
-    const n = c.nodes.length
-    const nd = c.nodes[ni]
-    const corner = !nd.hinX && !nd.hinY && !nd.houtX && !nd.houtY
-    if (!corner) {
-      updateNode(ci, ni, { hinX: 0, hinY: 0, houtX: 0, houtY: 0 })
-      return
-    }
-    const prev = ni > 0 ? c.nodes[ni - 1] : c.closed ? c.nodes[n - 1] : nd
-    const next = ni < n - 1 ? c.nodes[ni + 1] : c.closed ? c.nodes[0] : nd
-    const dx = next.x - prev.x
-    const dy = next.y - prev.y
-    const len = Math.hypot(dx, dy) || 1
-    const hl = ((Math.hypot(nd.x - prev.x, nd.y - prev.y) + Math.hypot(next.x - nd.x, next.y - nd.y)) / 2) * 0.25
-    const ux = (dx / len) * hl
-    const uy = (dy / len) * hl
-    updateNode(ci, ni, { houtX: ux, houtY: uy, hinX: -ux, hinY: -uy })
-  }
-
-  // Insert a node at the midpoint (t=0.5) of segment i→j. A straight segment gets a plain corner;
-  // a curved one is split via de Casteljau so the curve is unchanged.
-  const insertNode = (ci: number, i: number) => {
-    const c = p.contours[ci]
-    const n = c.nodes.length
-    const j = (i + 1) % n
-    const a = c.nodes[i]
-    const b = c.nodes[j]
-    const straight = !a.houtX && !a.houtY && !b.hinX && !b.hinY
-    const nodes = c.nodes.slice()
-    let mid: PathNode
-    if (straight) {
-      mid = cornerNode((a.x + b.x) / 2, (a.y + b.y) / 2)
-    } else {
-      const s = splitCubic(a, { x: a.houtX, y: a.houtY }, { x: b.hinX, y: b.hinY }, b, 0.5)
-      mid = { x: s[0], y: s[1], hinX: s[4], hinY: s[5], houtX: s[6], houtY: s[7] }
-      nodes[i] = { ...a, houtX: s[2], houtY: s[3] }
-      nodes[j] = { ...b, hinX: s[8], hinY: s[9] }
-    }
-    nodes.splice(i + 1, 0, mid) // j===0 (closing segment) ⇒ i is last ⇒ append
-    setContourNodes(ci, nodes)
-    setSels([{ elementId: el.id, ci, ni: i + 1 }])
-  }
+  // Double-click an anchor: corner ⇄ smooth; click a midpoint dot: insert a node on that segment.
+  // (The operations themselves are shared with the context menu — see nodeSelection.ts.)
+  const toggleSmooth = (ci: number, ni: number) => toggleSmoothNode(el.id, ci, ni)
+  const insertNode = (ci: number, i: number) => insertNodeOnSegment(el.id, ci, i)
 
   // Click selects a node; Shift-click toggles it in/out of a multi-selection. Clicking an already-
   // selected node without Shift keeps the group, so the ensuing drag moves all selected nodes.
@@ -184,9 +164,14 @@ export function NodeEditLayer({ pxPerMm }: { pxPerMm: number }) {
                 return (
                   <Circle
                     key={`m${i}`}
+                    name={NODE_MIDPOINT}
+                    elementId={el.id}
+                    ci={ci}
+                    seg={i}
                     x={pg.x}
                     y={pg.y}
                     radius={ir}
+                    hitFunc={hitCircle}
                     fill="#ffffff"
                     stroke="#9ca3af"
                     strokeWidth={lw}
@@ -200,7 +185,11 @@ export function NodeEditLayer({ pxPerMm }: { pxPerMm: number }) {
                     }}
                     onClick={(e) => {
                       e.cancelBubble = true
-                      insertNode(ci, i)
+                      if (e.evt.button === 0) insertNode(ci, i) // right-click → context menu instead
+                    }}
+                    onTap={(e) => {
+                      e.cancelBubble = true
+                      if (!consumeLongPress()) insertNode(ci, i) // a long-press opened the menu instead
                     }}
                   />
                 )
@@ -219,6 +208,7 @@ export function NodeEditLayer({ pxPerMm }: { pxPerMm: number }) {
                     x={pos.x}
                     y={pos.y}
                     radius={hr}
+                    hitFunc={hitCircle}
                     fill="#6b7280"
                     draggable
                     onDragStart={beginGesture}
@@ -258,15 +248,25 @@ export function NodeEditLayer({ pxPerMm }: { pxPerMm: number }) {
               return (
                 <Circle
                   key={`a${i}`}
+                  name={NODE_ANCHOR}
+                  elementId={el.id}
+                  ci={ci}
+                  ni={i}
                   x={a.x}
                   y={a.y}
                   radius={selected ? r * 1.35 : r}
+                  hitFunc={hitCircle}
                   fill={selected ? '#ffffff' : '#e5484d'}
                   stroke={selected ? '#e5484d' : '#ffffff'}
                   strokeWidth={selected ? lw * 2 : lw}
                   draggable
                   onMouseDown={(e) => selectNode(ci, i, !!(e.evt as MouseEvent).shiftKey)}
+                  onTouchStart={() => selectNode(ci, i, false)}
                   onDblClick={(e) => {
+                    e.cancelBubble = true
+                    toggleSmooth(ci, i)
+                  }}
+                  onDblTap={(e) => {
                     e.cancelBubble = true
                     toggleSmooth(ci, i)
                   }}

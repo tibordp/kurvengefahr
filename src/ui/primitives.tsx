@@ -140,14 +140,14 @@ export function Menu({
   const ref = useRef<HTMLDivElement>(null)
   useEffect(() => {
     if (!open) return
-    const onDown = (e: MouseEvent) => {
+    const onDown = (e: PointerEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
     }
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false)
-    document.addEventListener('mousedown', onDown)
+    document.addEventListener('pointerdown', onDown)
     document.addEventListener('keydown', onKey)
     return () => {
-      document.removeEventListener('mousedown', onDown)
+      document.removeEventListener('pointerdown', onDown)
       document.removeEventListener('keydown', onKey)
     }
   }, [open])
@@ -198,16 +198,16 @@ export function ContextMenu({
   }, [x, y])
 
   useEffect(() => {
-    const onDown = (e: MouseEvent) => {
+    const onDown = (e: PointerEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) onClose()
     }
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
-    window.addEventListener('mousedown', onDown)
+    window.addEventListener('pointerdown', onDown)
     window.addEventListener('keydown', onKey)
     window.addEventListener('resize', onClose)
     window.addEventListener('wheel', onClose, { passive: true })
     return () => {
-      window.removeEventListener('mousedown', onDown)
+      window.removeEventListener('pointerdown', onDown)
       window.removeEventListener('keydown', onKey)
       window.removeEventListener('resize', onClose)
       window.removeEventListener('wheel', onClose)
@@ -218,7 +218,7 @@ export function ContextMenu({
     <div
       ref={ref}
       role="menu"
-      className="fixed z-50 min-w-48 rounded-md border border-border bg-surface p-1 shadow-panel"
+      className="fixed z-50 w-max min-w-48 max-w-[calc(100vw-16px)] rounded-md border border-border bg-surface p-1 shadow-panel"
       style={{ left: pos.x, top: pos.y }}
       onClick={onClose}
       onContextMenu={(e) => e.preventDefault()}

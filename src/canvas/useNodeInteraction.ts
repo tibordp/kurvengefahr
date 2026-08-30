@@ -14,6 +14,7 @@ import { useDoc } from '../store/document'
 import { beginGesture, endGesture } from '../store/history'
 import { composeTransforms, effectiveTransform, invertTransform } from '../core/pipeline/place'
 import { snap } from './snap'
+import { consumeLongPress } from './longPress'
 
 const IDENTITY: Transform = { x: 0, y: 0, rotation: 0, scaleX: 1, scaleY: 1 }
 
@@ -66,7 +67,9 @@ export function useNodeInteraction(element: DocElement): NodeHandlers {
       element.type === 'path' && selectedIds.length === 1 && selectedIds[0] === element.id
   }
   const fireToggle = () => {
-    if (armed.current) togglePathTransform(element.id)
+    // The release after a touch long-press is the tail of a menu gesture, not a tap.
+    const afterLongPress = consumeLongPress()
+    if (armed.current && !afterLongPress) togglePathTransform(element.id)
     armed.current = false
   }
 

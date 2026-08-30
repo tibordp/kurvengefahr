@@ -8,6 +8,10 @@ const DESKTOP = '(min-width: 768px)'
 /** Non-reactive check, for event handlers. */
 export const isMobileViewport = () => !window.matchMedia(DESKTOP).matches
 
+/** The primary pointer is a finger (touch) rather than a mouse/trackpad/pen — hit targets need to
+ *  be bigger. Independent of the viewport width: a touch tablet is wide but still coarse. */
+export const isCoarsePointer = () => window.matchMedia('(pointer: coarse)').matches
+
 /** Reactive variant, for render-time branching. */
 export function useIsMobile() {
   const [mobile, setMobile] = useState(isMobileViewport)

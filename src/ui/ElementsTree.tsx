@@ -153,7 +153,7 @@ const ElementRow = memo(function ElementRow(p: RowProps) {
       )}
       {!p.editing && (
         <button
-          className="rounded p-1 text-faint opacity-60 transition-colors hover:bg-surface hover:text-text sm:opacity-0 sm:group-hover:opacity-100"
+          className="rounded p-1 text-faint opacity-60 transition-colors hover:bg-surface hover:text-text can-hover:opacity-0 can-hover:group-hover:opacity-100"
           title="Rename"
           aria-label="Rename element"
           onClick={(e) => {
@@ -168,7 +168,7 @@ const ElementRow = memo(function ElementRow(p: RowProps) {
         className={cx(
           'rounded p-1 text-faint transition-colors hover:bg-surface hover:text-text',
           // Stay visible while hidden (so the state reads at a glance); otherwise reveal on hover.
-          el.hidden ? 'opacity-100' : 'opacity-60 sm:opacity-0 sm:group-hover:opacity-100',
+          el.hidden ? 'opacity-100' : 'opacity-60 can-hover:opacity-0 can-hover:group-hover:opacity-100',
         )}
         title={el.hidden ? 'Show' : 'Hide'}
         aria-label={el.hidden ? 'Show element' : 'Hide element'}
@@ -180,7 +180,7 @@ const ElementRow = memo(function ElementRow(p: RowProps) {
         {el.hidden ? <EyeOff size={14} /> : <Eye size={14} />}
       </button>
       <button
-        className="rounded p-1 text-faint opacity-60 transition-colors hover:bg-surface hover:text-accent-text sm:opacity-0 sm:group-hover:opacity-100"
+        className="rounded p-1 text-faint opacity-60 transition-colors hover:bg-surface hover:text-accent-text can-hover:opacity-0 can-hover:group-hover:opacity-100"
         title="Delete"
         aria-label="Delete element"
         onClick={(e) => {
@@ -393,7 +393,7 @@ export function ElementsTree() {
           <span className="shrink-0 text-2xs text-faint">{members.length}</span>
           {!isEditing && (
             <button
-              className="rounded p-1 text-faint opacity-60 transition-colors hover:bg-surface hover:text-text sm:opacity-0 sm:group-hover:opacity-100"
+              className="rounded p-1 text-faint opacity-60 transition-colors hover:bg-surface hover:text-text can-hover:opacity-0 can-hover:group-hover:opacity-100"
               title="Rename"
               aria-label="Rename container"
               onClick={(e) => {
@@ -407,7 +407,7 @@ export function ElementsTree() {
           <button
             className={cx(
               'rounded p-1 text-faint transition-colors hover:bg-surface hover:text-text',
-              el.hidden ? 'opacity-100' : 'opacity-60 sm:opacity-0 sm:group-hover:opacity-100',
+              el.hidden ? 'opacity-100' : 'opacity-60 can-hover:opacity-0 can-hover:group-hover:opacity-100',
             )}
             title={el.hidden ? 'Show' : 'Hide'}
             aria-label={el.hidden ? 'Show' : 'Hide'}
@@ -419,7 +419,7 @@ export function ElementsTree() {
             {el.hidden ? <EyeOff size={14} /> : <Eye size={14} />}
           </button>
           <button
-            className="rounded p-1 text-faint opacity-60 transition-colors hover:bg-surface hover:text-text sm:opacity-0 sm:group-hover:opacity-100"
+            className="rounded p-1 text-faint opacity-60 transition-colors hover:bg-surface hover:text-text can-hover:opacity-0 can-hover:group-hover:opacity-100"
             title={isClip ? 'Release clip' : 'Ungroup'}
             aria-label={isClip ? 'Release clip' : 'Ungroup'}
             onClick={(e) => {
@@ -430,7 +430,7 @@ export function ElementsTree() {
             {isClip ? <Crop size={14} /> : <Ungroup size={14} />}
           </button>
           <button
-            className="rounded p-1 text-faint opacity-60 transition-colors hover:bg-surface hover:text-accent-text sm:opacity-0 sm:group-hover:opacity-100"
+            className="rounded p-1 text-faint opacity-60 transition-colors hover:bg-surface hover:text-accent-text can-hover:opacity-0 can-hover:group-hover:opacity-100"
             title={isClip ? 'Delete clip' : 'Delete group'}
             aria-label={isClip ? 'Delete clip' : 'Delete group'}
             onClick={(e) => {

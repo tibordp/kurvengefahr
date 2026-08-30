@@ -13,6 +13,7 @@ import {
   Link2,
   FlipHorizontal,
   FlipVertical,
+  Copy,
 } from 'lucide-react'
 import { useDoc, type AlignEdge } from '../../store/document'
 import { useUI } from '../../store/ui'
@@ -238,6 +239,7 @@ export function ElementSection() {
   const setPressure = useDoc((s) => s.setPressure)
   const pressureOn = useDoc((s) => pressureEnabled(s.profile))
   const removeElement = useDoc((s) => s.removeElement)
+  const duplicateSelected = useDoc((s) => s.duplicateSelected)
   const convertToPath = useDoc((s) => s.convertToPath)
   const flipSelected = useDoc((s) => s.flipSelected)
 
@@ -373,6 +375,9 @@ export function ElementSection() {
           onClick={() => setTransform(element.id, { x: 20, y: 20 })}
         >
           Bring into view
+        </Button>
+        <Button title={`Duplicate (${MOD_KEY}D)`} onClick={() => duplicateSelected()}>
+          <Copy size={15} /> Duplicate
         </Button>
         <Button variant="danger" title="Delete (Del)" onClick={() => removeElement(element.id)}>
           <Trash2 size={15} /> Delete
