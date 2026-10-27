@@ -56,7 +56,7 @@ export function SerialPlotCluster() {
           : profileInvalid
             ? 'Fix the machine profile to plot'
             : headAway
-              ? 'The head is at the fiducial - send it back to start in Machine settings first'
+              ? 'The head is at the fiducial - send it back in Machine settings first'
               : `Plot on the ${machine} (${parkHint})`
       }
     >

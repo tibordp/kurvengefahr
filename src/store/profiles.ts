@@ -139,7 +139,6 @@ export const HPGL_CUTTER: HpglProfile = {
   origin: 'bottom-left',
   baudRate: 9600,
   flowControl: 'software',
-  startAt: 'origin',
   speed: 0,
   force: 0,
   pens: DEFAULT_PENS,
@@ -148,15 +147,7 @@ export const HPGL_CUTTER: HpglProfile = {
 
 // 630 mm cut width. Which HP-GL axis runs along the carriage varies by cutter; both sides stay
 // within 630 mm, so the bed fits either way round.
-// Absolute moves count from the cutter's own origin, wherever the head was moved to - so the
-// preset plots relative from the head instead.
-const SK_720T: HpglProfile = {
-  ...structuredClone(HPGL_CUTTER),
-  id: 'sk-720t',
-  name: 'SK-720T',
-  bed: { width: 500, height: 630 },
-  startAt: 'head',
-}
+const SK_720T: HpglProfile = { ...structuredClone(HPGL_CUTTER), id: 'sk-720t', name: 'SK-720T', bed: { width: 500, height: 630 } }
 
 /** The preset catalog, ordered as the picker lists it (grouped by kind, this order within). */
 export const PROFILE_PRESETS: MachineProfile[] = [

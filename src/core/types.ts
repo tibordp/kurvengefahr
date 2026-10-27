@@ -322,9 +322,6 @@ export interface HpglProfile extends MachineProfileBase {
   /** `software` = XON/XOFF bytes from the device; `hardware` = RTS/CTS lines. Must match the
    *  device's setting, or its buffer overflows mid-job. */
   flowControl: 'software' | 'hardware' | 'none'
-  /** `origin` = absolute coordinates from the device's own origin; `head` = relative (`PR`), so
-   *  the job starts — and ends — wherever the head sits. */
-  startAt: 'origin' | 'head'
   /** `VS` velocity in cm/s; 0 = leave the device's own setting. */
   speed: number
   /** `FS` force in grams; 0 = leave the device's own setting. */

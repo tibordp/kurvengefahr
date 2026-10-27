@@ -29,7 +29,7 @@ import { downloadJson, pickJsonFile } from '../../output/download'
 import type { AxidrawProfile, GrblProfile, HpglProfile, Pen, PrusaProfile } from '../../core/types'
 import { pressureEnabled } from '../../core/types'
 import { grblPenLines, newEmitCtx } from '../../core/pipeline/emitGrbl'
-import { hpglHomeCommand, hpglInitCommands, hpglTravelCommand, newHpglCtx, type HpglCtx } from '../../core/pipeline/emitHpgl'
+import { HPGL_HOLD_MS, hpglHoldCommand, hpglInitCommands } from '../../core/pipeline/emitHpgl'
 import { toMachine } from '../../core/pipeline/toMachine'
 import { validateProfile } from '../../core/profileValidation'
 import {
@@ -689,19 +689,6 @@ function HpglMachineSection({ profile }: { profile: HpglProfile }) {
       <SectionTitle title="Usable area from the job's start corner. HP-GL counts up from that corner; if a test plot comes out mirrored, switch the origin.">
         Work area
       </SectionTitle>
-      <Field
-        label="Start at"
-        title="Head position: the job starts (and ends) wherever the head sits - move it to the paper corner first. Cutter origin: absolute coordinates from the cutter's own origin."
-      >
-        <select
-          className={controlClass}
-          value={profile.startAt}
-          onChange={(e) => setProfile({ startAt: e.target.value as HpglProfile['startAt'] })}
-        >
-          <option value="head">Head position</option>
-          <option value="origin">Cutter origin</option>
-        </select>
-      </Field>
       <Num label="Width (mm)" value={profile.bed.width} step={1}
         onChange={(v) => setProfile({ bed: { ...profile.bed, width: v } })} />
       <Num label="Height (mm)" value={profile.bed.height} step={1}
@@ -728,9 +715,15 @@ function HpglMachineSection({ profile }: { profile: HpglProfile }) {
 }
 
 /** Travel the head (pen up) to the fiducial and back, to check its position on the medium
- *  without plotting. The return reuses the outbound context, so a relative (`PR`) trip lands
- *  exactly where it started. The cutter sends nothing back; the button just tracks what was sent. */
-let fiducialTrip: HpglCtx = null
+ *  without plotting. The cutter would read the silence after the move as the end of the job and
+ *  drive home, so the hold command repeats there until the head is sent back (or the port goes).
+ *  Module state, so the hold survives the inspector unmounting. */
+let fiducialHold: ReturnType<typeof setInterval> | undefined
+
+function stopFiducialHold() {
+  clearInterval(fiducialHold)
+  fiducialHold = undefined
+}
 
 function GoToFiducial({ profile }: { profile: HpglProfile }) {
   const connected = useSerial((s) => s.connected)
@@ -743,14 +736,23 @@ function GoToFiducial({ profile }: { profile: HpglProfile }) {
     if (!link) return
     try {
       if (away) {
-        await link.write(hpglHomeCommand(fiducialTrip))
+        stopFiducialHold()
+        await link.write('PU;PU0,0;')
         useSerial.getState().setHeadAway(false)
       } else if (fiducial) {
-        fiducialTrip = newHpglCtx(profile)
-        await link.write(hpglInitCommands(profile).join('') + hpglTravelCommand(toMachine(fiducial, profile), fiducialTrip))
+        const at = toMachine(fiducial, profile)
+        const hold = hpglHoldCommand(at.x, at.y)
+        await link.write(hpglInitCommands(profile).join('') + 'PU;' + hold)
         useSerial.getState().setHeadAway(true)
+        stopFiducialHold()
+        fiducialHold = setInterval(() => {
+          const live = currentHpgl()
+          if (!live || !useSerial.getState().headAway) stopFiducialHold()
+          else live.write(hold).catch(stopFiducialHold)
+        }, HPGL_HOLD_MS)
       }
     } catch (e) {
+      stopFiducialHold()
       toast.error(`Couldn't reach the plotter: ${e instanceof Error ? e.message : String(e)}`)
     }
   }
@@ -762,13 +764,13 @@ function GoToFiducial({ profile }: { profile: HpglProfile }) {
       onClick={() => void toggle()}
       title={
         away
-          ? 'Send the head back to where the job starts'
+          ? 'Send the head back to the origin'
           : fiducial
             ? 'Move the head (pen up) to the fiducial to check its position on the medium'
             : 'Place a fiducial (X) first'
       }
     >
-      {away ? 'Back to start' : 'Go to fiducial'}
+      {away ? 'Back to origin' : 'Go to fiducial'}
     </Button>
   )
 }

@@ -7,17 +7,12 @@
 //   • Pause stops sending at the next stroke start; the device finishes its buffer first.
 //   • Operator prompts (fiducial / pen swap) likewise appear once the commands before them are
 //     sent, not when the pen gets there — the prompt copy tells the operator to wait.
-//   • Cancel stops sending and appends pen-up + walk home (to the job's start), which run after
-//     the buffer drains.
+//   • While paused or prompting, the hold command repeats at the head's position: a gap in the
+//     data would read as the end of the job and send the head back to the origin.
+//   • Cancel stops sending and appends pen-up + walk home, which run after the buffer drains.
 import { SEG } from '../../core/pipeline/planTypes'
 import type { GrblTape } from '../../core/pipeline/grblTape'
-import {
-  hpglHomeCommand,
-  hpglInitCommands,
-  hpglSegmentCommand,
-  newHpglCtx,
-  type HpglCtx,
-} from '../../core/pipeline/emitHpgl'
+import { HPGL_HOLD_MS, hpglHoldCommand, hpglInitCommands, hpglSegmentCommand } from '../../core/pipeline/emitHpgl'
 import type { HpglProfile } from '../../core/types'
 import type { PlotDriver, SessionHooks } from '../session'
 
@@ -34,7 +29,6 @@ export class HpglRun implements PlotDriver {
   private xoff = false
   private fatal: Error | null = null
   private wake: (() => void) | null = null
-  private ctx: HpglCtx
 
   constructor(
     private tape: GrblTape,
@@ -42,7 +36,6 @@ export class HpglRun implements PlotDriver {
     private profile: HpglProfile,
     private hooks: SessionHooks,
   ) {
-    this.ctx = newHpglCtx(profile)
     link.onFlow((xon) => {
       this.xoff = !xon
       this.wake?.()
@@ -74,23 +67,37 @@ export class HpglRun implements PlotDriver {
     for (let i = 0; i < tape.length && !this.cancelFlag; i++) {
       if (this.pauseFlag && tape.blockStart[i]) {
         hooks.onPaused()
-        await this.until(() => !this.pauseFlag || this.cancelFlag)
+        await this.hold(i - 1, this.until(() => !this.pauseFlag || this.cancelFlag))
         if (this.cancelFlag) break
         hooks.onResumed()
       }
       const kind = tape.kind[i]
       if (kind === SEG.pauseFiducial || kind === SEG.pausePenswap) {
-        const go = await hooks.prompt(kind === SEG.pauseFiducial ? 'fiducial' : 'penSwap', tape.pen[i])
+        const go = await this.hold(i, hooks.prompt(kind === SEG.pauseFiducial ? 'fiducial' : 'penSwap', tape.pen[i]))
         if (!go) this.cancelFlag = true
         continue
       }
-      const cmd = hpglSegmentCommand(tape, i, this.ctx)
+      const cmd = hpglSegmentCommand(tape, i)
       if (cmd) await this.send(cmd)
       hooks.onProgress(i)
     }
     if (!this.cancelFlag) return 'done'
-    await this.send(hpglHomeCommand(this.ctx))
+    await this.send('PU;PU0,0;')
     return 'cancelled'
+  }
+
+  /** Await `wait` while repeating the hold command at segment `at`'s position (every segment
+   *  carries where the head is when it runs). Ticks skip while the device has said XOFF. */
+  private async hold<T>(at: number, wait: Promise<T>): Promise<T> {
+    const cmd = hpglHoldCommand(this.tape.x[at], this.tape.y[at])
+    const timer = setInterval(() => {
+      if (!this.xoff) this.link.write(cmd).catch(() => {})
+    }, HPGL_HOLD_MS)
+    try {
+      return await wait
+    } finally {
+      clearInterval(timer)
+    }
   }
 
   private async send(data: string): Promise<void> {

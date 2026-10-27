@@ -2,14 +2,14 @@
 // the same `hpglSegmentCommand`, so the file and the stream are the same job.
 //
 // Dialect notes (the HP-GL subset vinyl cutters understand):
-//   • Plotter units: 40 per mm (0.025 mm), integers. Coordinates are the tape's machine mm, so
-//     the origin flip already happened in toMachine.
+//   • Plotter units: 40 per mm (0.025 mm), integers, absolute from the device's origin.
+//     Coordinates are the tape's machine mm, so the origin flip already happened in toMachine.
+//   • Every job opens with `IN;` — the SK-720T ignores all input until it has seen one.
 //   • Every motion is its own `PU x,y;` / `PD x,y;` — one command per tape segment keeps the
 //     streamer's pause/cancel granularity equal to the tape's.
-//   • `startAt: 'head'` plots relative (`PR`): the job's (0,0) is wherever the head sits, and the
-//     tape's walk home returns there. Deltas come from *cumulative* quantized positions, so
-//     rounding never accumulates. `IN` is skipped in that mode — some devices reset their
-//     position on it.
+//   • Cutters treat a gap in the data as the end of the job and drive back to their origin. Where
+//     the head must wait in place (pauses, prompts, go-to-fiducial), the sender repeats
+//     `hpglHoldCommand` — a move to where the head already is — to keep the job open.
 //   • `VS`/`FS` only when set (> 0); otherwise the device's panel settings apply.
 //   • Pauses have no HP-GL form. The file selects the next pen with `SP<n>` (n = the pen's slot,
 //     1-based) — a multi-pen plotter swaps, a single-tool cutter ignores it; the streamer prompts.
@@ -19,30 +19,16 @@ import type { GrblTape } from './grblTape'
 
 export const HPGL_UNITS_PER_MM = 40
 
+/** How often to repeat the hold command — well inside the SK-720T's end-of-job gap. */
+export const HPGL_HOLD_MS = 500
+
 const pu = (mm: number) => Math.round(mm * HPGL_UNITS_PER_MM)
 
-/** Per-job emit state: the last commanded position (plotter units) when plotting relative,
- *  null when absolute. Fresh per job (`newHpglCtx`). */
-export type HpglCtx = { x: number; y: number } | null
-
-export function newHpglCtx(profile: HpglProfile): HpglCtx {
-  return profile.startAt === 'head' ? { x: 0, y: 0 } : null
-}
-
-/** A move's coordinate pair: absolute as-is, relative as the delta from the last position. */
-function coords(x: number, y: number, ctx: HpglCtx): string {
-  if (!ctx) return `${x},${y}`
-  const d = `${x - ctx.x},${y - ctx.y}`
-  ctx.x = x
-  ctx.y = y
-  return d
-}
-
 /** Tape segment `i` as one HP-GL command, or null for pause segments (the caller's business). */
-export function hpglSegmentCommand(tape: GrblTape, i: number, ctx: HpglCtx): string | null {
+export function hpglSegmentCommand(tape: GrblTape, i: number): string | null {
   switch (tape.kind[i]) {
     case SEG.motion:
-      return `${tape.penDown[i] ? 'PD' : 'PU'}${coords(pu(tape.x[i]), pu(tape.y[i]), ctx)};`
+      return `${tape.penDown[i] ? 'PD' : 'PU'}${pu(tape.x[i])},${pu(tape.y[i])};`
     case SEG.penDown:
       return 'PD;'
     case SEG.penUp:
@@ -52,18 +38,13 @@ export function hpglSegmentCommand(tape: GrblTape, i: number, ctx: HpglCtx): str
   }
 }
 
-/** A standalone pen-up travel to `to` (machine mm) — the inspector's go-to-fiducial. */
-export function hpglTravelCommand(to: { x: number; y: number }, ctx: HpglCtx): string {
-  return `PU;PU${coords(pu(to.x), pu(to.y), ctx)};`
-}
-
-/** Pen up and back to the job's (0,0) — the streamer's cancel. */
-export function hpglHomeCommand(ctx: HpglCtx): string {
-  return `PU;PU${coords(0, 0, ctx)};`
+/** A pen-up move to (x, y) machine mm. Repeated at the head's position, it holds the job open. */
+export function hpglHoldCommand(x: number, y: number): string {
+  return `PU${pu(x)},${pu(y)};`
 }
 
 export function hpglInitCommands(profile: HpglProfile): string[] {
-  const cmds = profile.startAt === 'head' ? ['SP1;', 'PR;'] : ['IN;', 'SP1;', 'PA;']
+  const cmds = ['IN;', 'SP1;']
   if (profile.speed > 0) cmds.push(`VS${profile.speed};`)
   if (profile.force > 0) cmds.push(`FS${profile.force};`)
   return cmds
@@ -71,7 +52,6 @@ export function hpglInitCommands(profile: HpglProfile): string[] {
 
 /** The full download artifact. */
 export function emitHpgl(tape: GrblTape, profile: HpglProfile): string {
-  const ctx = newHpglCtx(profile)
   const cmds = hpglInitCommands(profile)
   for (let i = 0; i < tape.length; i++) {
     if (tape.kind[i] === SEG.pausePenswap) {
@@ -79,7 +59,7 @@ export function emitHpgl(tape: GrblTape, profile: HpglProfile): string {
       cmds.push(`SP${slot + 1};`)
       continue
     }
-    const c = hpglSegmentCommand(tape, i, ctx)
+    const c = hpglSegmentCommand(tape, i)
     if (c) cmds.push(c)
   }
   return cmds.join('\n') + '\n'
