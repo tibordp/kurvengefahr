@@ -17,7 +17,7 @@ import { PlotRun } from '../output/ebb/session'
 import { GrblRun } from '../output/grbl/session'
 import { HpglRun } from '../output/hpgl/session'
 import type { PlotDriver, PromptKind } from '../output/session'
-import { currentEbb, currentGrbl, currentHpgl } from './serial'
+import { currentEbb, currentGrbl, currentHpgl, useSerial } from './serial'
 import { useDoc } from './document'
 import { usePreview } from './preview'
 import { useTools } from './tools'
@@ -121,7 +121,7 @@ export const usePlotSession = create<PlotSessionStore>((set, get) => ({
     const grbl = currentGrbl()
     const hpgl = currentHpgl()
     const connected = profile.kind === 'axidraw' ? ebb : profile.kind === 'grbl' ? grbl : profile.kind === 'hpgl' ? hpgl : null
-    if (!connected || elements.length === 0) return
+    if (!connected || elements.length === 0 || useSerial.getState().headAway) return
     if (validateProfile(profile).length) {
       toast.error('Fix the machine profile before plotting.')
       return

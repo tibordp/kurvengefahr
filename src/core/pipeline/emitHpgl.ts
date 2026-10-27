@@ -52,6 +52,11 @@ export function hpglSegmentCommand(tape: GrblTape, i: number, ctx: HpglCtx): str
   }
 }
 
+/** A standalone pen-up travel to `to` (machine mm) — the inspector's go-to-fiducial. */
+export function hpglTravelCommand(to: { x: number; y: number }, ctx: HpglCtx): string {
+  return `PU;PU${coords(pu(to.x), pu(to.y), ctx)};`
+}
+
 /** Pen up and back to the job's (0,0) — the streamer's cancel. */
 export function hpglHomeCommand(ctx: HpglCtx): string {
   return `PU;PU${coords(0, 0, ctx)};`

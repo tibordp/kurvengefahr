@@ -27,6 +27,7 @@ const PHASE_LABEL: Record<string, string> = {
 export function SerialPlotCluster() {
   const phase = usePlotSession((s) => s.phase)
   const connected = useSerial((s) => s.connected)
+  const headAway = useSerial((s) => s.headAway)
   const elements = useDoc((s) => s.elements)
   const profileInvalid = useDoc((s) => validateProfile(s.profile).length > 0)
   const kind = useDoc((s) => s.profile.kind)
@@ -42,7 +43,7 @@ export function SerialPlotCluster() {
       : homing
         ? 'the machine homes first'
         : 'the job starts from the current pen position'
-  const disabled = !connected || elements.length === 0 || profileInvalid
+  const disabled = !connected || elements.length === 0 || profileInvalid || headAway
   return (
     <Button
       variant="primary"
@@ -54,7 +55,9 @@ export function SerialPlotCluster() {
           ? `Connect the ${machine} in Machine settings to plot`
           : profileInvalid
             ? 'Fix the machine profile to plot'
-            : `Plot on the ${machine} (${parkHint})`
+            : headAway
+              ? 'The head is at the fiducial - send it back to start in Machine settings first'
+              : `Plot on the ${machine} (${parkHint})`
       }
     >
       <Printer size={15} />

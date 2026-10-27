@@ -49,6 +49,10 @@ interface SerialStore {
   /** The board's firmware banner, e.g. `EBBv13… Version 3.0.3` or `Grbl 1.1h ['$' for help]`. */
   version: string | null
   connecting: boolean
+  /** An HP-GL head was sent off its job start (go-to-fiducial) and hasn't come back — plotting
+   *  now would start from the wrong point. Cleared on return or disconnect. */
+  headAway: boolean
+  setHeadAway: (away: boolean) => void
   /** Re-open an already-granted port of this kind — no permission prompt. Idempotent. */
   probe: (kind: SerialKind, settings?: PortSettings) => Promise<void>
   /** Ask the user to grant a port (needs a user gesture), then open it. */
@@ -69,7 +73,7 @@ async function openPort(
     next.onDisconnect(() => {
       if (device?.kind === 'axidraw' && device.ebb === next) {
         device = null
-        set({ connected: false, version: null })
+        set({ connected: false, version: null, headAway: false })
       }
     })
     const version = await next.version()
@@ -84,7 +88,7 @@ async function openPort(
     link.onDisconnect(() => {
       if (device?.kind === 'hpgl' && device.link === link) {
         device = null
-        set({ connected: false, version: null })
+        set({ connected: false, version: null, headAway: false })
       }
     })
     device = { kind, link }
@@ -96,7 +100,7 @@ async function openPort(
   next.onDisconnect(() => {
     if (device?.kind === 'grbl' && device.grbl === next) {
       device = null
-      set({ connected: false, version: null })
+      set({ connected: false, version: null, headAway: false })
     }
   })
   // Identity handshake: opening the port toggles DTR, which resets most boards → banner. A no-DTR
@@ -122,6 +126,8 @@ export const useSerial = create<SerialStore>((set, get) => ({
   connected: false,
   version: null,
   connecting: false,
+  headAway: false,
+  setHeadAway: (headAway) => set({ headAway }),
 
   probe: async (kind, settings = {}) => {
     const s = get()
@@ -159,7 +165,7 @@ export const useSerial = create<SerialStore>((set, get) => ({
   disconnect: async () => {
     const gone = device
     device = null
-    set({ connected: false, version: null })
+    set({ connected: false, version: null, headAway: false })
     if (gone?.kind === 'axidraw') await gone.ebb.close()
     else if (gone?.kind === 'grbl') await gone.grbl.close()
     else if (gone?.kind === 'hpgl') await gone.link.close()

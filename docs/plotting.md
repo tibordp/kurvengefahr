@@ -36,7 +36,8 @@ job, never silently moved.
 The fiducial tool (`X`) places a registration point. A job begins by traveling there and pausing
 with the pen up, so you can line the paper up against a known point before the first stroke -
 essential for plotting onto pre-printed stock or adding a second layer. It is a document
-property, not an element: it makes motion but no mark.
+property, not an element: it makes motion but no mark. HP-GL cutters can also travel to it on
+their own, without plotting - see [machines](machines.md).
 
 ## Preview
 

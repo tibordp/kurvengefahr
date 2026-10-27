@@ -102,6 +102,9 @@ software, or stream it live over Web Serial.
   them has been sent - wait until the cutter has stopped moving before you continue. Pausing
   stops sending at the next stroke; stopping a plot sends pen-up and the walk home, which run
   once the cutter has drawn what it already received.
+- **Go to fiducial.** With the cutter connected, this button moves the head (pen up) to the
+  fiducial without plotting, so you can check where it lands on the medium; *Back to start*
+  returns it. Plot stays disabled while the head is away from the start.
 - **Several pens in a downloaded file.** HP-GL has no operator pause; the file selects the next
   pen with `SP`, which multi-pen plotters follow and single-tool cutters ignore. For several colors
   on a cutter, plot live.

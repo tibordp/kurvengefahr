@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { Geometry, HpglProfile } from '../types'
 import { HPGL_CUTTER } from '../../store/profiles'
 import { planGrblTape } from './grblTape'
-import { emitHpgl } from './emitHpgl'
+import { emitHpgl, hpglHomeCommand, hpglTravelCommand, newHpglCtx } from './emitHpgl'
 
 function profile(over: Partial<HpglProfile> = {}): HpglProfile {
   return {
@@ -60,5 +60,14 @@ describe('emitHpgl', () => {
     expect(cmds.slice(0, 2)).toEqual(['SP1;', 'PR;'])
     // 0.5 → 1, 1 → 1, 1.5 → 2 units: deltas of the rounded positions, not rounded deltas.
     expect(cmds).toEqual(['SP1;', 'PR;', 'PU;', 'PU1,40;', 'PD;', 'PD0,0;', 'PD1,0;', 'PU;', 'PU-2,-40;'])
+  })
+
+  it('a go-to-fiducial trip returns exactly to the start, relative or absolute', () => {
+    const rel = newHpglCtx(profile({ startAt: 'head' }))
+    expect(hpglTravelCommand({ x: 10.01, y: 5 }, rel)).toBe('PU;PU400,200;')
+    expect(hpglHomeCommand(rel)).toBe('PU;PU-400,-200;')
+    const abs = newHpglCtx(profile({ startAt: 'origin' }))
+    expect(hpglTravelCommand({ x: 10.01, y: 5 }, abs)).toBe('PU;PU400,200;')
+    expect(hpglHomeCommand(abs)).toBe('PU;PU0,0;')
   })
 })

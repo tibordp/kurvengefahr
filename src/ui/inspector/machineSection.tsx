@@ -17,7 +17,7 @@ import { useDoc } from '../../store/document'
 import { confirmDialog, promptDialog } from '../../store/dialogs'
 import { toast } from '../../store/toast'
 import { useLibrary } from '../../store/library'
-import { useSerial, currentEbb, currentGrbl, type SerialKind } from '../../store/serial'
+import { useSerial, currentEbb, currentGrbl, currentHpgl, type SerialKind } from '../../store/serial'
 import { usePlotSession } from '../../store/plotSession'
 import { findBuiltinProfile } from '../../store/profiles'
 import { ProfilePicker } from './profilePicker'
@@ -29,6 +29,8 @@ import { downloadJson, pickJsonFile } from '../../output/download'
 import type { AxidrawProfile, GrblProfile, HpglProfile, Pen, PrusaProfile } from '../../core/types'
 import { pressureEnabled } from '../../core/types'
 import { grblPenLines, newEmitCtx } from '../../core/pipeline/emitGrbl'
+import { hpglHomeCommand, hpglInitCommands, hpglTravelCommand, newHpglCtx, type HpglCtx } from '../../core/pipeline/emitHpgl'
+import { toMachine } from '../../core/pipeline/toMachine'
 import { validateProfile } from '../../core/profileValidation'
 import {
   Button,
@@ -656,6 +658,7 @@ function HpglMachineSection({ profile }: { profile: HpglProfile }) {
   return (
     <>
       <SerialDeviceSection profile={profile} />
+      <GoToFiducial profile={profile} />
       <Disclosure label="Advanced">
         <Field label="Baud rate" title="Must match the cutter's setting (often 9600). Changing it disconnects — reconnect after.">
           <select className={controlClass} value={profile.baudRate} onChange={(e) => setPort({ baudRate: Number(e.target.value) })}>
@@ -721,6 +724,52 @@ function HpglMachineSection({ profile }: { profile: HpglProfile }) {
       <Num label="Force (g)" title="Pen pressure. Pens need far less than a blade — start low." value={profile.force} step={5}
         onChange={(v) => setProfile({ force: v })} />
     </>
+  )
+}
+
+/** Travel the head (pen up) to the fiducial and back, to check its position on the medium
+ *  without plotting. The return reuses the outbound context, so a relative (`PR`) trip lands
+ *  exactly where it started. The cutter sends nothing back; the button just tracks what was sent. */
+let fiducialTrip: HpglCtx = null
+
+function GoToFiducial({ profile }: { profile: HpglProfile }) {
+  const connected = useSerial((s) => s.connected)
+  const away = useSerial((s) => s.headAway)
+  const fiducial = useDoc((s) => s.fiducial)
+  const idle = usePlotSession((s) => s.phase === 'idle')
+
+  const toggle = async () => {
+    const link = currentHpgl()
+    if (!link) return
+    try {
+      if (away) {
+        await link.write(hpglHomeCommand(fiducialTrip))
+        useSerial.getState().setHeadAway(false)
+      } else if (fiducial) {
+        fiducialTrip = newHpglCtx(profile)
+        await link.write(hpglInitCommands(profile).join('') + hpglTravelCommand(toMachine(fiducial, profile), fiducialTrip))
+        useSerial.getState().setHeadAway(true)
+      }
+    } catch (e) {
+      toast.error(`Couldn't reach the plotter: ${e instanceof Error ? e.message : String(e)}`)
+    }
+  }
+
+  return (
+    <Button
+      className="mt-2 w-full"
+      disabled={!connected || !idle || (!away && !fiducial)}
+      onClick={() => void toggle()}
+      title={
+        away
+          ? 'Send the head back to where the job starts'
+          : fiducial
+            ? 'Move the head (pen up) to the fiducial to check its position on the medium'
+            : 'Place a fiducial (X) first'
+      }
+    >
+      {away ? 'Back to start' : 'Go to fiducial'}
+    </Button>
   )
 }
 
