@@ -13,6 +13,9 @@ export interface LineTransport {
   close(): Promise<void>
 }
 
+const XON = 0x11
+const XOFF = 0x13
+
 export function webSerialSupported(): boolean {
   return typeof navigator !== 'undefined' && 'serial' in navigator
 }
@@ -24,6 +27,7 @@ export class WebSerialTransport implements LineTransport {
   private reader: ReadableStreamDefaultReader<Uint8Array> | null = null
   private encoder = new TextEncoder()
   private lineCb: (line: string) => void = () => {}
+  private flowCb: (xon: boolean) => void = () => {}
   private disconnectCb: () => void = () => {}
   private disconnected = false
   private closing = false
@@ -31,9 +35,10 @@ export class WebSerialTransport implements LineTransport {
   private constructor(private port: SerialPort) {}
 
   /** Open the port and start the read loop. The baud rate matters for real UARTs (GRBL boards);
-   *  a USB-CDC device (the EBB) ignores it, but Web Serial requires one either way. */
-  static async open(port: SerialPort, baudRate: number): Promise<WebSerialTransport> {
-    await port.open({ baudRate })
+   *  a USB-CDC device (the EBB) ignores it, but Web Serial requires one either way. `hardware` =
+   *  RTS/CTS, done by the OS; XON/XOFF has no Web Serial support and is surfaced via `onFlow`. */
+  static async open(port: SerialPort, baudRate: number, flowControl: 'none' | 'hardware' = 'none'): Promise<WebSerialTransport> {
+    await port.open({ baudRate, flowControl })
     const t = new WebSerialTransport(port)
     t.writer = port.writable!.getWriter()
     port.addEventListener('disconnect', () => t.fireDisconnect())
@@ -52,7 +57,13 @@ export class WebSerialTransport implements LineTransport {
           for (;;) {
             const { value, done } = await reader.read()
             if (done) break
-            buffer += decoder.decode(value, { stream: true })
+            // XON/XOFF are single control bytes, never part of a line.
+            let bytes = value
+            if (bytes.some((b) => b === XON || b === XOFF)) {
+              for (const b of bytes) if (b === XON || b === XOFF) this.flowCb(b === XON)
+              bytes = bytes.filter((b) => b !== XON && b !== XOFF)
+            }
+            buffer += decoder.decode(bytes, { stream: true })
             // Tolerant framing: the EBB's legacy replies mix <CR><NL> and <NL><CR> orders per
             // command, so split on any run of terminators and drop empties.
             const parts = buffer.split(/[\r\n]+/)
@@ -88,6 +99,11 @@ export class WebSerialTransport implements LineTransport {
 
   onDisconnect(cb: () => void): void {
     this.disconnectCb = cb
+  }
+
+  /** Register the XON (true) / XOFF (false) consumer — software flow control from the device. */
+  onFlow(cb: (xon: boolean) => void): void {
+    this.flowCb = cb
   }
 
   async close(): Promise<void> {

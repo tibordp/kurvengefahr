@@ -4,12 +4,14 @@
 
 A browser-based CAM tool for pen plotters. Compose on a virtual bed - handwriting, text, vector
 shapes, imported SVG and DXF, traced photos, generative patterns, STL wireframes - preview the
-exact toolpath, and plot it: download G-code, or drive an AxiDraw or GRBL plotter live over USB.
+exact toolpath, and plot it: download G-code, or drive an AxiDraw, a GRBL plotter, or an HP-GL
+vinyl cutter with a pen holder live over USB.
 Everything runs client-side; nothing is uploaded.
 
 **[Live app](https://kurvengefahr.org)** - installable PWA, works offline.
 [Machine profiles](docs/machines.md) cover Prusa printers with a pen attachment (or any G-code
-machine), AxiDraw-style EBB plotters, and GRBL machines, with presets for popular models.
+machine), AxiDraw-style EBB plotters, GRBL machines, and HP-GL vinyl cutters, with presets for
+popular models.
 
 ![The showcase document: handwriting, generative patterns, a wireframe teapot, effects, and hatch fills](docs/showcase.png)
 
@@ -47,7 +49,8 @@ machine), AxiDraw-style EBB plotters, and GRBL machines, with presets for popula
   registration pause to line up the paper, and a scrubbable preview of the exact toolpath.
 - **Plot it** - download G-code, send it to a PrusaLink printer with the companion Bridge
   extension, or plot live over Web Serial with pause/resume and a moving playhead - AxiDraw-style
-  machines and GRBL 1.1 plotters (Z-axis or servo pen, optional homing) alike. Artwork also
+  machines and GRBL 1.1 plotters (Z-axis or servo pen, optional homing) alike. Vinyl cutters with
+  a pen holder get HP-GL, as a `.plt` download or streamed live. Artwork also
   exports as layered SVG, PNG, or PDF, and prints at true physical scale for a paper proof.
 - **A real editor** - autosaved multi-document tabs with cross-tab sync, undo/redo that survives a
   refresh, an elements tree, a command palette, clipboard across tabs, light/dark themes.

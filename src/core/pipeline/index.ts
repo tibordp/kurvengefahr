@@ -123,6 +123,7 @@ export type PipelineOutput =
   | { kind: 'gcode'; gcode: string }
   | { kind: 'axidraw'; plan: PlotPlan; optimized: Geometry }
   | { kind: 'grbl'; tape: GrblTape; optimized: Geometry }
+  | { kind: 'hpgl'; tape: GrblTape; optimized: Geometry }
 
 /** Full run: plottable geometry → optimize → the machine-kind output (emit / plan). */
 export async function runPipeline(
@@ -138,6 +139,9 @@ export async function runPipeline(
   }
   if (profile.kind === 'grbl') {
     return { kind: 'grbl', tape: planGrblTape(optimized, profile, fiducial), optimized }
+  }
+  if (profile.kind === 'hpgl') {
+    return { kind: 'hpgl', tape: planGrblTape(optimized, profile, fiducial, Infinity), optimized }
   }
   return { kind: 'gcode', gcode: emit(optimized, profile, fiducial) }
 }

@@ -57,6 +57,9 @@ By machine kind (all from the toolbar):
   end. There is no file in between.
 - **GRBL** - both: download GRBL-flavored G-code, or stream the byte-for-byte same moves live
   over Web Serial while the board's own position reports drive the progress display.
+- **HP-GL cutters** - both: Generate HP-GL (`Cmd/Ctrl S`) downloads a `.plt` file, or Plot streams
+  the same commands live over Web Serial. The cutter reports nothing back, so progress shows what
+  has been sent, not where the pen is.
 
 Machine-specific behavior - homing, pen actuation, pausing semantics - is covered in
 [machines](machines.md).

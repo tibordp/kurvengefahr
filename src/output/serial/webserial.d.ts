@@ -7,6 +7,7 @@ interface SerialPortInfo {
 
 interface SerialOptions {
   baudRate: number
+  flowControl?: 'none' | 'hardware'
 }
 
 interface SerialPort extends EventTarget {

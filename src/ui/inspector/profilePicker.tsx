@@ -35,7 +35,7 @@ export function ProfilePicker({ detached }: { detached: boolean }) {
     const out: Group[] = []
     const saved = custom.filter((p) => match(p, 'my profiles'))
     if (saved.length) out.push({ label: 'My profiles', profiles: saved })
-    for (const kind of ['prusa', 'axidraw', 'grbl'] as const) {
+    for (const kind of ['prusa', 'axidraw', 'grbl', 'hpgl'] as const) {
       const label = PRESET_GROUP_LABELS[kind]
       const profiles = PROFILE_PRESETS.filter((p) => p.kind === kind && match(p, label))
       if (profiles.length) out.push({ label, profiles })

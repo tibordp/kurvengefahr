@@ -26,7 +26,7 @@ import { profilesFile, parseProfilesFile } from '../../store/persistence/schema'
 import { printerStatus, type PrinterStatus } from '../../output/plot'
 import { useBridge, isPrinterConnected } from '../../store/bridge'
 import { downloadJson, pickJsonFile } from '../../output/download'
-import type { AxidrawProfile, GrblProfile, Pen, PrusaProfile } from '../../core/types'
+import type { AxidrawProfile, GrblProfile, HpglProfile, Pen, PrusaProfile } from '../../core/types'
 import { pressureEnabled } from '../../core/types'
 import { grblPenLines, newEmitCtx } from '../../core/pipeline/emitGrbl'
 import { validateProfile } from '../../core/profileValidation'
@@ -249,8 +249,10 @@ export function MachineSection() {
         <PrusaMachineSection profile={profile} />
       ) : profile.kind === 'axidraw' ? (
         <AxidrawMachineSection profile={profile} />
-      ) : (
+      ) : profile.kind === 'grbl' ? (
         <GrblMachineSection profile={profile} />
+      ) : (
+        <HpglMachineSection profile={profile} />
       )}
     </>
   )
@@ -641,6 +643,74 @@ function GrblMachineSection({ profile }: { profile: GrblProfile }) {
   )
 }
 
+/** An HP-GL cutter with a pen holder: port settings, work area, and the optional VS/FS overrides.
+ *  The device is send-only, so there's nothing to test or read back. */
+function HpglMachineSection({ profile }: { profile: HpglProfile }) {
+  const setProfile = useDoc((s) => s.setProfile)
+  // Port settings apply on open — drop a live connection so the next one uses them.
+  const setPort = (patch: Partial<HpglProfile>) => {
+    setProfile(patch)
+    if (useSerial.getState().connected) void useSerial.getState().disconnect()
+  }
+
+  return (
+    <>
+      <SerialDeviceSection profile={profile} />
+      <Disclosure label="Advanced">
+        <Field label="Baud rate" title="Must match the cutter's setting (often 9600). Changing it disconnects — reconnect after.">
+          <select className={controlClass} value={profile.baudRate} onChange={(e) => setPort({ baudRate: Number(e.target.value) })}>
+            {BAUD_RATES.map((b) => (
+              <option key={b} value={b}>
+                {b}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field
+          label="Flow control"
+          title="Must match the cutter's setting, or its buffer overflows mid-job. Changing it disconnects — reconnect after."
+        >
+          <select
+            className={controlClass}
+            value={profile.flowControl}
+            onChange={(e) => setPort({ flowControl: e.target.value as HpglProfile['flowControl'] })}
+          >
+            <option value="software">XON/XOFF</option>
+            <option value="hardware">RTS/CTS</option>
+            <option value="none">None</option>
+          </select>
+        </Field>
+      </Disclosure>
+      <PensSection />
+
+      <SectionTitle title="Usable area from where the head sits when the job starts. HP-GL counts up from that corner; if a test plot comes out mirrored, switch the origin.">
+        Work area
+      </SectionTitle>
+      <Num label="Width (mm)" value={profile.bed.width} step={1}
+        onChange={(v) => setProfile({ bed: { ...profile.bed, width: v } })} />
+      <Num label="Height (mm)" value={profile.bed.height} step={1}
+        onChange={(v) => setProfile({ bed: { ...profile.bed, height: v } })} />
+      <Field label="Origin">
+        <select
+          className={controlClass}
+          value={profile.origin}
+          onChange={(e) => setProfile({ origin: e.target.value as typeof profile.origin })}
+        >
+          <option value="bottom-left">bottom-left</option>
+          <option value="top-left">top-left</option>
+        </select>
+      </Field>
+
+      <SectionTitle title="Sent as VS / FS at the start of the job. 0 leaves the cutter's own panel setting.">
+        Speed &amp; force
+      </SectionTitle>
+      <Num label="Speed (cm/s)" value={profile.speed} step={1} onChange={(v) => setProfile({ speed: v })} />
+      <Num label="Force (g)" title="Pen pressure. Pens need far less than a blade — start low." value={profile.force} step={5}
+        onChange={(v) => setProfile({ force: v })} />
+    </>
+  )
+}
+
 /** Live pen-up/down toggle for dialing in the servo S values (or Z heights) — sends the current
  *  profile's pen lines, so edits are felt immediately. Rendered even while disconnected
  *  (disabled) so the feature is discoverable before a machine is attached. */
@@ -671,26 +741,27 @@ function GrblPenTest({ profile }: { profile: GrblProfile }) {
   )
 }
 
-/** Web Serial connection to the machine (EBB or GRBL board). Grants persist per-origin: once
+/** Web Serial connection to the machine (EBB or GRBL board, or an HP-GL device). Grants persist per-origin: once
  *  connected here, the toolbar's Plot button re-arms automatically on future visits (the store
  *  re-opens granted ports without a prompt). */
-function SerialDeviceSection({ profile }: { profile: AxidrawProfile | GrblProfile }) {
+function SerialDeviceSection({ profile }: { profile: AxidrawProfile | GrblProfile | HpglProfile }) {
   const supported = useSerial((s) => s.supported)
   const connected = useSerial((s) => s.connected)
   const connecting = useSerial((s) => s.connecting)
   const version = useSerial((s) => s.version)
   const setProfile = useDoc((s) => s.setProfile)
   const kind: SerialKind = profile.kind
-  const baudRate = profile.kind === 'grbl' ? profile.baudRate : undefined
+  const baudRate = profile.kind === 'axidraw' ? undefined : profile.baudRate
+  const flowControl = profile.kind === 'hpgl' ? profile.flowControl : undefined
   const machine = profile.kind === 'axidraw' ? 'AxiDraw' : 'plotter'
 
   // Re-open an already-granted port whenever the section (re)opens (no prompt).
   useEffect(() => {
-    void useSerial.getState().probe(kind, baudRate)
-  }, [kind, baudRate])
+    void useSerial.getState().probe(kind, { baudRate, flowControl })
+  }, [kind, baudRate, flowControl])
 
   const connect = async () => {
-    await useSerial.getState().connect(kind, baudRate)
+    await useSerial.getState().connect(kind, { baudRate, flowControl })
     // The binding's presence marks the profile as plotting over Web Serial.
     if (useSerial.getState().connected && !profile.device) {
       setProfile({ device: { transport: 'webserial' } })
@@ -709,7 +780,9 @@ function SerialDeviceSection({ profile }: { profile: AxidrawProfile | GrblProfil
           title={
             profile.kind === 'axidraw'
               ? "Plot over USB (Web Serial) to the AxiDraw's EBB board."
-              : 'Stream over USB (Web Serial) to the GRBL board.'
+              : profile.kind === 'grbl'
+                ? 'Stream over USB (Web Serial) to the GRBL board.'
+                : 'Stream HP-GL over USB or a serial adapter (Web Serial). The cutter must show up as a serial port.'
           }
         >
           Machine connection

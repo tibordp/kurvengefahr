@@ -73,6 +73,8 @@ export function PlotHUD() {
   const currentPen = usePlotSession((s) => s.currentPen)
   const prompt = usePlotSession((s) => s.prompt)
   const pens = useDoc((s) => s.profile.pens)
+  // HP-GL devices report nothing back: progress is what's been sent, and prompts arrive early.
+  const sendOnly = useDoc((s) => s.profile.kind === 'hpgl')
   const s = usePlotSession.getState()
 
   if (phase === 'idle') return null
@@ -95,7 +97,13 @@ export function PlotHUD() {
         <div className="h-full bg-accent-solid transition-[width]" style={{ width: `${frac * 100}%` }} />
       </div>
       <span className="min-w-[72px] text-right font-mono text-xs tabular-nums text-muted">
-        {phase === 'plotting' ? (etaMs !== null ? `−${fmtEta(etaMs)}` : '…') : PHASE_LABEL[phase]}
+        {phase !== 'plotting'
+          ? PHASE_LABEL[phase]
+          : etaMs !== null
+            ? `−${fmtEta(etaMs)}`
+            : sendOnly
+              ? `sent ${Math.round(frac * 100)}%`
+              : '…'}
       </span>
       {phase === 'paused' ? (
         <IconButton aria-label="Resume plot" title="Resume plot" onClick={s.resume}>
@@ -126,12 +134,14 @@ export function PlotHUD() {
       >
         <Square size={14} />
       </IconButton>
-      {prompt && <OperatorPrompt kind={prompt.kind} penName={pens.find((p) => p.id === prompt.pen)?.name} />}
+      {prompt && (
+        <OperatorPrompt kind={prompt.kind} penName={pens.find((p) => p.id === prompt.pen)?.name} sendOnly={sendOnly} />
+      )}
     </div>
   )
 }
 
-function OperatorPrompt({ kind, penName }: { kind: 'fiducial' | 'penSwap'; penName?: string }) {
+function OperatorPrompt({ kind, penName, sendOnly }: { kind: 'fiducial' | 'penSwap'; penName?: string; sendOnly: boolean }) {
   const confirmPrompt = usePlotSession((s) => s.confirmPrompt)
   const title = kind === 'fiducial' ? 'Align to the fiducial' : `Change to ${penName ?? 'the next pen'}`
   return (
@@ -139,6 +149,7 @@ function OperatorPrompt({ kind, penName }: { kind: 'fiducial' | 'penSwap'; penNa
     // dismissing must never mean "continue" or "abort" for a physical machine.
     <Modal title={title} onClose={() => {}}>
       <p className="text-sm text-muted">
+        {sendOnly && 'Wait until the plotter has stopped moving. '}
         {kind === 'fiducial'
           ? 'The pen is parked over the alignment point. Align the medium under it, then continue.'
           : `The pen is up and the carriage is holding still. Swap in ${penName ?? 'the next pen'}, then continue.`}

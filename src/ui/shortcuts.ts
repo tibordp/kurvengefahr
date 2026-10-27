@@ -136,7 +136,7 @@ export const SHORTCUT_GROUPS: { title: string; items: ShortcutItem[] }[] = [
   {
     title: 'Output',
     items: [
-      { keys: [MOD_KEY, 'S'], label: 'Generate & download G-code (G-code machines)' },
+      { keys: [MOD_KEY, 'S'], label: 'Generate & download G-code or HP-GL' },
       { keys: [MOD_KEY, 'P'], label: 'Print at true scale' },
       { keys: ['Space'], label: 'Play / pause preview' },
     ],

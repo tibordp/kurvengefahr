@@ -13,7 +13,8 @@ Using the app:
 - [Plotting and export](plotting.md) - pens, plot order, the toolpath preview, G-code, live
   plotting, and SVG/PDF/PNG/print export.
 - [Sharing](sharing.md) - read-only snapshot links and the privacy model behind them.
-- [Machines](machines.md) - what a machine profile means, for G-code plotters, AxiDraw, and GRBL.
+- [Machines](machines.md) - what a machine profile means, for G-code plotters, AxiDraw, GRBL, and
+  HP-GL cutters.
 
 The Logo language:
 
