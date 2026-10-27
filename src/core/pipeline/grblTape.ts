@@ -1,4 +1,4 @@
-// Stage: Geometry (page mm) → GRBL tape. Unlike the AxiDraw plan (crate/plan.rs) there is NO
+// Stage: Geometry (page mm) → GRBL tape (also the HP-GL tape — same moves, different dialect). Unlike the AxiDraw plan (crate/plan.rs) there is NO
 // motion planning here — GRBL's firmware plans acceleration and cornering itself; the tape is just
 // the ordered list of moves and pen events that both outputs render to G-code lines (download and
 // live streaming share it, so the file and the stream are the same job). Trivial walk + coordinate
@@ -21,7 +21,7 @@
 // Moves longer than MAX_SEG_MM are split: with character-counting flow control the RX buffer plus
 // GRBL's planner queue hold ~25 lines of committed motion, so bounding each line's length bounds
 // how long pause/cancel take to bite.
-import type { Fiducial, Geometry, GrblProfile } from '../types'
+import type { Fiducial, Geometry, GrblProfile, HpglProfile } from '../types'
 import { toMachine } from './toMachine'
 import { SEG } from './planTypes'
 
@@ -59,7 +59,14 @@ interface TapeBuilder {
   blockStart: number[]
 }
 
-export function planGrblTape(geom: Geometry, profile: GrblProfile, fiducial?: Fiducial | null): GrblTape {
+/** `maxSegMm` bounds pause/cancel latency against GRBL's ack window (see header). HP-GL passes
+ *  Infinity: nothing acks, so splitting buys nothing, and cutters stop at every vertex. */
+export function planGrblTape(
+  geom: Geometry,
+  profile: GrblProfile | HpglProfile,
+  fiducial?: Fiducial | null,
+  maxSegMm = MAX_SEG_MM,
+): GrblTape {
   const strokes = geom.filter((s) => s.points.length > 0)
   const b: TapeBuilder = {
     kind: [],
@@ -96,7 +103,7 @@ export function planGrblTape(geom: Geometry, profile: GrblProfile, fiducial?: Fi
     opts: { penDown: 0 | 1; pFrom?: number; pTo?: number; feed?: number; blockStart?: boolean; countsDist?: boolean },
   ) => {
     const len = Math.hypot(to.x - cur.x, to.y - cur.y)
-    const chunks = Math.max(1, Math.ceil(len / MAX_SEG_MM))
+    const chunks = Math.max(1, Math.ceil(len / maxSegMm))
     const from = cur
     const { pFrom = 0, pTo = 0, countsDist = true } = opts
     for (let c = 1; c <= chunks; c++) {

@@ -36,7 +36,8 @@ job, never silently moved.
 The fiducial tool (`X`) places a registration point. A job begins by traveling there and pausing
 with the pen up, so you can line the paper up against a known point before the first stroke -
 essential for plotting onto pre-printed stock or adding a second layer. It is a document
-property, not an element: it makes motion but no mark.
+property, not an element: it makes motion but no mark. HP-GL cutters can also travel to it on
+their own, without plotting - see [machines](machines.md).
 
 ## Preview
 
@@ -57,6 +58,9 @@ By machine kind (all from the toolbar):
   end. There is no file in between.
 - **GRBL** - both: download GRBL-flavored G-code, or stream the byte-for-byte same moves live
   over Web Serial while the board's own position reports drive the progress display.
+- **HP-GL cutters** - both: Generate HP-GL (`Cmd/Ctrl S`) downloads a `.plt` file, or Plot streams
+  the same commands live over Web Serial. The cutter reports nothing back, so progress shows what
+  has been sent, not where the pen is.
 
 Machine-specific behavior - homing, pen actuation, pausing semantics - is covered in
 [machines](machines.md).

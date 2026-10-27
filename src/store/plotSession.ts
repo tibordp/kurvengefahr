@@ -4,8 +4,9 @@
 // the playhead), and PlotHUD renders progress + pause/stop from here.
 //
 // Progress is kind-neutral: `done`/`total` are ms on an AxiDraw (dead-reckoned segment durations
-// — the EBB reports nothing back) and mm of toolpath on GRBL (projected from the machine's own
-// `?` position reports). The HUD only needs the fraction plus the precomputed `etaMs`.
+// — the EBB reports nothing back), mm of toolpath on GRBL (projected from the machine's own
+// `?` position reports), and mm of toolpath *sent* on HP-GL (the device reports nothing, and the
+// pen trails by its buffer — no ETA). The HUD only needs the fraction plus `etaMs`.
 import { create } from 'zustand'
 import { runPipeline } from '../core/pipeline'
 import { buildToolpath } from '../core/preview/toolpath'
@@ -14,8 +15,9 @@ import { STEPS_PER_MM } from '../core/pipeline/planTypes'
 import { validateProfile } from '../core/profileValidation'
 import { PlotRun } from '../output/ebb/session'
 import { GrblRun } from '../output/grbl/session'
+import { HpglRun } from '../output/hpgl/session'
 import type { PlotDriver, PromptKind } from '../output/session'
-import { currentEbb, currentGrbl } from './serial'
+import { currentEbb, currentGrbl, currentHpgl, useSerial } from './serial'
 import { useDoc } from './document'
 import { usePreview } from './preview'
 import { useTools } from './tools'
@@ -117,8 +119,9 @@ export const usePlotSession = create<PlotSessionStore>((set, get) => ({
     const { elements, profile, fiducial } = useDoc.getState()
     const ebb = currentEbb()
     const grbl = currentGrbl()
-    const connected = profile.kind === 'axidraw' ? ebb : profile.kind === 'grbl' ? grbl : null
-    if (!connected || elements.length === 0) return
+    const hpgl = currentHpgl()
+    const connected = profile.kind === 'axidraw' ? ebb : profile.kind === 'grbl' ? grbl : profile.kind === 'hpgl' ? hpgl : null
+    if (!connected || elements.length === 0 || useSerial.getState().headAway) return
     if (validateProfile(profile).length) {
       toast.error('Fix the machine profile before plotting.')
       return
@@ -189,13 +192,29 @@ export const usePlotSession = create<PlotSessionStore>((set, get) => ({
             set({ done: mm, etaMs: rate > 0 ? (tape.totalDist - mm) / rate : null })
           },
         })
+      } else if (out.kind === 'hpgl' && profile.kind === 'hpgl' && hpgl) {
+        const { tape } = out
+        set({ total: tape.totalDist, currentPen: tape.pen[0] ?? 0, phase: 'plotting' })
+        run = new HpglRun(tape, hpgl, profile, {
+          ...sessionHooks,
+          onProgress: (i) => {
+            usePreview.getState().setDist(tape.dist[i])
+            set({ done: tape.dist[i], currentPen: tape.pen[i] })
+          },
+        })
       } else {
         set({ phase: 'idle' })
         return
       }
 
       const result = await run.run()
-      if (result === 'done') toast.success('Plot finished.')
+      if (profile.kind === 'hpgl')
+        toast.info(
+          result === 'done'
+            ? 'Job sent — the plotter finishes what it has buffered.'
+            : 'Plot stopped — the plotter finishes its buffer, then the pen returns home.',
+        )
+      else if (result === 'done') toast.success('Plot finished.')
       else toast.info('Plot stopped — the pen returned home.')
     } catch (e) {
       const recovery =

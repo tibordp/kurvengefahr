@@ -49,6 +49,13 @@ export function validateProfile(p: MachineProfile): string[] {
     return errs
   }
 
+  if (p.kind === 'hpgl') {
+    if (!(p.baudRate > 0)) errs.push('Baud rate must be greater than zero.')
+    if (!(p.speed >= 0)) errs.push('Speed must be zero or more.')
+    if (!(p.force >= 0)) errs.push('Force must be zero or more.')
+    return errs
+  }
+
   // axidraw: the motion planner needs positive limits, and the servo needs two distinct positions
   // or the pen never actually lifts.
   if (!(p.motion.drawSpeed > 0)) errs.push('Draw speed must be greater than zero.')

@@ -6,7 +6,7 @@
 // axidraw.com / EMSL's axidraw_conf.py, iDraw per uunatek.com (EBB-compatible boards → axidraw
 // kind), EleksDraw per the EleksMaker wiki, Prusa beds per prusa3d specs. Motion/servo/feed
 // defaults are the family's, not per-machine — dial in on the hardware.
-import type { AxidrawProfile, GrblProfile, MachineProfile, PrusaProfile } from '../core/types'
+import type { AxidrawProfile, GrblProfile, HpglProfile, MachineProfile, PrusaProfile } from '../core/types'
 
 const DEFAULT_PENS = [{ id: 0, name: 'Pen 1', color: '#1a1a1a' }]
 
@@ -15,6 +15,7 @@ export const PRESET_GROUP_LABELS: Record<MachineProfile['kind'], string> = {
   prusa: 'G-code printers',
   axidraw: 'EBB plotters',
   grbl: 'GRBL plotters',
+  hpgl: 'HP-GL cutters',
 }
 
 export const PRUSA_MK4: PrusaProfile = {
@@ -128,6 +129,26 @@ const grblVariant = (id: string, name: string, width: number, height: number): G
 const ELEKSDRAW = grblVariant('eleksdraw', 'EleksDraw', 280, 200)
 const FOURXIDRAW = grblVariant('4xidraw', '4xiDraw (A4)', 300, 218)
 
+// 9600 baud + XON/XOFF is the common vinyl-cutter default (and Inkscape's). Speed and force stay
+// on the device's own panel settings until set here.
+export const HPGL_CUTTER: HpglProfile = {
+  id: 'hpgl-cutter',
+  name: 'Generic HP-GL cutter',
+  kind: 'hpgl',
+  bed: { width: 600, height: 400 },
+  origin: 'bottom-left',
+  baudRate: 9600,
+  flowControl: 'software',
+  speed: 0,
+  force: 0,
+  pens: DEFAULT_PENS,
+  units: 'mm',
+}
+
+// 630 mm cut width. Which HP-GL axis runs along the carriage varies by cutter; both sides stay
+// within 630 mm, so the bed fits either way round.
+const SK_720T: HpglProfile = { ...structuredClone(HPGL_CUTTER), id: 'sk-720t', name: 'SK-720T', bed: { width: 500, height: 630 } }
+
 /** The preset catalog, ordered as the picker lists it (grouped by kind, this order within). */
 export const PROFILE_PRESETS: MachineProfile[] = [
   PRUSA_MK4,
@@ -147,6 +168,8 @@ export const PROFILE_PRESETS: MachineProfile[] = [
   GRBL_PLOTTER,
   ELEKSDRAW,
   FOURXIDRAW,
+  HPGL_CUTTER,
+  SK_720T,
 ]
 
 /** Built-in presets differ from custom profiles only in that they can't be deleted or renamed. */

@@ -111,9 +111,11 @@ export function Toolbar() {
       if (serial.connected && usePlotSession.getState().phase === 'idle') await serial.disconnect()
       const { profile } = useDoc.getState()
       if (profile.kind === 'axidraw') void serial.probe('axidraw')
-      else if (profile.kind === 'grbl') void serial.probe('grbl', profile.baudRate)
+      else if (profile.kind === 'grbl') void serial.probe('grbl', { baudRate: profile.baudRate })
+      else if (profile.kind === 'hpgl')
+        void serial.probe('hpgl', { baudRate: profile.baudRate, flowControl: profile.flowControl })
     }
-    if (machineKind === 'axidraw' || machineKind === 'grbl') void probeSerial()
+    if (machineKind === 'axidraw' || machineKind === 'grbl' || machineKind === 'hpgl') void probeSerial()
     else if (serial.connected && usePlotSession.getState().phase === 'idle') void serial.disconnect()
   }, [machineKind])
   const boundId = printer?.printerId ?? null
@@ -247,7 +249,7 @@ export function Toolbar() {
           </span>
         </Button>
       )}
-      {(machineKind === 'axidraw' || machineKind === 'grbl') && <SerialPlotCluster />}
+      {machineKind !== 'prusa' && <SerialPlotCluster />}
       {printer && (
         <Button
           variant="primary"
@@ -266,17 +268,29 @@ export function Toolbar() {
           <span className="hidden sm:inline">{plotting ? 'Sending…' : 'Plot'}</span>
         </Button>
       )}
-      {(machineKind === 'prusa' || machineKind === 'grbl') && (
+      {machineKind === 'hpgl' ? (
         <Button
-          variant={device || machineKind === 'grbl' ? 'default' : 'primary'}
           onClick={onGenerate}
           disabled={busy || profileInvalid}
-          aria-label="Generate and download G-code"
-          title={profileInvalid ? 'Fix the machine profile to generate G-code' : `Generate & download G-code (${MOD_KEY}S)`}
+          aria-label="Generate and download HP-GL"
+          title={profileInvalid ? 'Fix the machine profile to generate HP-GL' : `Generate & download HP-GL (${MOD_KEY}S)`}
         >
           <Download size={15} />
-          <span className="hidden sm:inline">{busy ? 'Generating…' : 'Generate G-code'}</span>
+          <span className="hidden sm:inline">{busy ? 'Generating…' : 'Generate HP-GL'}</span>
         </Button>
+      ) : (
+        machineKind !== 'axidraw' && (
+          <Button
+            variant={device || machineKind === 'grbl' ? 'default' : 'primary'}
+            onClick={onGenerate}
+            disabled={busy || profileInvalid}
+            aria-label="Generate and download G-code"
+            title={profileInvalid ? 'Fix the machine profile to generate G-code' : `Generate & download G-code (${MOD_KEY}S)`}
+          >
+            <Download size={15} />
+            <span className="hidden sm:inline">{busy ? 'Generating…' : 'Generate G-code'}</span>
+          </Button>
+        )
       )}
 
       {/* ⋯ — the click-reachable home for everything that is otherwise keyboard-only (command

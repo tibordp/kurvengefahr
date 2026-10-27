@@ -3,7 +3,7 @@
 The editor itself targets an abstract pen plotter: everything upstream of output speaks
 machine-neutral terms - positions in page millimeters, a pen index, a pressure from 0 to 1.
 A **machine profile** is what turns that into physical motion. Profiles are editable copies seeded
-from a preset, and a profile's *kind* (G-code plotter, AxiDraw, or GRBL) comes from that preset.
+from a preset, and a profile's *kind* (G-code plotter, AxiDraw, GRBL, or HP-GL) comes from that preset.
 This page is about setting a machine up; day-to-day plotting - pens, stroke order, preview,
 exports - is covered in [plotting](plotting.md).
 
@@ -79,3 +79,43 @@ lines and follows along.
 - **Connection.** Streaming uses Web Serial at the profile's baud rate (default 115200). GRBL
   boards have no fixed USB identity, so the port picker shows every serial device - the app
   verifies it's talking to GRBL by its welcome banner.
+
+## HP-GL cutters (`hpgl` kind)
+
+Vinyl cutters such as the SK-720T speak HP-GL. With a pen holder in place of the blade they plot
+like any pen plotter. Two outputs from the same job: download a `.plt` file for the cutter's own
+software, or stream it live over Web Serial.
+
+- **Setup on the cutter.** Fit the pen holder and set the blade offset to 0 on the cutter's panel.
+  Pens need far less force than a blade - start low.
+- **Online, not Leave.** The cutter takes data only from its normal screen (speed and force
+  shown). In Leave mode it is offline and ignores the computer.
+- **The job starts at the cutter's origin.** Coordinates are absolute from the cutter's own origin,
+  and the cutter returns there by itself at the end of every job - so place the artwork on the page
+  relative to that corner, and use the fiducial to line the paper up.
+- **Orientation.** HP-GL counts up from the origin corner, so the default origin is bottom-left.
+  If a test plot comes out mirrored, switch the origin to top-left. Which axis runs along the
+  carriage varies by cutter - keep both bed sides within the cut width.
+- **Speed and force** go out as `VS` and `FS` at the start of the job. Leave them at 0 to use the
+  cutter's panel settings.
+- **The cutter reports nothing back.** Progress shows what has been sent, and the pen trails it by
+  the cutter's buffer. Pen swaps and the fiducial stop prompt in the app once everything before
+  them has been sent - wait until the cutter has stopped moving before you continue. Pausing
+  stops sending at the next stroke; stopping a plot sends pen-up and the walk home, which run
+  once the cutter has drawn what it already received.
+- **Holding still.** Cutters read a gap in the data as the end of the job and drive back to their
+  origin. While a plot is paused or waiting at a prompt, the app keeps re-sending the head's
+  current position twice a second so it stays put.
+- **Go to fiducial.** With the cutter connected, this button moves the head (pen up) to the
+  fiducial without plotting and holds it there, so you can check where it lands on the medium and
+  line up the paper; *Back to origin* returns it. Plot stays disabled while the head
+  is away.
+- **Several pens in a downloaded file.** HP-GL has no operator pause; the file selects the next
+  pen with `SP`, which multi-pen plotters follow and single-tool cutters ignore. For several colors
+  on a cutter, plot live.
+- **Connection.** The cutter must show up as a serial port - over USB (usually a CH340 USB-serial
+  chip; macOS may need its driver) or a USB-RS232 adapter on its COM port. Some cutters present
+  their USB port as a printer instead; Web Serial can't see those, so use the COM port or the
+  `.plt` download. Baud rate (default 9600) and flow control (default XON/XOFF) must match the
+  cutter's settings, or its buffer overflows mid-job. The cutter sends no greeting, so the app
+  can't check what it is talking to - pick the right port.

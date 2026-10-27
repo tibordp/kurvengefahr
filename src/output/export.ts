@@ -2,6 +2,7 @@
 // and the button share one code path. Reads the authoritative document straight from the store.
 import { runPipeline } from '../core/pipeline'
 import { emitGrbl } from '../core/pipeline/emitGrbl'
+import { emitHpgl } from '../core/pipeline/emitHpgl'
 import { validateProfile } from '../core/profileValidation'
 import { useDoc } from '../store/document'
 import { useDocuments } from '../store/documents'
@@ -12,10 +13,11 @@ import { plot } from './plot'
 
 /** G-code filename from the active document's name (e.g. `my-drawing.gcode`), shared by the download
  *  and the Bridge/PrusaLink send so both name the file the same way. */
-const gcodeFilename = () => `${safeFilename(useDocuments.getState().activeName, 'kurvengefahr')}.gcode`
+const gcodeFilename = (ext = 'gcode') => `${safeFilename(useDocuments.getState().activeName, 'kurvengefahr')}.${ext}`
 
-/** Build G-code for the whole page and hand it to the download sink. No-op on an empty document
- *  or an AxiDraw (it plots live over serial — there's no file artifact; a GRBL machine has both).
+/** Build G-code (HP-GL for an `hpgl` machine, as `.plt`) for the whole page and hand it to the
+ *  download sink. No-op on an empty document or an AxiDraw (it plots live over serial — there's no
+ *  file artifact; GRBL and HP-GL machines have both).
  *  Refuses (with a toast) when the machine profile is invalid — the UI also disables the action. */
 export async function exportGcode(): Promise<void> {
   const { elements, profile, fiducial } = useDoc.getState()
@@ -28,6 +30,8 @@ export async function exportGcode(): Promise<void> {
   if (out.kind === 'gcode') await downloadSink.send(gcodeFilename(), out.gcode)
   else if (out.kind === 'grbl' && profile.kind === 'grbl')
     await downloadSink.send(gcodeFilename(), emitGrbl(out.tape, profile))
+  else if (out.kind === 'hpgl' && profile.kind === 'hpgl')
+    await downloadSink.send(gcodeFilename('plt'), emitHpgl(out.tape, profile))
 }
 
 /** Build the same G-code and send it straight to the profile's bound physical device (PrusaLink

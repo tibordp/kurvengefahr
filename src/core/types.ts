@@ -209,8 +209,9 @@ export interface Fiducial {
 
 /** Machine family — drives the output dialect/affordances. `prusa` = G-code plotters (download or
  *  PrusaLink); `axidraw` = EBB boards driven live over Web Serial (no G-code at all); `grbl` =
- *  GRBL 1.1 plotters (G-code download *or* streamed live over Web Serial). */
-export type MachineKind = 'prusa' | 'axidraw' | 'grbl'
+ *  GRBL 1.1 plotters (G-code download *or* streamed live over Web Serial); `hpgl` = HP-GL vinyl
+ *  cutters with a pen holder (`.plt` download *or* streamed live over Web Serial). */
+export type MachineKind = 'prusa' | 'axidraw' | 'grbl' | 'hpgl'
 
 /** Binding to a printer the user granted to this app in the Bridge for PrusaLink extension;
  *  the id/name are the extension's, never creds. */
@@ -310,9 +311,26 @@ export interface GrblProfile extends MachineProfileBase {
   pause: string
 }
 
+/** An HP-GL device — in practice a vinyl cutter with a pen holder in place of the blade. HP-GL is
+ *  y-up from the head's start corner, hence the usual `bottom-left` origin. The device reports
+ *  nothing back (no acks, no position), so live streaming is send-only: flow control is the only
+ *  thing that keeps its buffer from overflowing, and pen up/down is the only pen control. */
+export interface HpglProfile extends MachineProfileBase {
+  kind: 'hpgl'
+  device?: WebSerialBinding
+  baudRate: number
+  /** `software` = XON/XOFF bytes from the device; `hardware` = RTS/CTS lines. Must match the
+   *  device's setting, or its buffer overflows mid-job. */
+  flowControl: 'software' | 'hardware' | 'none'
+  /** `VS` velocity in cm/s; 0 = leave the device's own setting. */
+  speed: number
+  /** `FS` force in grams; 0 = leave the device's own setting. */
+  force: number
+}
+
 /** Global, document-level machine description, discriminated by `kind`. Editable in the UI;
  *  presets seed it — a profile's kind comes from the preset it was seeded from. */
-export type MachineProfile = PrusaProfile | AxidrawProfile | GrblProfile
+export type MachineProfile = PrusaProfile | AxidrawProfile | GrblProfile | HpglProfile
 
 /** Pressure is supported by a profile when it defines a light-pressure pen-down Z (`downLight`)
  *  — which needs a real Z axis; servo pens (AxiDraw, GRBL servo mode) are up/down only. The single

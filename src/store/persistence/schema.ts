@@ -11,7 +11,7 @@
 //     callers report it and leave the stored bytes untouched rather than mangling them.
 import type { DocElement, Fiducial, MachineProfile, Transform } from '../../core/types'
 import { IDENTITY_TRANSFORM } from '../../core/types'
-import { AXIDRAW_V3, GRBL_PLOTTER, PRUSA_MK4 } from '../profiles'
+import { AXIDRAW_V3, GRBL_PLOTTER, HPGL_CUTTER, PRUSA_MK4 } from '../profiles'
 import { isContainer, isKnownType, sanitizeParams } from '../../elements/registry'
 import { sanitizeEffects } from '../../effects/registry'
 
@@ -39,8 +39,10 @@ import { sanitizeEffects } from '../../effects/registry'
 // carry STL model blobs (`params.modelId`, `images/<id>.stl`). No migration (purely additive);
 // the bump makes older apps report a doc containing models as `unsupported` instead of dropping
 // them.
-export const CURRENT_DOC_SCHEMA = 10
-export const CURRENT_LIBRARY_SCHEMA = 3
+// v11: the `hpgl` machine kind (library v4 likewise). No migration (additive kind); the bump fences
+// off older apps that coerce an hpgl profile to prusa.
+export const CURRENT_DOC_SCHEMA = 11
+export const CURRENT_LIBRARY_SCHEMA = 4
 export const CURRENT_TOOLS_SCHEMA = 1
 
 export const DOC_FILE_KIND = 'kurvengefahr/document'
@@ -97,6 +99,7 @@ function sanitizePen(p: unknown, i: number) {
 export function sanitizeProfile(p: unknown): MachineProfile {
   if (isObj(p) && p.kind === 'axidraw') return sanitizeAxidrawProfile(p)
   if (isObj(p) && p.kind === 'grbl') return sanitizeGrblProfile(p)
+  if (isObj(p) && p.kind === 'hpgl') return sanitizeHpglProfile(p)
   return sanitizePrusaProfile(isObj(p) ? p : {})
 }
 
@@ -201,6 +204,28 @@ function sanitizeGrblProfile(p: Record<string, any>): MachineProfile {
     preamble: str(p.preamble, base.preamble),
     postamble: str(p.postamble, base.postamble),
     pause: str(p.pause, base.pause),
+    units: 'mm',
+  }
+}
+
+function sanitizeHpglProfile(p: Record<string, any>): MachineProfile {
+  const base = HPGL_CUTTER
+  const pens = Array.isArray(p.pens) && p.pens.length ? p.pens.map(sanitizePen) : structuredClone(base.pens)
+  return {
+    id: str(p.id, base.id),
+    name: str(p.name, base.name),
+    kind: 'hpgl',
+    ...(isObj(p.device) && p.device.transport === 'webserial' ? { device: { transport: 'webserial' as const } } : {}),
+    bed: { width: num(p.bed?.width, base.bed.width), height: num(p.bed?.height, base.bed.height) },
+    origin: p.origin === 'top-left' || p.origin === 'bottom-left' ? p.origin : base.origin,
+    baudRate: num(p.baudRate, base.baudRate),
+    flowControl:
+      p.flowControl === 'software' || p.flowControl === 'hardware' || p.flowControl === 'none'
+        ? p.flowControl
+        : base.flowControl,
+    speed: Math.max(0, num(p.speed, base.speed)),
+    force: Math.max(0, num(p.force, base.force)),
+    pens,
     units: 'mm',
   }
 }
