@@ -683,9 +683,22 @@ function HpglMachineSection({ profile }: { profile: HpglProfile }) {
       </Disclosure>
       <PensSection />
 
-      <SectionTitle title="Usable area from where the head sits when the job starts. HP-GL counts up from that corner; if a test plot comes out mirrored, switch the origin.">
+      <SectionTitle title="Usable area from the job's start corner. HP-GL counts up from that corner; if a test plot comes out mirrored, switch the origin.">
         Work area
       </SectionTitle>
+      <Field
+        label="Start at"
+        title="Head position: the job starts (and ends) wherever the head sits - move it to the paper corner first. Cutter origin: absolute coordinates from the cutter's own origin."
+      >
+        <select
+          className={controlClass}
+          value={profile.startAt}
+          onChange={(e) => setProfile({ startAt: e.target.value as HpglProfile['startAt'] })}
+        >
+          <option value="head">Head position</option>
+          <option value="origin">Cutter origin</option>
+        </select>
+      </Field>
       <Num label="Width (mm)" value={profile.bed.width} step={1}
         onChange={(v) => setProfile({ bed: { ...profile.bed, width: v } })} />
       <Num label="Height (mm)" value={profile.bed.height} step={1}

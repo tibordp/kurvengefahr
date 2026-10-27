@@ -88,10 +88,13 @@ software, or stream it live over Web Serial.
 
 - **Setup on the cutter.** Fit the pen holder and set the blade offset to 0 on the cutter's panel.
   Pens need far less force than a blade - start low.
-- **The job starts where the head sits.** Move the head to the corner you want as the origin
-  before plotting; the job walks back there at the end. HP-GL counts up from that corner, so the
-  default origin is bottom-left. If a test plot comes out mirrored, switch the origin to top-left.
-  Which axis runs along the carriage varies by cutter - keep both bed sides within the cut width.
+- **Where the job starts.** With *Start at: Head position* the job plots relative to wherever
+  the head sits: move it to the paper corner with the cutter's arrow keys, then plot; the job walks
+  back there at the end. With *Cutter origin* it plots in absolute coordinates from the cutter's
+  own origin instead - pick that if your cutter doesn't support relative plotting (`PR`).
+- **Orientation.** HP-GL counts up from the start corner, so the default origin is bottom-left.
+  If a test plot comes out mirrored, switch the origin to top-left. Which axis runs along the
+  carriage varies by cutter - keep both bed sides within the cut width.
 - **Speed and force** go out as `VS` and `FS` at the start of the job. Leave them at 0 to use the
   cutter's panel settings.
 - **The cutter reports nothing back.** Progress shows what has been sent, and the pen trails it by

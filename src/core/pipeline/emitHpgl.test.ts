@@ -29,6 +29,7 @@ describe('emitHpgl', () => {
     expect(out.split('\n').filter(Boolean)).toEqual([
       'IN;',
       'SP1;',
+      'PA;',
       'PU;',
       'PU400,400;',
       'PD;',
@@ -48,7 +49,16 @@ describe('emitHpgl', () => {
     const p = profile({ origin: 'top-left', speed: 20, force: 80 })
     const out = emitHpgl(planGrblTape([stroke([[0, 0], [1, 0]], 0), stroke([[2, 0], [3, 0]], 7)], p), p)
     const cmds = out.split('\n')
-    expect(cmds.slice(0, 4)).toEqual(['IN;', 'SP1;', 'VS20;', 'FS80;'])
+    expect(cmds.slice(0, 5)).toEqual(['IN;', 'SP1;', 'PA;', 'VS20;', 'FS80;'])
     expect(cmds).toContain('SP2;')
+  })
+
+  it('from the head: relative deltas without IN, summing back to the start', () => {
+    const p = profile({ origin: 'top-left', startAt: 'head' })
+    const out = emitHpgl(planGrblTape([stroke([[0.0125, 1], [0.025, 1], [0.0375, 1]])], p, null, Infinity), p)
+    const cmds = out.split('\n').filter(Boolean)
+    expect(cmds.slice(0, 2)).toEqual(['SP1;', 'PR;'])
+    // 0.5 → 1, 1 → 1, 1.5 → 2 units: deltas of the rounded positions, not rounded deltas.
+    expect(cmds).toEqual(['SP1;', 'PR;', 'PU;', 'PU1,40;', 'PD;', 'PD0,0;', 'PD1,0;', 'PU;', 'PU-2,-40;'])
   })
 })

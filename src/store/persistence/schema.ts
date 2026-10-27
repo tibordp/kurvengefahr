@@ -223,6 +223,7 @@ function sanitizeHpglProfile(p: Record<string, any>): MachineProfile {
       p.flowControl === 'software' || p.flowControl === 'hardware' || p.flowControl === 'none'
         ? p.flowControl
         : base.flowControl,
+    startAt: p.startAt === 'origin' || p.startAt === 'head' ? p.startAt : base.startAt,
     speed: Math.max(0, num(p.speed, base.speed)),
     force: Math.max(0, num(p.force, base.force)),
     pens,

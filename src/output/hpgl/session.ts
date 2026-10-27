@@ -7,10 +7,17 @@
 //   • Pause stops sending at the next stroke start; the device finishes its buffer first.
 //   • Operator prompts (fiducial / pen swap) likewise appear once the commands before them are
 //     sent, not when the pen gets there — the prompt copy tells the operator to wait.
-//   • Cancel stops sending and appends pen-up + walk home, which run after the buffer drains.
+//   • Cancel stops sending and appends pen-up + walk home (to the job's start), which run after
+//     the buffer drains.
 import { SEG } from '../../core/pipeline/planTypes'
 import type { GrblTape } from '../../core/pipeline/grblTape'
-import { hpglInitCommands, hpglSegmentCommand } from '../../core/pipeline/emitHpgl'
+import {
+  hpglHomeCommand,
+  hpglInitCommands,
+  hpglSegmentCommand,
+  newHpglCtx,
+  type HpglCtx,
+} from '../../core/pipeline/emitHpgl'
 import type { HpglProfile } from '../../core/types'
 import type { PlotDriver, SessionHooks } from '../session'
 
@@ -27,6 +34,7 @@ export class HpglRun implements PlotDriver {
   private xoff = false
   private fatal: Error | null = null
   private wake: (() => void) | null = null
+  private ctx: HpglCtx
 
   constructor(
     private tape: GrblTape,
@@ -34,6 +42,7 @@ export class HpglRun implements PlotDriver {
     private profile: HpglProfile,
     private hooks: SessionHooks,
   ) {
+    this.ctx = newHpglCtx(profile)
     link.onFlow((xon) => {
       this.xoff = !xon
       this.wake?.()
@@ -75,12 +84,12 @@ export class HpglRun implements PlotDriver {
         if (!go) this.cancelFlag = true
         continue
       }
-      const cmd = hpglSegmentCommand(tape, i)
+      const cmd = hpglSegmentCommand(tape, i, this.ctx)
       if (cmd) await this.send(cmd)
       hooks.onProgress(i)
     }
     if (!this.cancelFlag) return 'done'
-    await this.send('PU;PU0,0;')
+    await this.send(hpglHomeCommand(this.ctx))
     return 'cancelled'
   }
 

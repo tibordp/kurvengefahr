@@ -41,7 +41,7 @@ describe('HpglRun', () => {
     expect(sent).toEqual([])
     flow(true)
     expect(await done).toBe('done')
-    expect(sent).toEqual(['IN;SP1;', 'PU;', 'PU40,40;', 'PD;', 'PD80,40;', 'PU;', 'PU0,0;'])
+    expect(sent).toEqual(['IN;SP1;PA;', 'PU;', 'PU40,40;', 'PD;', 'PD80,40;', 'PU;', 'PU0,0;'])
   })
 
   it('a declined pen-swap prompt cancels: nothing more of the job, then pen up + home', async () => {
@@ -78,5 +78,14 @@ describe('HpglRun', () => {
     run.requestResume()
     expect(await done).toBe('done')
     expect(sent).toContain('PU120,120;')
+  })
+
+  it('from the head: cancel walks back by the relative delta', async () => {
+    const head = { ...profile, startAt: 'head' as const }
+    const tape = planGrblTape([stroke([[1, 1], [2, 1]], 0), stroke([[3, 3], [4, 3]], 1)], head, null, Infinity)
+    const { link, sent } = fakeLink()
+    expect(await new HpglRun(tape, link, head, hooks({ prompt: async () => false })).run()).toBe('cancelled')
+    expect(sent[0]).toBe('SP1;PR;')
+    expect(sent.at(-1)).toBe('PU;PU-80,-40;')
   })
 })
